@@ -1,8 +1,12 @@
 """Signed immutable descriptors shared by packaging and publication."""
-import base64, json, subprocess, hashlib
+import base64, json, subprocess, hashlib, ssl, sys
 from pathlib import Path
 REPO='afonasev/star-racing'
 KEY_ID='star-racing-test-2026'
+def tls_context():
+    # python.org macOS installs may omit CA links; use the OS trust bundle.
+    system=Path('/etc/ssl/cert.pem')
+    return ssl.create_default_context(cafile=str(system) if sys.platform=='darwin' and system.is_file() else None)
 def sha(path):
     with Path(path).open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
 def url(version,name):return f'https://github.com/{REPO}/releases/download/v{version}/{name}'

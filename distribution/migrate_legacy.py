@@ -2,7 +2,7 @@
 """One-time old-client TEST bridge. Upload only tiny metadata; retain every old path."""
 import argparse,json,subprocess,urllib.parse,urllib.request,tempfile
 from pathlib import Path
-from metadata import verify,url
+from metadata import verify,url,tls_context
 from publish import validate_identity
 p=argparse.ArgumentParser();p.add_argument('--release',type=Path,action='append',required=True);p.add_argument('--host',default='gfe');p.add_argument('--evidence',type=Path,required=True);a=p.parse_args()
 ROOT='/opt/star-racing-desktop'
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='star-racing-bridge-') as tmp:
  # Confirm relay routing before old clients can discover the new version.
  for platform,envelope in feeds.items():
   descriptor=verify(envelope)
-  with urllib.request.urlopen(urllib.request.Request(descriptor['url'],method='HEAD'),timeout=60) as response:
+  with urllib.request.urlopen(urllib.request.Request(descriptor['url'],method='HEAD'),timeout=60,context=tls_context()) as response:
    if response.status!=200 or int(response.headers['Content-Length'])!=descriptor['size']:raise ValueError('Legacy relay smoke failed; old feeds retained')
  for platform,envelope in feeds.items():
   file=folder/(platform+'.json');file.write_text(json.dumps(envelope)+'\n');target=ROOT+'/public/releases/'+platform+'/latest.json'

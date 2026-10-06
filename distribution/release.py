@@ -2,7 +2,7 @@
 """One-command exact-source build, signed draft/readback, and channel promotion."""
 import argparse,base64,json,os,re,shutil,subprocess,tempfile,time,urllib.request,tarfile
 from pathlib import Path
-from metadata import REPO,sha,verify,finalize
+from metadata import REPO,sha,verify,finalize,tls_context
 from publish import validate_identity
 ROOT=Path(__file__).resolve().parents[1]
 def run(args,**kw):return subprocess.run([str(x) for x in args],check=True,**kw)
@@ -28,7 +28,8 @@ def toolchain():
     folder=ROOT/'.local/toolchain';dotnet=folder/'dotnet/dotnet';vpk=folder/'vpk/vpk'
     if not dotnet.exists():
         archive=folder/'sdk.tar.gz';folder.mkdir(parents=True,exist_ok=True)
-        urllib.request.urlretrieve(config['dotnet']['url'],archive)
+        with urllib.request.urlopen(config['dotnet']['url'],timeout=60,context=tls_context()) as response, archive.open('wb') as output:
+            shutil.copyfileobj(response,output)
         import hashlib
         with archive.open('rb') as f:digest=hashlib.file_digest(f,'sha512').hexdigest()
         if digest!=config['dotnet']['sha512']:raise ValueError('SDK hash mismatch')

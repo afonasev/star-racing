@@ -4,6 +4,11 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import release
 class ChannelContract(unittest.TestCase):
+ def test_tls_verification_remains_enabled(self):
+  import ssl
+  context=release.tls_context()
+  self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
+  self.assertTrue(context.check_hostname)
  def test_explicit_track(self):
   release.validate_track('test','0.2.2-test.1');release.validate_track('production','0.2.2')
   for track,version in [('production','0.2.2-test.1'),('test','0.2.2'),('test','../other')]:
