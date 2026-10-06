@@ -1,0 +1,40 @@
+name: Windows installer wizard
+run-name: Windows wizard ${{ inputs.tag }}
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+      source:
+        required: true
+        type: string
+      portable:
+        required: true
+        type: string
+      sha256:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: windows-wizard-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  wizard:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source }}
+      - name: Compile and upload immutable wizard to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_SOURCE: ${{ inputs.source }}
+          INPUT_PORTABLE: ${{ inputs.portable }}
+          INPUT_SHA256: ${{ inputs.sha256 }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nsis
+          python3 distribution/windows/ci_wizard.py

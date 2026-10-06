@@ -11,6 +11,8 @@ def digest(path):
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument('--track',choices=['production','test'],required=True)
+    p.add_argument('--defer-windows-installer',action='store_true')
     p.add_argument('--channel', choices=['win-x64','osx-universal'], required=True)
     p.add_argument('--version', required=True)
     p.add_argument('--sequence', type=int, required=True)
@@ -81,8 +83,9 @@ def main():
         portable=next(release.glob('*Portable.zip'))
         sdk_setup.unlink() # Superseded one-click installer is not distributed.
         wizard_output=release/('Star-Racing-'+a.version+'-Windows-Setup.exe')
-        wizard_identity=build(portable,wizard_output,a.makensis,a.version)
-        (release/'installer-policy.json').write_text(json.dumps(wizard_identity,indent=2)+'\n')
+        if not a.defer_windows_installer:
+            wizard_identity=build(portable,wizard_output,a.makensis,a.version)
+            (release/'installer-policy.json').write_text(json.dumps(wizard_identity,indent=2)+'\n')
     else:
         setup=next(release.glob('*Setup.pkg'))
         setup.rename(release/('Star-Racing-'+a.version+'-macOS-Setup.pkg'))
@@ -93,13 +96,6 @@ def main():
     if len(assets)!=1:raise ValueError('Expected one exact full release')
     asset=assets[0];package=release/asset['FileName']
     if package.stat().st_size!=asset['Size'] or digest(package).upper()!=asset['SHA256'].upper():raise ValueError('SDK asset mismatch')
-    descriptor=dict(schema=1,appId='tech.afonasev.star-racing.'+a.channel,channel=a.channel,version=a.version,
-                    sequence=a.sequence,fileName=asset['FileName'],sha256=digest(package).upper(),size=package.stat().st_size,
-                    url='https://racing.afonasev.tech/releases/'+a.channel+'/'+a.version+'/'+asset['FileName'],notes=a.notes)
-    serialized=json.dumps(descriptor,ensure_ascii=False,separators=(',',':')).encode()
-    signature=subprocess.run(['openssl','dgst','-sha256','-sign',str(a.key.resolve()),'-sigopt','rsa_padding_mode:pkcs1'],input=serialized,capture_output=True,check=True).stdout
-    signed=dict(keyId='star-racing-test-2026',payloadBase64=base64.b64encode(serialized).decode(),signatureBase64=base64.b64encode(signature).decode())
-    (release/'signed.json').write_text(json.dumps(signed)+'\n')
     identity=dict(version=a.version,sequence=a.sequence,channel=a.channel,
                   sourceRevision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
                   sourceStatus=subprocess.check_output(['git','status','--short'],cwd=root,text=True),
@@ -107,6 +103,9 @@ def main():
                   player=str(a.player),createdUTC=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   files=[dict(name=f.name,size=f.stat().st_size,sha256=digest(f)) for f in sorted(release.iterdir()) if f.is_file()])
     (release/'identity.json').write_text(json.dumps(identity,indent=2)+'\n')
+    if not a.defer_windows_installer or a.channel!='win-x64':
+        from metadata import finalize
+        finalize(release,a.track,a.key.resolve())
     print('PACKAGED',a.channel,a.version,release)
 
 if __name__=='__main__':main()

@@ -36,9 +36,20 @@ def validate_identity(directory,public_key=None):
     if payload['version']!=identity['version'] or payload['channel']!=identity['channel'] or payload['sequence']!=identity['sequence']:raise ValueError('Descriptor/identity mismatch')
     full=[e for e in identity['files'] if e['name'].endswith('-full.nupkg')]
     if len(full)!=1:raise ValueError('Expected one full package')
-    if payload['schema']!=1 or payload['appId']!='tech.afonasev.star-racing.'+identity['channel']:raise ValueError('Descriptor identity invalid')
+    if payload['schema'] not in (1,2) or payload['appId']!='tech.afonasev.star-racing.'+identity['channel']:raise ValueError('Descriptor identity invalid')
     if (payload['fileName'],payload['size'])!=(full[0]['name'],full[0]['size']) or payload['sha256'].lower()!=full[0]['sha256'].lower():raise ValueError('Descriptor package mismatch')
     expected='https://racing.afonasev.tech/releases/'+identity['channel']+'/'+identity['version']+'/'+full[0]['name']
+    if payload['schema']==2:
+        expected='https://github.com/afonasev/star-racing/releases/download/v'+identity['version']+'/'+full[0]['name']
+        track=payload.get('releaseTrack')
+        if track not in ('production','test') or (track=='test')!=('-' in identity['version']):raise ValueError('Descriptor track mismatch')
+        installers=[e for e in identity['files'] if e['name'].endswith(('Setup.exe','Setup.pkg'))]
+        if len(installers)!=1:raise ValueError('Expected one installer')
+        expected_installer=installers[0]
+        signed_installer=payload.get('installer',{})
+        for key,field in [('fileName','name'),('size','size'),('sha256','sha256')]:
+            if signed_installer.get(key)!=expected_installer[field]:raise ValueError('Signed installer mismatch')
+        if signed_installer.get('url')!='https://github.com/afonasev/star-racing/releases/download/v'+identity['version']+'/'+expected_installer['name']:raise ValueError('Installer URL mismatch')
     if payload['url']!=expected:raise ValueError('Descriptor URL mismatch')
     if identity['channel']=='win-x64':validate_windows_payload(directory/full[0]['name'])
     return identity

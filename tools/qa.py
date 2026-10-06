@@ -79,8 +79,11 @@ def plan(base):
     paths = set(filter(None, git('diff', '--no-renames', '--name-only', baseline).splitlines()))
     paths.update(filter(None, git('ls-files', '--others', '--exclude-standard').splitlines()))
     profile = json.loads((REPO/'workflow/project.json').read_text())
-    old_profile = json.loads(git('show', baseline+':workflow/project.json'))
-    scope = scope_for(sorted(paths), profile_safe=local_profile_diff(old_profile, profile))
+    # Public source snapshots omit private planning profiles. Missing historical
+    # policy cannot prove a local scope: select the complete gate.
+    historical = subprocess.run(['git','show',baseline+':workflow/project.json'],cwd=REPO,capture_output=True,text=True)
+    old_profile = json.loads(historical.stdout) if historical.returncode == 0 else None
+    scope = scope_for(sorted(paths), profile_safe=old_profile is not None and local_profile_diff(old_profile, profile)) if old_profile is not None else 'full'
     return {'base': baseline, 'commit': git('rev-parse', 'HEAD'), 'paths': sorted(paths),
             'scope': scope, 'required': GATES[scope], 'broad_integration_if_affected': BROAD,
             'human_acceptance': 'pending', 'deploy_authorized': profile.get('deploy_authorized')}

@@ -20,6 +20,9 @@ namespace StarRacingPrototype {
    pipeline.shadowDistance=160;pipeline.shadowCascadeCount=4;pipeline.msaaSampleCount=2;pipeline.renderScale=1;pipeline.mainLightShadowmapResolution=2048;
    GraphicsSettings.defaultRenderPipeline=pipeline;QualitySettings.renderPipeline=pipeline;
    PlayerSettings.companyName="Star Racing";PlayerSettings.productName="Star Racing";PlayerSettings.bundleVersion=Environment.GetEnvironmentVariable("STAR_RACING_VERSION")??"0.2.0";
+   var track=Environment.GetEnvironmentVariable("STAR_RACING_RELEASE_TRACK")??"production";
+   if(track!="production"&&track!="test")throw new Exception("Invalid release track");
+   if((track=="test")!=PlayerSettings.bundleVersion.Contains("-"))throw new Exception("Version/track mismatch");
    PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone,ScriptingImplementation.Mono2x);
    PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Standalone,"local.starracing.prototype");
    var icon=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/StarRacing/Resources/Star-Racing-Icon.png");
@@ -32,6 +35,6 @@ namespace StarRacingPrototype {
    var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);new GameObject("Star Racing").AddComponent<RaceDirector>();
    EditorSceneManager.SaveScene(scene,"Assets/StarRacing/Generated/Prototype.unity");EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/StarRacing/Generated/Prototype.unity",true)};AssetDatabase.SaveAssets();
   }
-  static void Build(BuildTarget target,string output){Directory.CreateDirectory(Path.GetDirectoryName(output));var result=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/StarRacing/Generated/Prototype.unity"},locationPathName=output,target=target});if(result.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded)throw new Exception("Build failed: "+result.summary.result);Debug.Log("PROTOTYPE_BUILD_OK "+output);}
+  static void Build(BuildTarget target,string output){Directory.CreateDirectory(Path.GetDirectoryName(output));var result=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/StarRacing/Generated/Prototype.unity"},locationPathName=output,target=target,extraScriptingDefines=Environment.GetEnvironmentVariable("STAR_RACING_RELEASE_TRACK")=="test"?new[]{"STAR_RACING_TEST_CHANNEL"}:Array.Empty<string>()});if(result.summary.result!=UnityEditor.Build.Reporting.BuildResult.Succeeded)throw new Exception("Build failed: "+result.summary.result);Debug.Log("PROTOTYPE_BUILD_OK "+output);}
  }
 }

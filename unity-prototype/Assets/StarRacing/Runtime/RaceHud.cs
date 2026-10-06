@@ -18,6 +18,8 @@ namespace StarRacingPrototype {
   void Panel(Rect r){GUI.color=new Color(.035f,.055f,.09f,.96f);GUI.DrawTexture(r,Texture2D.whiteTexture);GUI.color=Color.white;}
   void OnGUI(){
    if(director==null||director.Session==null)return;Style();GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
+   if(Distribution.DesktopUpdater.Instance?.StartupApplying==true){Panel(new Rect(400,350,800,150));GUI.Label(new Rect(450,400,700,60),"Применение обновления…",title);return;}
+   if(Distribution.DesktopUpdater.Instance?.Downloading==true)GUI.Label(new Rect(20,860,450,30),"Обновление: "+Distribution.DesktopUpdater.Instance.Progress+"%",label);
    if(showFps)GUI.Label(new Rect(1450,15,140,35),fps,label);
    if(director.InPreparationMenu){DrawMenu();return;}
    for(int i=0;i<2;i++){
@@ -59,7 +61,9 @@ namespace StarRacingPrototype {
   void DrawUpdates(){
    var updater=Distribution.DesktopUpdater.Instance;Panel(new Rect(340,150,920,610));
    GUI.Label(new Rect(390,185,800,50),"Обновления Star Racing",title);
-   GUI.Label(new Rect(390,250,800,35),"Установлена версия "+(updater?.InstalledVersion??Application.version),label);
+   GUI.Label(new Rect(390,250,500,35),"Установлена версия "+(updater?.InstalledVersion??Application.version),label);
+   GUI.enabled=updater!=null&&!updater.Busy&&!updater.Staged&&updater.CanUpdate;
+   if(GUI.Button(new Rect(900,250,290,35),"Проверить"))_=updater.Check();GUI.enabled=true;
    GUI.Label(new Rect(390,305,800,70),updater?.Status??"Обновления недоступны",label);
    if(updater!=null){
     if(updater.Available){
@@ -68,14 +72,14 @@ namespace StarRacingPrototype {
     }
     if(updater.Busy)GUI.Label(new Rect(390,565,800,35),updater.Progress>0?"Загружено "+updater.Progress+"%":"Подождите…",label);
     GUI.enabled=!updater.Busy&&updater.CanUpdate;
-    if(updater.Staged){if(GUI.Button(new Rect(390,620,480,50),"Перезапустить и установить"))updater.InstallAndRestart();}
+    if(updater.Staged){if(GUI.Button(new Rect(390,620,480,50),"Перезапустить"))updater.InstallAndRestart();}
     else if(updater.Available){if(GUI.Button(new Rect(390,620,480,50),"Обновить"))_=updater.Download();}
-    else{if(GUI.Button(new Rect(390,620,480,50),"Проверить обновления"))_=updater.Check();}
+    else GUI.Label(new Rect(390,620,480,50),"Новых обновлений нет",label);
     GUI.enabled=true;
     if(updater.Downloading&&GUI.Button(new Rect(900,565,290,40),"Отменить загрузку"))updater.Cancel();
    }
    if(GUI.Button(new Rect(900,620,290,50),"Назад"))showUpdates=false;
-   GUI.Label(new Rect(390,695,800,40),"Установка выполняется только по вашему согласию. Настройки сохраняются.",label);
+   GUI.Label(new Rect(390,695,800,40),"Скачанный пакет установится после выхода при следующем запуске. Настройки сохраняются.",label);
   }
   void DrawAudio(float x,float y){var audio=director.GetComponent<RaceAudioCoordinator>();if(audio==null)return;GUI.Label(new Rect(x,y,400,35),"Звук",title);bool changed=GUI.changed;GUI.changed=false;bool mute=GUI.Toggle(new Rect(x,y+45,390,30),audio.Muted,"Без звука");float music=Slider(x,y+90,"Музыка",audio.MusicVolume),engines=Slider(x,y+135,"Двигатели",audio.EnginesVolume),effects=Slider(x,y+180,"Эффекты",audio.EffectsVolume);if(GUI.changed)audio.SetMix(mute,music,engines,effects);GUI.changed|=changed;}
   float Slider(float x,float y,string text,float value){GUI.Label(new Rect(x,y,180,28),text,label);return GUI.HorizontalSlider(new Rect(x+180,y+10,210,18),value,0,1);}

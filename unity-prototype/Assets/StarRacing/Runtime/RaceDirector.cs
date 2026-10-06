@@ -124,6 +124,7 @@ namespace StarRacingPrototype {
   void OnApplicationFocus(bool focus){if(!focus&&Input!=null&&Started)SetPaused(true);}
   void OnApplicationPause(bool paused){if(paused&&Input!=null&&Started)SetPaused(true);}
   void Update(){
+   if(Distribution.DesktopUpdater.Instance?.StartupApplying==true)return;
    if(Input==null)return;Input.Refresh();var k=Keyboard.current;
    if(k!=null&&!GetComponent<RaceHud>().UpdateDialogOpen){if(k.escapeKey.wasPressedThisFrame&&Started)SetPaused(!Paused);if(k.enterKey.wasPressedThisFrame&&!GetComponent<RaceHud>().EditingTrackSeed)StartRace();if(k.f5Key.wasPressedThisFrame)Restart();if(k.backspaceKey.wasPressedThisFrame)ExitToMenu();}
    for(int i=0;i<2;i++)Cars[i].SetInput(Session.CanDrive(i)&&!Paused?Input.Read(i):default);
