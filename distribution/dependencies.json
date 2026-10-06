@@ -1,0 +1,11 @@
+{
+  "velopackVersion": "1.2.158",
+  "nativeArchiveSHA256": "63438c5d87b01d93853d0259a0d86eefccea8347914bd84fb58edbb5a71e05da",
+  "managed": {
+    "Velopack.dll": "86ec46d1cf56cfa999083fe285c0b520d4dea5ee9436e177f513e3071e773073",
+    "Newtonsoft.Json.dll": "12246aa5e14245cbd1a0b8794851defd46e6d782c60eb650ba5aa90ef8447eee",
+    "Microsoft.Win32.Registry.dll": "e9a9d281c1a708aaae366f82fd6a1742f65da2918cc4fa5eaaaada0be24277d9"
+  },
+  "nativeDllSHA256": "7b5c7bef4696ac4b372d8c41cc610e6c03f4348c1f5a44659b903985cc8b0c8f",
+  "registryFacade": "Microsoft.Win32.Registry 5.0.0 runtimes/win/lib/net461, forwards to Unity Mono mscorlib"
+}

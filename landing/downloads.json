@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "downloads": {
+    "osx-universal": {
+      "version": "0.2.1-test.1",
+      "size": 209592998,
+      "sha256": "ad801e31742891cb8b23e1ecd6983f6e1aeef13f78ad1d459309dabb5f654cc0",
+      "url": "/releases/osx-universal/0.2.1-test.1/tech.afonasev.star-racing.osx-universal-osx-universal-Setup.pkg"
+    },
+    "win-x64": {
+      "version": "0.2.1-test.3",
+      "size": 179164661,
+      "sha256": "086e17e091b566087a220e8ef559937d97fa955136d4fee246c7e2ef74a572e4",
+      "url": "/releases/win-x64/0.2.1-test.3/Star-Racing-Wizard-Setup.exe"
+    }
+  }
+}

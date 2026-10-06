@@ -1,0 +1,79 @@
+{
+  "files": [
+    {
+      "key": "music/city-loop",
+      "resource": "Audio/pcm/music/city-loop",
+      "assetGain": 0.5
+    },
+    {
+      "key": "music/technological-messup",
+      "resource": "Audio/pcm/music/technological-messup",
+      "assetGain": 1.0
+    },
+    {
+      "key": "music/zenostar",
+      "resource": "Audio/pcm/music/zenostar",
+      "assetGain": 0.5
+    },
+    {
+      "key": "music/revelation",
+      "resource": "Audio/pcm/music/revelation",
+      "assetGain": 1.0
+    },
+    {
+      "key": "music/electronic-loop",
+      "resource": "Audio/pcm/music/electronic-loop",
+      "assetGain": 0.5
+    },
+    {
+      "key": "sfx/wind-loop",
+      "resource": "Audio/pcm/sfx/wind-loop",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/skid-race",
+      "resource": "Audio/pcm/sfx/skid-race",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/countdown-starter",
+      "resource": "Audio/pcm/sfx/countdown-starter",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/engine-high",
+      "resource": "Audio/pcm/sfx/engine-high",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/vehicle-impact",
+      "resource": "Audio/pcm/sfx/vehicle-impact",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/barrier-impact",
+      "resource": "Audio/pcm/sfx/barrier-impact",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/fall-thud",
+      "resource": "Audio/pcm/sfx/fall-thud",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/respawn-road",
+      "resource": "Audio/pcm/sfx/respawn-road",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/finish-surge",
+      "resource": "Audio/pcm/sfx/finish-surge",
+      "assetGain": 1.0
+    },
+    {
+      "key": "sfx/results-settle",
+      "resource": "Audio/pcm/sfx/results-settle",
+      "assetGain": 1.0
+    }
+  ]
+}

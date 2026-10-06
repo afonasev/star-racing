@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+.local/
+.cache/
+unity-prototype/Library/
+unity-prototype/Temp/
+unity-prototype/obj/
+unity-prototype/Logs/
+unity-prototype/Builds/
+unity-prototype/UserSettings/
+
+distribution/**/bin/
+distribution/**/obj/

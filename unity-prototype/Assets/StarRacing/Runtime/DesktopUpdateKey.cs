@@ -1,0 +1,7 @@
+namespace StarRacingPrototype.Distribution {
+ public static class DesktopUpdateKey {
+  public const string Id="star-racing-test-2026";
+  public const string Modulus="41CZ75P4eTOPpQYahLiJaSmTHArwgy9FxtMpvDWDknhU1SUM46zMhB05SmcsEytzXiShRxg2tTnkKujetdtBjb7UOrCa8GZpddIwXp1w6vp4muKjKB/6jZVvlc8LJ6DqNwbPAcv6+EU6gUmuh2MZrou4vzrsnNm54IDRrE/Ya0ITzEKeTzy92YV4qGnYtVarTSLzvfsmgTyo/Zz3J5DJesipqcK2Z67nlJtggfYrZi1uqh1RY97+NYUrFFOTYrB13w5gD7pu7bEP7PtGV9o4WpO6rAacVfFL32iL+UJVnnYVyThQMmkdEOIyHYb6EvvR+0zOSzm4rLy5FlA9BmqsIXFIeTavQpKB97HnPCyAUlv1e/0uAUafO4VtRuQneXV7SzXCr722Nghb7RFKTewn4CwcdT0eXlSzRC6FpEFbZTVWIv3iu8bfgTlySVHNmVSCz5qx0YkdBI+niZP+1HKFzGmhYDavdPH0tdJQlfwP2gIx0OnyLUgVwDS7Ru9ehC9R";
+  public const string Exponent="AQAB";
+ }
+}

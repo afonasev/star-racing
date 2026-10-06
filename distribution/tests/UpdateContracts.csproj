@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.158" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <Compile Include="Program.cs" />
+    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs" />
+    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,39 @@
+{
+  "stretch": "a670068d9aeb64913331d5cc29337b19a457a7df",
+  "linear": "de55e6a50ffcf6f8f43f649692d94691c7025151",
+  "licenses": "MIT, preserve both upstream notices; no distro yet",
+  "chromium": {
+    "revision": "75d3bf3a5f29a71cc27e870cbc9d86f2fe7149ec",
+    "role": "Finite resident countdown-only WSOLA adaptation",
+    "license": "BSD-3-Clause; LICENSE-chromium.txt",
+    "upstreamFiles": [
+      "media/filters/audio_renderer_algorithm.cc",
+      "media/filters/wsola_internals.cc"
+    ],
+    "sourceIdentity": "IAB reduced UA Chromium153; algorithm revision pinned and actual source captures compared; exact browser build not inferred"
+  },
+  "windowsToolchain": {
+    "project": "https://github.com/mstorsjo/llvm-mingw",
+    "release": "20260616",
+    "archive": "llvm-mingw-20260616-ucrt-macos-universal.tar.xz",
+    "sha256": "2cab02a2e964bd4aae981150a45985d07c657cfa8d244959eb9e2dcc5eedd7b1",
+    "compiler": "clang22.1.8 ca7933e47d3a3451d81e72ac174dcb5aa28b59d1",
+    "target": "x86_64-w64-windows-gnu",
+    "crt": "UCRT Windows10 or newer; C++ runtime static; resources owned/freed in same DLL",
+    "licenseNotices": "Resources/Audio/native-tempo-windows-notices.txt",
+    "licenseSources": [
+      {
+        "path": "LICENSE.TXT",
+        "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+      },
+      {
+        "path": "x86_64-w64-mingw32/share/mingw32/COPYING.MinGW-w64-runtime.txt",
+        "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f"
+      },
+      {
+        "path": "x86_64-w64-mingw32/share/mingw32/COPYING.MinGW-w64.txt",
+        "sha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1"
+      }
+    ]
+  }
+}
