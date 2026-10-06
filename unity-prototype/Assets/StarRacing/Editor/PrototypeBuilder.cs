@@ -24,7 +24,9 @@ namespace StarRacingPrototype {
    PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Standalone,"local.starracing.prototype");
    var icon=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/StarRacing/Resources/Star-Racing-Icon.png");
    if(icon==null)throw new Exception("Star Racing application icon missing");
-   PlayerSettings.SetIcons(NamedBuildTarget.Standalone,new[]{icon},IconKind.Any);
+   var iconSizes=PlayerSettings.GetIconSizes(NamedBuildTarget.Standalone,IconKind.Any);
+   if(iconSizes.Length==0)throw new Exception("Standalone icon slots missing");
+   PlayerSettings.SetIcons(NamedBuildTarget.Standalone,Array.ConvertAll(iconSizes,_=>icon),IconKind.Any);
    PlayerSettings.defaultScreenWidth=1600;PlayerSettings.defaultScreenHeight=900;PlayerSettings.fullScreenMode=FullScreenMode.Windowed;PlayerSettings.runInBackground=false;PlayerSettings.resizableWindow=true;
    PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone,2);
    var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);new GameObject("Star Racing").AddComponent<RaceDirector>();

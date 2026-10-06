@@ -44,6 +44,8 @@ def main():
         info=plistlib.loads((payload/'Contents/Info.plist').read_bytes())
         if info.get('CFBundleShortVersionString')!=a.version:raise ValueError('Player version mismatch')
         exe=info['CFBundleExecutable']
+        icon=info.get('CFBundleIconFile','')
+        if not icon or not (payload/'Contents/Resources'/icon).is_file():raise ValueError('Packaged macOS application icon missing')
     else:
         if not (a.player/'Star Racing.exe').is_file():p.error('Expected Windows Player directory')
         shutil.copytree(a.player,payload,ignore=shutil.ignore_patterns('*_DoNotShip','*.pdb'))
