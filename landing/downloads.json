@@ -2,10 +2,10 @@
   "schema": 1,
   "downloads": {
     "osx-universal": {
-      "url": "https://github.com/afonasev/star-racing/releases/download/v0.2.1-test.6/Star-Racing-0.2.1-test.6-macOS-Setup.pkg",
-      "size": 209607575,
-      "sha256": "a1022f1c848f4d81591a920943f660924f1fed746141c8888e6f45143fc75782",
-      "version": "0.2.1-test.6"
+      "url": "https://github.com/afonasev/star-racing/releases/download/v0.2.1-test.8/Star-Racing-0.2.1-test.8-macOS-Setup.pkg",
+      "size": 209656139,
+      "sha256": "927a6579d3de208f8ef65274cca35d3cf39838fd2e8c80787151a964bb6139ad",
+      "version": "0.2.1-test.8"
     },
     "win-x64": {
       "url": "https://github.com/afonasev/star-racing/releases/download/v0.2.1-test.6/Star-Racing-0.2.1-test.6-Windows-Setup.exe",
