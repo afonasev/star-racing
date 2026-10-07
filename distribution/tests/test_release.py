@@ -50,3 +50,22 @@ class PolicyCliContract(unittest.TestCase):
   result=subprocess.run([sys.executable,str(Path(release.__file__))],capture_output=True,text=True)
   self.assertEqual(result.returncode,2)
   self.assertIn('--track, --version and --sequence are required',result.stderr)
+
+class ReleaseSourcePreservation(unittest.TestCase):
+ def test_unity_import_metadata_is_restored_after_both_builds(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);assets=root/'unity-prototype/Assets/StarRacing';assets.mkdir(parents=True)
+   project=root/'unity-prototype/ProjectSettings/ProjectSettings.asset';project.parent.mkdir(parents=True);project.write_text('project')
+   generated=assets/'Generated/Prototype.unity';generated.parent.mkdir();generated.write_text('scene')
+   meta=assets/'Resources/Track.png.meta';meta.parent.mkdir();meta.write_text('texture:\n  userData:\n')
+   evidence=root/'evidence';evidence.mkdir()
+   def fake_run(args,**kwargs):
+    meta.write_text('texture:\n  userData: \n')
+    Path(args[args.index('-logFile')+1]).write_text('PROTOTYPE_BUILD_OK')
+   with patch.object(release,'ROOT',root),patch.object(release,'run',side_effect=fake_run) as build:
+    release.build_players('0.2.2-test.3','test',evidence)
+   self.assertEqual(meta.read_text(),'texture:\n  userData:\n')
+   self.assertEqual(project.read_text(),'project')
+   self.assertEqual(generated.read_text(),'scene')
+   self.assertEqual(build.call_count,2)

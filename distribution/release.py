@@ -68,9 +68,11 @@ def toolchain():
     run(['python3',ROOT/'distribution/prepare.py'])
     return dotnet,vpk
 def build_players(version,track,evidence):
-    # Build preparation updates these owned files. Restore them even on failure.
+    # Build preparation and Unity import may serialize these owned files. Restore
+    # them even on failure so an exact-source release stays clean after building.
     paths=[ROOT/'unity-prototype/ProjectSettings/ProjectSettings.asset']
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing/Generated').rglob('*'))
+    paths+=list((ROOT/'unity-prototype/Assets/StarRacing').rglob('*.meta'))
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')
     try:
