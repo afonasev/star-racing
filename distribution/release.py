@@ -15,7 +15,14 @@ def api(endpoint,method='GET',body=None):
 def optional_release(tag):
     result=subprocess.run(['gh','api',f'repos/{REPO}/releases/tags/{tag}'],capture_output=True,text=True)
     if result.returncode:
-        if '404' in result.stderr:return None
+        if '404' in result.stderr:
+            # The tag endpoint excludes drafts for workflow tokens. A draft is
+            # still an existing immutable candidate, never permission to rebuild.
+            listed=subprocess.run(['gh','api','--paginate','--slurp',f'repos/{REPO}/releases?per_page=100'],capture_output=True,text=True)
+            if listed.returncode:raise RuntimeError(listed.stderr)
+            matches=[item for page in json.loads(listed.stdout) for item in page if item['tag_name']==tag]
+            if len(matches)>1:raise ValueError('Duplicate release tag')
+            return matches[0] if matches else None
         raise RuntimeError(result.stderr)
     return json.loads(result.stdout)
 def validate_track(track,version):

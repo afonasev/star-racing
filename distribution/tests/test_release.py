@@ -23,5 +23,15 @@ class ChannelContract(unittest.TestCase):
    with self.assertRaises(RuntimeError):release.optional_release('channel-test')
  def test_only_404_absent(self):
   import subprocess
-  with patch.object(release.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','HTTP 404')):
+  with patch.object(release.subprocess,'run',side_effect=[subprocess.CompletedProcess([],1,'','HTTP 404'),subprocess.CompletedProcess([],0,'[[]]','')]):
    self.assertIsNone(release.optional_release('channel-production'))
+
+ def test_draft_is_existing_version(self):
+  import subprocess,json
+  draft={'tag_name':'v0.2.2-test.1','draft':True,'id':123}
+  with patch.object(release.subprocess,'run',side_effect=[subprocess.CompletedProcess([],1,'','HTTP 404'),subprocess.CompletedProcess([],0,json.dumps([[draft]]),'')]):
+   self.assertEqual(release.optional_release(draft['tag_name']),draft)
+ def test_draft_lookup_failure_is_not_missing(self):
+  import subprocess
+  with patch.object(release.subprocess,'run',side_effect=[subprocess.CompletedProcess([],1,'','HTTP 404'),subprocess.CompletedProcess([],1,'','HTTP 403')]):
+   with self.assertRaises(RuntimeError):release.optional_release('v0.2.2-test.1')
