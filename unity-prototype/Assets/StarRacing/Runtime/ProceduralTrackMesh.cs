@@ -11,14 +11,19 @@ public static class ProceduralTrackMesh
     sealed class Geometry
     {
         public readonly List<Vector3> vertices = new List<Vector3>();
+        public readonly List<Vector2> uv = new List<Vector2>();
         public readonly List<int> triangles = new List<int>(), samples = new List<int>();
         public readonly List<RoadFace> faces = new List<RoadFace>();
         public int quadCount;
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, int sample, Vector3 up,
-            RoadFace face = default)
+            RoadFace face = default, float uvStart = 0, float uvEnd = -1)
         {
             int i = vertices.Count;
             vertices.AddRange(new[] { a, b, c, d });
+            float length = Vector3.Distance(a, b) / 4f, width = Vector3.Distance(a, c) / 4f;
+            if (uvEnd < 0) uvEnd = uvStart + length;
+            uv.AddRange(new[] { new Vector2(uvStart, 0), new Vector2(uvEnd, 0),
+                new Vector2(uvStart, width), new Vector2(uvEnd, width) });
             if (Vector3.Dot(Vector3.Cross(b - a, c - a), up) > 0)
                 triangles.AddRange(new[] { i, i + 1, i + 2, i + 2, i + 1, i + 3 });
             else
@@ -34,6 +39,7 @@ public static class ProceduralTrackMesh
             go.transform.SetParent(parent, false);
             var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
             mesh.SetVertices(vertices);
+            mesh.SetUVs(0, uv);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
@@ -152,11 +158,12 @@ public static class ProceduralTrackMesh
                                        : 0),
                         side = a.right * .15f;
                 rails.Quad(pa - side, pb - side, pa - side + a.normal * 1.3f, pb - side + b.normal * 1.3f, i,
-                           -a.right);
+                           -a.right, uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
                 rails.Quad(pa + side, pb + side, pa + side + a.normal * 1.3f, pb + side + b.normal * 1.3f, i,
-                           a.right);
+                           a.right, uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
                 rails.Quad(pa - side + a.normal * 1.3f, pb - side + b.normal * 1.3f,
-                           pa + side + a.normal * 1.3f, pb + side + b.normal * 1.3f, i, a.normal);
+                           pa + side + a.normal * 1.3f, pb + side + b.normal * 1.3f, i, a.normal,
+                           uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
             }
         }
         road.Create(parent, "Procedural road", roadMaterial, true);

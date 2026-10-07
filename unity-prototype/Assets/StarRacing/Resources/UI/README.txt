@@ -1,0 +1,2 @@
+CloudlineBackground.png: generated with OpenAI imagegen on 2026-10-07 from the user-approved Cloudline main-menu concept in chat 01a115df-9f83-77a0-8a2c-76a116d54ea0; edited to remove all UI/text. Decorative background, not a real-time track preview.
+NotoSans-Regular.ttf and NotoSans-Bold.ttf: https://github.com/notofonts/noto-fonts/tree/main/hinted/ttf/NotoSans . SIL Open Font License included as FontLicense.txt. Downloaded 2026-10-07.

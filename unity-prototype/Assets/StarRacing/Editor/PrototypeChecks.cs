@@ -6,9 +6,50 @@ namespace StarRacingPrototype {
   static int assertions;
   [Serializable] sealed class Receipt { public string token,balanceHash,utc; public int assertions,rosterCases,ghostAssertions; public double methodSeconds; }
   static void Require(bool valid,string message){assertions++;if(!valid)throw new Exception(message);}
+  public static void RunIdleRecovery(){
+   var idle=new RecoveryPolicy();
+   for(int i=0;i<12000;i++)
+    if(idle.Observe(.01f,true,i*.01,false,false,false,0,0,0))throw new Exception("Idle road support triggered fall");
+   if(idle.Falling || idle.Episode!=0 || idle.StuckSeconds!=0)throw new Exception("Idle recovery state changed");
+   if(!idle.Observe(.01f,true,120,false,false,true,0,0,0))throw new Exception("Real off-road fall suppressed");
+   if(idle.AdvanceFall(1f) || !idle.AdvanceFall(.5f))throw new Exception("Fall delay changed");
+   idle.Respawn();
+   if(idle.Falling || idle.GhostSeconds!=RecoveryPolicy.GhostDuration)throw new Exception("Respawn protection changed");
+   var jump=new RecoveryPolicy();
+   if(jump.Observe(.01f,true,120,false,true,true,0,0,0))throw new Exception("Confirmed jump triggered fall");
+   var mode=Physics.simulationMode;float dt=Time.fixedDeltaTime;
+   var tick=typeof(MagneticVehicle).GetMethod("FixedUpdate",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
+   try{
+    Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;
+    var balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config").text);
+    foreach(string theme in new[]{"cloud-city","space-station"}){
+     var root=new GameObject("idle physics checks");
+     try{
+      var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(Procedural.Generator.Generate(77,"normal",theme,false,true)));
+      var carObject=new GameObject("parked car");carObject.transform.SetParent(root.transform);
+      carObject.AddComponent<Rigidbody>();carObject.AddComponent<BoxCollider>();
+      var car=carObject.AddComponent<MagneticVehicle>();car.Initialize(track,0,Color.cyan,balance);car.ResetAt(80);
+      Physics.SyncTransforms();int revision=car.PositionRevision;
+      for(int i=0;i<12000;i++){
+       car.SetRaceContext(true,1,2,i*.01);car.PrepareProjection();tick.Invoke(car,null);Physics.Simulate(.01f);
+       if(car.IsFalling || car.PositionRevision!=revision || !car.GetComponent<Collider>().enabled)throw new Exception("Parked car fell or reset: "+theme);
+      }
+      car.PrepareProjection();float height=Vector3.Dot(car.Body.position-car.Frame.position,car.Frame.normal);
+      if(height<.2f || car.HandlingSupportCount==0)throw new Exception("Parked car lost support: "+theme);
+      Debug.Log("IDLE_ROAD_PHYSICS_OK theme="+theme+" seconds=120 height="+height);
+      car.SetInput(new DrivingInput{throttle=1});
+      for(int i=0;i<200;i++){
+       car.SetRaceContext(true,1,2,120+i*.01);car.PrepareProjection();tick.Invoke(car,null);Physics.Simulate(.01f);
+      }
+      if(car.IsFalling || Vector3.Dot(car.Body.linearVelocity,car.Frame.tangent)<1f)throw new Exception("Cannot drive after idle: "+theme);
+     }finally{UnityEngine.Object.DestroyImmediate(root);}
+    }
+   }finally{Physics.simulationMode=mode;Time.fixedDeltaTime=dt;}
+   Debug.Log("IDLE_RECOVERY_CHECKS_OK supportedIdle=120s offRoadFall respawn ghost jump bothThemes");
+  }
   public static void RunWithFixtureEquivalence(){
    // All fixtures are local and destroyed by Run before pure geometry regressions start.
-   Run();RosterFixtureEquivalenceChecks.Run();
+   RunIdleRecovery();Run();RosterFixtureEquivalenceChecks.Run();CloudlineChecks.Run();
   }
   public static void Run(){
    assertions=0;int rosterCases=0;var watch=System.Diagnostics.Stopwatch.StartNew();

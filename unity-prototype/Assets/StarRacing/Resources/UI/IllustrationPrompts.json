@@ -1,0 +1,25 @@
+{
+  "generator": "built-in image_gen",
+  "assets": [
+    {
+      "name": "ControlsGamepad",
+      "path": "/Users/eaafonasev/.codex/generated_images/01a115df-9f83-77a0-8a2c-76a116d54ea0/exec-0f41301e-1246-4140-8490-0beb88a45b04.png",
+      "prompt": "Create a finished raster illustrated controls guide for a premium futuristic racing game's settings panel, landscape 4:3, white/very pale blue full-bleed background, dark navy Russian text, cobalt blue highlights. Real beautifully rendered white Xbox-layout gamepad, subtle realistic shadows, large readable printed labels and precise fine leader lines, polished editorial infographic NOT crude vector primitives. Large centered title ГЕЙМПАД. Correct controls: left stick and D-pad label «Руль»; RT / RB label «Газ»; A label «Тормоз»; LT / LB label «Занос»; B label «Нитро»; Start/menu button label «Пауза». Bottom small separated note «Y — добавить игрока в меню». Show all controls accurately with unambiguous connections and ample spacing. All text must fit and be highly legible at 720x550 display. No website frame, no UI buttons, no external border, no extra decorative copy. Final production asset."
+    },
+    {
+      "name": "ControlsKeyboard",
+      "path": "/Users/eaafonasev/.codex/generated_images/01a115df-9f83-77a0-8a2c-76a116d54ea0/exec-ccf176ad-e43b-44d8-9331-0de3035a6b42.png",
+      "prompt": "Create a finished raster illustrated controls guide for a premium futuristic racing game settings panel. Landscape 4:3, full bleed white/very pale blue studio background, dark navy Russian typography, cobalt blue and warm orange accents, photorealistic rendered keyboard keycaps and tasteful realistic soft shadows, polished editorial infographic, NOT crude vector primitives. Large title КЛАВИАТУРА. Two balanced columns. Left titled WASD with rendered W A S D keys and readable mapping «W — газ», «S — тормоз», «A / D — руль», «Space — занос», «Left Shift — нитро». Right titled СТРЕЛКИ with rendered four arrow keys and mapping «↑ — газ», «↓ — тормоз», «← / → — руль», «Right Alt — занос», «Right Shift — нитро». Bottom compact strip «Esc — пауза    F5 — повтор». Use actual keycap render illustrations, all exact Russian text readable at 720x550, spacious but fill the composition. No extra frame, buttons, text, slogans or watermark. Final production asset."
+    },
+    {
+      "name": "ThemeCloudCity",
+      "path": "/Users/eaafonasev/.codex/generated_images/01a115df-9f83-77a0-8a2c-76a116d54ea0/exec-841da0ec-6906-488d-87b2-86eb4c653c9f.png",
+      "prompt": "Create premium futuristic racing game track selection artwork, landscape 3:2. Cinematic rendered concept art of a spectacular CITY ABOVE THE CLOUDS: sweeping elevated silver racetrack with blue edge lights curves through slender white sculptural towers above a deep ocean of warm sunlit clouds, a small cobalt aerodynamic racing vehicle in foreground heading into the bend. Immersive low track-level camera, sense of speed and scale, crisp authored composition filling frame, bright pearl white with cyan highlights, sophisticated realism, warm sunrise. NOT a generic car product shot, NOT a menu background with empty text area. No text, no logos, no UI, no frame. This distinct location artwork fills a right-hand track-preview card."
+    },
+    {
+      "name": "ThemeSpaceStation",
+      "path": "/Users/eaafonasev/.codex/generated_images/01a115df-9f83-77a0-8a2c-76a116d54ea0/exec-dbe41b52-79ef-4527-915f-d528446bb14c.png",
+      "prompt": "Create premium futuristic racing game track selection artwork, landscape 3:2. Cinematic rendered concept art of a SPACE STATION RACETRACK: smooth racing surface with cyan edge barriers curves through a monumental orbital station ring, a silver-blue aerodynamic racing vehicle heading toward an illuminated tunnel, immense blue planet and stars beyond the station windows, intricate believable white and titanium station architecture. Immersive track-level camera, dramatic deep navy outer space and bright blue-white rim lights, polished realistic rendering, clear sense of a playable course. NOT a generic car product shot, no empty text space. No text, no logos, no UI, no frame. This distinct location artwork fills a right-hand track-preview card."
+    }
+  ]
+}

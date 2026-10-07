@@ -22,7 +22,7 @@ namespace StarRacingPrototype {
             Route = route ?? throw new System.ArgumentNullException(nameof(route));
             ClearGenerated();
             roadMaterial = CreateMaterial(new Color(.055f, .07f, .11f), .18f);
-            railMaterial = CreateMaterial(new Color(.04f, .8f, 1f), .4f);
+            railMaterial = CreateMaterial(new Color(.18f, .7f, .85f), .4f, "Hull");
 
             ProceduralTrackMesh.Build(transform, Route, roadMaterial, railMaterial);
             foreach(var surface in GetComponentsInChildren<TrackSurface>()) {
@@ -84,13 +84,16 @@ namespace StarRacingPrototype {
             return best < float.PositiveInfinity;
         }
 
-        Material CreateMaterial(Color color, float metallic) {
+        Material CreateMaterial(Color color, float metallic, string texture = "Road") {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
             Material material = new Material(shader) { color = color };
             ownedMaterials.Add(material);
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/" + texture);
+            if (material.mainTexture == null) Debug.LogError("Missing track texture: " + texture);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", .25f);
             return material;
         }
 

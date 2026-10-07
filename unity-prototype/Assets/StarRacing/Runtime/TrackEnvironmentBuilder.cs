@@ -7,6 +7,7 @@ namespace StarRacingPrototype {
     public sealed class TrackEnvironmentBuilder {
         readonly List<Mesh> meshes = new List<Mesh>();
         readonly List<Material> materials = new List<Material>();
+        readonly Dictionary<Vector4, Mesh> mappedCubes = new Dictionary<Vector4, Mesh>();
         GameObject root;
         Mesh cube, sphere;
         MeshRenderer roadRenderer;
@@ -35,7 +36,7 @@ namespace StarRacingPrototype {
             if (root != null) { root.SetActive(false); Dispose(root); root = null; }
             foreach (var mesh in meshes) Dispose(mesh);
             foreach (var material in materials) Dispose(material);
-            meshes.Clear(); materials.Clear(); cube = sphere = null; Plan = null; LampCount = 0; Lamps.Clear();
+            meshes.Clear(); materials.Clear(); mappedCubes.Clear(); cube = sphere = null; Plan = null; LampCount = 0; Lamps.Clear();
         }
 
         static void Dispose(Object item) {
@@ -43,12 +44,17 @@ namespace StarRacingPrototype {
             if (Application.isPlaying) Object.Destroy(item); else Object.DestroyImmediate(item);
         }
 
-        Material Lit(Color color, float metallic = .1f, bool glow = false) {
+        Material Lit(Color color, float metallic = .1f, bool glow = false, string texture = "Hull", float smoothness = .35f) {
             var shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
             var material = new Material(shader) { color = color };
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
+            if (!glow && texture != null) {
+                material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/" + texture);
+                if (material.mainTexture == null) Debug.LogError("Missing environment texture: " + texture);
+            }
             if (glow) {
                 material.EnableKeyword("_EMISSION");
                 if (material.HasProperty("_EmissionColor")) material.SetColor("_EmissionColor", color * 1.4f);
@@ -57,12 +63,30 @@ namespace StarRacingPrototype {
         }
 
         GameObject Shape(string name, Mesh mesh, Material material, Vector3 position, Quaternion rotation, Vector3 scale, bool shadows = true) {
+            if (mesh == cube && material.mainTexture != null) {
+                float tile = material.mainTexture.name == "Facade" ? 12f : 4f;
+                var key = new Vector4(scale.x, scale.y, scale.z, tile);
+                if (!mappedCubes.TryGetValue(key, out var mapped)) {
+                    mapped = Object.Instantiate(cube); mapped.name = "Mapped environment cube";
+                    var uv = new Vector2[mapped.vertexCount];
+                    var vertices = mapped.vertices; var normals = mapped.normals;
+                    for (int i = 0; i < uv.Length; i++) uv[i] = CubeUv(vertices[i], normals[i], scale, tile);
+                    mapped.uv = uv; mappedCubes.Add(key, mapped); meshes.Add(mapped);
+                }
+                mesh = mapped;
+            }
             var go = new GameObject(name);
             go.transform.SetParent(root.transform, false);
             go.transform.SetPositionAndRotation(position, rotation);
             go.transform.localScale = scale;
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = go.AddComponent<MeshRenderer>(); renderer.sharedMaterial = material;
+            if (mesh == sphere && material.mainTexture != null && material.mainTexture.name == "Hull") {
+                var block = new MaterialPropertyBlock();
+                block.SetVector("_BaseMap_ST", new Vector4(Mathf.Max(1, Mathf.Round(scale.x * Mathf.PI / 8f)),
+                    Mathf.Max(1, Mathf.Round(scale.y * Mathf.PI / 16f)), 0, 0));
+                renderer.SetPropertyBlock(block);
+            }
             renderer.shadowCastingMode = shadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
             return go;
         }
@@ -91,7 +115,17 @@ namespace StarRacingPrototype {
             var visual = new Mesh { name = "Environment road visual", indexFormat = source.indexFormat };
             visual.vertices = source.vertices;
             visual.normals = source.normals;
-            visual.uv = source.uv;
+            // Render-only mapping uses authored face distances and lateral edges, including ramps
+            // and branches. The original collision mesh and its metadata remain untouched.
+            var uv = new Vector2[source.vertexCount];
+            foreach (var face in surface.triangleFaces) {
+                int at = face.quad * 4;
+                uv[at] = new Vector2(face.leftStart / 8f, face.startDistance / 8f);
+                uv[at + 1] = new Vector2(face.leftEnd / 8f, face.endDistance / 8f);
+                uv[at + 2] = new Vector2(face.rightStart / 8f, face.startDistance / 8f);
+                uv[at + 3] = new Vector2(face.rightEnd / 8f, face.endDistance / 8f);
+            }
+            visual.uv = uv;
             visual.subMeshCount = groups.Length;
             for (int i = 0; i < groups.Length; i++) visual.SetTriangles(groups[i], i);
             visual.RecalculateBounds(); meshes.Add(visual);
@@ -103,6 +137,14 @@ namespace StarRacingPrototype {
                 : new[] { Lit(new Color(.52f, .63f, .72f), .45f), Lit(new Color(.39f, .51f, .62f), .45f),
                           Lit(new Color(.81f, .86f, .88f), .38f), Lit(new Color(.65f, .72f, .76f), .38f),
                           Lit(new Color(.19f, .26f, .34f), .45f), Lit(new Color(.12f, .17f, .23f), .45f) };
+            foreach (var material in palette) {
+                material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/Road");
+                material.SetFloat("_Smoothness", .22f);
+                // Neutral albedo supplies the detail; district tint keeps the existing themes readable.
+                Color tint = material.color;
+                tint = Color.Lerp(tint, space ? new Color(.72f, .8f, .88f) : new Color(.91f, .95f, 1f), .65f);
+                material.color = tint; material.SetColor("_BaseColor", tint);
+            }
             var road = new GameObject("Visual road districts"); road.transform.SetParent(root.transform, false);
             road.AddComponent<MeshFilter>().sharedMesh = visual;
             road.AddComponent<MeshRenderer>().sharedMaterials = palette;
@@ -115,13 +157,14 @@ namespace StarRacingPrototype {
         }
 
         void BuildCity(TrackRoute route) {
-            var silver = Lit(new Color(.71f, .8f, .85f), .48f);
-            var blue = Lit(new Color(.49f, .64f, .75f), .5f);
-            var dark = Lit(new Color(.37f, .49f, .57f), .38f);
+            var silver = Lit(new Color(.85f, .91f, .95f), .48f);
+            var facade = Lit(new Color(.86f, .94f, 1f), .35f, false, "Facade", .55f);
+            var blue = Lit(new Color(.65f, .8f, .95f), .35f, false, "Facade", .55f);
+            var dark = Lit(new Color(.6f, .73f, .84f), .35f, false, "Facade", .55f);
             var teal = Lit(new Color(.12f, .86f, .8f), .05f, true);
             var amber = Lit(new Color(1, .65f, .24f), .05f, true);
-            var cloud = Lit(new Color(.93f, .97f, 1), 0);
-            var highCloud = Lit(new Color(.71f, .77f, .82f), 0);
+            var cloud = Lit(new Color(.93f, .97f, 1), 0, false, null, 0);
+            var highCloud = Lit(new Color(.71f, .77f, .82f), 0, false, null, 0);
             var sunDisk = Lit(Plan.lighting.sunColor, 0, true);
             Vector3 center = route.Samples[route.Samples.Length / 2].position;
             Vector3 sunPoint = center + Plan.lighting.sunPosition.normalized * 1200;
@@ -131,7 +174,7 @@ namespace StarRacingPrototype {
                       Vector3.one * 58, false);
             for (int i = 0; i < Plan.towers.Count; i++) {
                 var tower = Plan.towers[i];
-                var material = i % 3 == 0 ? silver : i % 3 == 1 ? blue : dark;
+                var material = i % 3 == 0 ? facade : i % 3 == 1 ? blue : dark;
                 Shape("City tower", cube, material, tower.position, Quaternion.identity,
                       new Vector3(tower.width, tower.height, tower.width), i < 10);
                 var top = tower.position + Vector3.up * (tower.height * .5f);
@@ -161,6 +204,7 @@ namespace StarRacingPrototype {
             var vertices = new List<Vector3>(cube.vertexCount * 5);
             var normals = new List<Vector3>(cube.vertexCount * 5);
             var triangles = new List<int>(cube.triangles.Length * 5);
+            var uv = new List<Vector2>(cube.vertexCount * 5);
             var sourceVertices = cube.vertices;
             var sourceNormals = cube.normals;
             var sourceTriangles = cube.triangles;
@@ -170,7 +214,7 @@ namespace StarRacingPrototype {
                 AddTrimBox(new Vector3(0, y - center.y, 0), new Vector3(width * 1.015f, .65f, width * 1.015f));
             }
             var mesh = new Mesh { name = "City tower trim" };
-            mesh.SetVertices(vertices); mesh.SetNormals(normals); mesh.SetTriangles(triangles, 0);
+            mesh.SetVertices(vertices); mesh.SetNormals(normals); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
             mesh.RecalculateBounds(); meshes.Add(mesh);
             Shape("City tower trim", mesh, silver, center, Quaternion.identity, Vector3.one, false);
 
@@ -179,6 +223,7 @@ namespace StarRacingPrototype {
                 for (int i = 0; i < sourceVertices.Length; i++) {
                     vertices.Add(Vector3.Scale(sourceVertices[i], scale) + offset);
                     normals.Add(sourceNormals[i]);
+                    uv.Add(CubeUv(sourceVertices[i], sourceNormals[i], scale, 4f));
                 }
                 for (int i = 0; i < sourceTriangles.Length; i++) triangles.Add(start + sourceTriangles[i]);
             }
@@ -189,7 +234,7 @@ namespace StarRacingPrototype {
             var shadow = Lit(new Color(.22f, .31f, .44f), .63f);
             var cyan = Lit(new Color(.18f, .86f, 1), .1f, true);
             var gold = Lit(new Color(1, .74f, .3f), .1f, true);
-            var planetMaterial = Lit(Plan.planetColor, .1f);
+            var planetMaterial = Lit(Plan.planetColor, 0, false, "Planet", .1f);
             var starMaterial = Lit(new Color(.82f, .92f, 1), 0, true);
             BuildEdgeRibbons(route, cyan);
             Shape("Station core", sphere, hull, Plan.station, Quaternion.identity, Vector3.one * 80);
@@ -208,7 +253,7 @@ namespace StarRacingPrototype {
             Shape("Distant planet", sphere, planetMaterial, Plan.planet, Quaternion.identity, Vector3.one * Plan.planetRadius * 2);
             if (Plan.planetRings) {
                 Mesh rings = CreateRing(Plan.planetRadius * 1.38f, Plan.planetRadius * 1.85f);
-                Shape("Planet rings", rings, hull, Plan.planet, Quaternion.Euler(22, (Plan.seed % 83), 28), Vector3.one, false);
+                Shape("Planet rings", rings, planetMaterial, Plan.planet, Quaternion.Euler(22, (Plan.seed % 83), 28), Vector3.one, false);
             }
             Vector3 center = route.Samples[route.Samples.Length / 2].position;
             for (int i = 0; i < 80; i++) {
@@ -303,6 +348,7 @@ namespace StarRacingPrototype {
 
         Mesh CreateCube() {
             var vertices = new List<Vector3>(); var normals = new List<Vector3>(); var triangles = new List<int>();
+            var uv = new List<Vector2>();
             Vector3[] directions = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right, Vector3.up, Vector3.down };
             foreach (var normal in directions) {
                 Vector3 a = Vector3.Cross(normal, Mathf.Abs(normal.y) > .5f ? Vector3.forward : Vector3.up).normalized * .5f;
@@ -310,41 +356,56 @@ namespace StarRacingPrototype {
                 int at = vertices.Count; Vector3 face = normal * .5f;
                 vertices.Add(face - a - b); vertices.Add(face + a - b); vertices.Add(face - a + b); vertices.Add(face + a + b);
                 for (int i = 0; i < 4; i++) normals.Add(normal);
+                uv.AddRange(new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one });
                 triangles.AddRange(new[] { at, at + 1, at + 2, at + 1, at + 3, at + 2 });
             }
-            var mesh = new Mesh { name = "Environment cube" }; mesh.SetVertices(vertices); mesh.SetNormals(normals); mesh.SetTriangles(triangles, 0);
+            var mesh = new Mesh { name = "Environment cube" }; mesh.SetVertices(vertices); mesh.SetNormals(normals); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
             meshes.Add(mesh); return mesh;
         }
 
         Mesh CreateSphere(int latitudes, int longitudes) {
             var vertices = new List<Vector3>(); var triangles = new List<int>();
+            var uv = new List<Vector2>();
             for (int y = 0; y <= latitudes; y++) {
                 float latitude = Mathf.PI * y / latitudes;
                 for (int x = 0; x <= longitudes; x++) {
                     float longitude = 2 * Mathf.PI * x / longitudes;
                     vertices.Add(new Vector3(Mathf.Sin(latitude) * Mathf.Cos(longitude), Mathf.Cos(latitude),
                                              Mathf.Sin(latitude) * Mathf.Sin(longitude)) * .5f);
+                    uv.Add(new Vector2((float)x / longitudes, 1f - (float)y / latitudes));
                 }
             }
             for (int y = 0; y < latitudes; y++) for (int x = 0; x < longitudes; x++) {
                 int a = y * (longitudes + 1) + x, b = a + longitudes + 1;
                 triangles.AddRange(new[] { a, a + 1, b, a + 1, b + 1, b });
             }
-            var mesh = new Mesh { name = "Environment sphere" }; mesh.SetVertices(vertices); mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals();
+            var mesh = new Mesh { name = "Environment sphere" }; mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
+            var normals = new Vector3[vertices.Count];
+            for (int i = 0; i < normals.Length; i++) normals[i] = vertices[i].normalized;
+            mesh.normals = normals;
             meshes.Add(mesh); return mesh;
         }
 
         Mesh CreateRing(float inner, float outer) {
             var vertices = new List<Vector3>(); var triangles = new List<int>();
+            var uv = new List<Vector2>();
             for (int i = 0; i <= 48; i++) {
                 float angle = i * Mathf.PI * 2 / 48;
                 var ray = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle));
                 vertices.Add(ray * inner); vertices.Add(ray * outer);
+                uv.Add(new Vector2((float)i / 48f * 12f, 0)); uv.Add(new Vector2((float)i / 48f * 12f, 1));
                 if (i < 48) { int a = i * 2; triangles.AddRange(new[] { a, a + 2, a + 1, a + 1, a + 2, a + 3,
                                                                           a + 1, a + 2, a, a + 3, a + 2, a + 1 }); }
             }
-            var mesh = new Mesh { name = "Planet ring" }; mesh.SetVertices(vertices); mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals();
+            var mesh = new Mesh { name = "Planet ring" }; mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals();
             meshes.Add(mesh); return mesh;
+        }
+
+        static Vector2 CubeUv(Vector3 vertex, Vector3 normal, Vector3 scale, float tile) {
+            var horizontal = Vector3.Cross(normal, Mathf.Abs(normal.y) > .5f ? Vector3.forward : Vector3.up).normalized;
+            var vertical = Vector3.Cross(normal, horizontal).normalized;
+            var point = Vector3.Scale(vertex, scale);
+            return new Vector2(Vector3.Dot(point, horizontal), Vector3.Dot(point, vertical)) / tile;
         }
     }
 }

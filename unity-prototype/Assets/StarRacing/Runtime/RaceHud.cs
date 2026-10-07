@@ -1,88 +1,85 @@
+using System;
 using UnityEngine;
-using UnityEngine.InputSystem;
 namespace StarRacingPrototype {
- public sealed class RaceHud:MonoBehaviour {
+ public sealed class RaceHud : MonoBehaviour {
   public RaceDirector director;
-  public bool EditingTrackSeed {get;private set;}
-  string seedText;int themeChoice,railChoice,countChoice=1;bool jumpChoice,handicapChoice;
-  bool showFps;float frameSeconds;int frames;string fps="";Vector2 resultsScroll;
-  bool showUpdates;Vector2 updateScroll;
-  public bool UpdateDialogOpen=>showUpdates;
-  static readonly int[] Counts={2,8,16,32,64};
-  GUIStyle title,label,large;bool styled;
-  public void RefreshTrackSettings(){seedText=null;EditingTrackSeed=false;}
-  void Awake(){showFps=PlayerPrefs.GetInt("StarRacing.ShowFps",1)!=0;}
-  void Update(){if(showUpdates&&Keyboard.current!=null&&Keyboard.current.escapeKey.wasPressedThisFrame)showUpdates=false;if(Keyboard.current!=null&&Keyboard.current.f3Key.wasPressedThisFrame)SetFps(!showFps);frames++;frameSeconds+=Time.unscaledDeltaTime;if(frameSeconds>.5f){fps="FPS "+Mathf.RoundToInt(frames/frameSeconds);frames=0;frameSeconds=0;}}
-  void SetFps(bool value){showFps=value;PlayerPrefs.SetInt("StarRacing.ShowFps",value?1:0);}
-  void Style(){if(styled)return;styled=true;GUI.skin.button.fontSize=20;GUI.skin.toggle.fontSize=20;GUI.skin.textField.fontSize=20;title=new GUIStyle(GUI.skin.label){fontSize=24,normal={textColor=Color.white}};label=new GUIStyle(GUI.skin.label){fontSize=18,normal={textColor=Color.white},wordWrap=true};large=new GUIStyle(title){fontSize=56,alignment=TextAnchor.MiddleCenter};}
-  void Panel(Rect r){GUI.color=new Color(.035f,.055f,.09f,.96f);GUI.DrawTexture(r,Texture2D.whiteTexture);GUI.color=Color.white;}
+  Vector2 resultsScroll;
+  bool wasPaused,wasResults;
+  public bool EditingTrackSeed=>GetComponent<RaceMenu>().EditingSeed;
+  public void RefreshTrackSettings(){}
   void OnGUI(){
-   if(director==null||director.Session==null)return;Style();GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
-   if(Distribution.DesktopUpdater.Instance?.StartupApplying==true){Panel(new Rect(400,350,800,150));GUI.Label(new Rect(450,400,700,60),"Применение обновления…",title);return;}
-   if(Distribution.DesktopUpdater.Instance?.Downloading==true)GUI.Label(new Rect(20,860,450,30),"Обновление: "+Distribution.DesktopUpdater.Instance.Progress+"%",label);
-   if(showFps)GUI.Label(new Rect(1450,15,140,35),fps,label);
-   if(director.InPreparationMenu){DrawMenu();return;}
-   for(int i=0;i<2;i++){
-    var car=director.Cars[i];var racer=director.Session.Racers[i];float x=i*800;
-    Panel(new Rect(x+18,18,355,130));GUI.Label(new Rect(x+30,26,330,32),"Игрок "+(i+1)+" · "+director.Input.DeviceName(i),label);
-    GUI.Label(new Rect(x+30,62,330,32),Mathf.RoundToInt(Mathf.Abs(car.Telemetry.speedKmh))+" км/ч · место "+racer.Place+" / "+director.Cars.Length,label);
-    GUI.Label(new Rect(x+30,98,330,32),"Нитро "+Mathf.RoundToInt(car.Telemetry.nitro01*100)+"% · трасса "+Mathf.RoundToInt(racer.Progress/director.Session.RaceLength*100)+"%",label);
+   if(director==null||!director.Started||director.Session==null)return;
+   var menu=GetComponent<RaceMenu>();menu.EnsureSkin();var ui=menu.Skin;
+   bool results=director.Session.Phase==RacePhase.Results;
+   bool settings=director.Paused&&menu.PauseSettings;
+   if(results||settings)ui.Backdrop();var old=GUI.matrix;if(results)CloudlineSkin.Begin();else GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
+   if(director.HumanCount==3&&!results&&!settings){CloudlineSkin.Box(new Rect(800,450,800,450),new Color(.91f,.95f,1),0);ui.Brand(new Rect(975,622,520,80),45);}
+   if(!results&&!settings)for(int seat=0;seat<director.HumanCount;seat++)DrawSeat(ui,seat);
+   if(results){menu.BeginOverlay("repeat",!wasResults);DrawResults(ui,menu);}
+   else if(director.Paused){GUI.matrix=old;CloudlineSkin.Begin();menu.BeginOverlay("resume",!wasPaused);DrawPause(ui,menu);}
+   var updater=StarRacingPrototype.Distribution.DesktopUpdater.Instance;
+   if(updater!=null&&updater.Downloading)ui.Text(new Rect(1170,864,370,24),"Загрузка обновления · "+updater.Progress+"%",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);
+   menu.DrawFps();wasPaused=director.Paused;wasResults=results;GUI.matrix=old;
+  }
+  void DrawSeat(CloudlineSkin ui,int seat){
+   var view=RaceViewports.For(director.HumanCount,seat);var r=new Rect(view.x*1600,(1-view.yMax)*900,view.width*1600,view.height*900);
+   var car=director.Cars[seat];var racer=director.Session.Racers[seat];var accent=CloudlineSkin.PlayerColors[seat];
+   float margin=22;bool compact=director.HumanCount>2;
+   CloudlineSkin.Box(new Rect(r.x,r.y,r.width,2),Color.white,0);CloudlineSkin.Box(new Rect(r.x,r.y,2,r.height),Color.white,0);
+   ui.Panel(new Rect(r.x+margin,r.y+18,230,98),.93f);
+   CloudlineSkin.Box(new Rect(r.x+margin,r.y+18,5,98),accent,2);
+   ui.Text(new Rect(r.x+margin+18,r.y+24,196,28),director.AppliedConfig.PlayerName(seat),17,true,accent);
+   ui.Text(new Rect(r.x+margin+18,r.y+48,200,58),racer.Place+" / "+director.Cars.Length,34,true);
+   ui.Panel(new Rect(r.xMax-188,r.y+18,166,92),.91f);
+   ui.Text(new Rect(r.xMax-176,r.y+24,142,27),"ВРЕМЯ ГОНКИ",12,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
+   ui.Text(new Rect(r.xMax-176,r.y+43,142,32),TimeSpan.FromSeconds(director.Session.Elapsed).ToString(@"mm\:ss"),24,true,null,TextAnchor.MiddleCenter);
+   float leader=0;foreach(var standing in director.Session.Racers)leader=Mathf.Max(leader,standing.Progress/director.Session.RaceLength);
+   ui.Text(new Rect(r.xMax-176,r.y+76,142,24),"Лидер "+Mathf.RoundToInt(leader*100)+"%",14,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
+   float y=r.yMax-(compact?95:126);
+   ui.Panel(new Rect(r.x+margin,y,260,compact?76:96),.93f);
+   ui.Text(new Rect(r.x+margin+14,y,120,64),Mathf.RoundToInt(Mathf.Abs(car.Telemetry.speedKmh)).ToString(),compact?40:49,true);
+   ui.Text(new Rect(r.x+margin+132,y+25,92,27),"км/ч",17,false,CloudlineSkin.Muted);
+   ui.Text(new Rect(r.x+margin+14,y+55,62,21),"НИТРО",12,true,accent);
+   CloudlineSkin.Box(new Rect(r.x+margin+80,y+62,156,8),new Color(.77f,.82f,.9f),4);
+   CloudlineSkin.Box(new Rect(r.x+margin+80,y+62,156*car.Telemetry.nitro01,8),accent,4);
+   float progress=Mathf.Clamp01(racer.Progress/director.Session.RaceLength);
+   ui.Panel(new Rect(r.xMax-260,r.yMax-73,238,52),.93f);
+   ui.Text(new Rect(r.xMax-246,r.yMax-68,211,26),"Трасса   "+Mathf.RoundToInt(progress*100)+"%",16,true);
+   CloudlineSkin.Box(new Rect(r.xMax-246,r.yMax-36,208,5),new Color(.8f,.85f,.91f),2);
+   CloudlineSkin.Box(new Rect(r.xMax-246,r.yMax-36,208*progress,5),accent,2);
+   if(director.Session.Phase==RacePhase.Countdown){
+    var box=new Rect(r.center.x-65,r.center.y-74,130,148);ui.Panel(box,.96f);ui.Text(box,Mathf.CeilToInt((float)director.Session.Countdown).ToString(),86,true,CloudlineSkin.Blue,TextAnchor.MiddleCenter);
    }
-   float leader=0;foreach(var racer in director.Session.Racers)leader=Mathf.Max(leader,racer.Progress);
-   GUI.Label(new Rect(420,24,360,80),System.TimeSpan.FromSeconds(director.Session.Elapsed).ToString(@"mm\:ss")+" · лидер "+Mathf.RoundToInt(leader/director.Session.RaceLength*100)+"%",title);
-   GUI.Label(new Rect(550,850,650,35),"ESC — пауза · F5 — повтор · Backspace — в меню",label);
-   if(director.Session.Phase==RacePhase.Countdown)GUI.Label(new Rect(600,350,400,120),Mathf.CeilToInt((float)director.Session.Countdown).ToString(),large);
-   if(director.Session.Phase==RacePhase.FinishWindow)GUI.Label(new Rect(560,780,600,35),"До результатов: "+director.Session.Remaining.ToString("0.0")+" с",title);
-   if(director.Session.Phase==RacePhase.Results){DrawResults();return;}
-   if(director.Paused){Panel(new Rect(400,180,800,600));GUI.Label(new Rect(450,215,650,40),"Пауза",title);DrawAudio(450,280);if(GUI.Button(new Rect(850,290,300,55),"Продолжить"))director.StartRace();if(GUI.Button(new Rect(850,365,300,55),"В меню"))director.ExitToMenu();}
+   if(director.Session.Phase==RacePhase.FinishWindow)ui.Text(new Rect(r.x+270,r.y+90,r.width-300,35),"До результатов: "+director.Session.Remaining.ToString("0.0")+" с",20,true,Color.white,TextAnchor.MiddleCenter);
+   if(racer.Finished)ui.Text(new Rect(r.x+100,r.center.y-25,r.width-200,50),"ФИНИШ",40,true,Color.white,TextAnchor.MiddleCenter);
   }
-  void DrawMenu(){
-   if(showUpdates){DrawUpdates();return;}
-   Panel(new Rect(120,65,1360,770));GUI.Label(new Rect(170,95,1100,50),"STAR RACING · UNITY",large);
-   if(seedText==null){seedText=director.TrackSeed.ToString();themeChoice=director.TrackThemePreference=="random"?0:director.TrackThemePreference=="cloud-city"?1:2;railChoice=director.TrackRailMode=="normal"?0:director.TrackRailMode=="full"?1:2;jumpChoice=director.TrackJumps;handicapChoice=director.Handicap;countChoice=System.Array.IndexOf(Counts,director.EntrantCount);if(countChoice<0)countChoice=1;}
-   GUI.Label(new Rect(175,175,700,30),"Два игрока · остальные участники — боты",title);
-   GUI.Label(new Rect(175,230,190,32),"Участников",label);countChoice=GUI.SelectionGrid(new Rect(370,225,440,38),countChoice,new[]{"2","8","16","32","64"},5);
-   handicapChoice=GUI.Toggle(new Rect(175,285,600,32),handicapChoice,"Фора сильным ботам");
-   GUI.Label(new Rect(175,335,120,32),"Seed",label);GUI.SetNextControlName("TrackSeed");seedText=GUI.TextField(new Rect(370,335,440,32),seedText,10);EditingTrackSeed=GUI.GetNameOfFocusedControl()=="TrackSeed";
-   themeChoice=GUI.SelectionGrid(new Rect(175,390,635,42),themeChoice,new[]{"Случайная тема","Город в облаках","Станция"},3);
-   railChoice=GUI.SelectionGrid(new Rect(175,450,635,42),railChoice,new[]{"Обычные рельсы","Полные рельсы","Без рельсов"},3);
-   jumpChoice=GUI.Toggle(new Rect(175,510,600,32),jumpChoice,"Трамплины и пропасти");
-   uint seed;GUI.enabled=uint.TryParse(seedText,out seed);
-   if(GUI.Button(new Rect(175,565,635,46),"Применить настройки")){director.ConfigureTrack(seed,new[]{"random","cloud-city","space-station"}[themeChoice],new[]{"normal","full","none"}[railChoice],jumpChoice);director.ConfigureRoster(Counts[countChoice],handicapChoice);}
-   GUI.enabled=director.Balance!=null;if(GUI.Button(new Rect(175,640,635,64),"Начать гонку · ENTER"))director.StartRace();GUI.enabled=true;
-   GUI.Label(new Rect(175,725,635,60),director.Balance==null?director.BalanceError:director.TrackSummary,label);
-   DrawAudio(920,225);SetFps(GUI.Toggle(new Rect(920,465,400,30),showFps,"Показывать FPS · F3"));
-   GUI.Label(new Rect(920,520,440,220),"Игрок 1: WASD, Space — занос, Shift — нитро.\nИгрок 2: стрелки, Right Alt — занос, Right Shift — нитро.\nГеймпад: RT/RB — газ, A — тормоз, LT/LB — занос, B — нитро.",label);
-   if(GUI.Button(new Rect(920,745,400,45),"Новая трасса"))director.NewTrack();
-   var updater=Distribution.DesktopUpdater.Instance;
-   GUI.Label(new Rect(175,798,600,30),"Версия "+(updater?.InstalledVersion??Application.version),label);
-   if(GUI.Button(new Rect(920,798,400,32),updater!=null&&updater.Available?"Доступно обновление · "+updater.NewVersion:"Обновления"))showUpdates=true;
+  void DrawPause(CloudlineSkin ui,RaceMenu menu){
+   if(menu.PauseSettings){menu.DrawPauseSettings();return;}
+   CloudlineSkin.Box(new Rect(0,0,1600,900),new Color(.03f,.075f,.17f,.45f),0);ui.Panel(new Rect(490,174,620,552),1);
+   ui.Text(new Rect(534,200,532,76),"Пауза",45,true);
+   menu.OverlayButton("resume",new Rect(534,300,532,70),"Продолжить",director.StartRace,true,!director.Input.MissingDevice);
+   menu.OverlayButton("settings",new Rect(534,388,532,70),"Настройки",menu.OpenPauseSettings);
+   menu.OverlayButton("restart",new Rect(534,476,532,70),"Повторить",()=>director.Restart(),false,!director.Input.MissingDevice);
+   menu.OverlayButton("menu",new Rect(534,564,532,70),"В меню",()=>director.ExitToMenu());
+   if(director.Input.MissingDevice)ui.Text(new Rect(534,650,532,56),"Подключите устройство или измените состав в меню.",17,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
   }
-  void DrawUpdates(){
-   var updater=Distribution.DesktopUpdater.Instance;Panel(new Rect(340,150,920,610));
-   GUI.Label(new Rect(390,185,800,50),"Обновления Star Racing",title);
-   GUI.Label(new Rect(390,250,500,35),"Установлена версия "+(updater?.InstalledVersion??Application.version),label);
-   GUI.enabled=updater!=null&&!updater.Busy&&!updater.Staged&&updater.CanUpdate;
-   if(GUI.Button(new Rect(900,250,290,35),"Проверить"))_=updater.Check();GUI.enabled=true;
-   GUI.Label(new Rect(390,305,800,70),updater?.Status??"Обновления недоступны",label);
-   if(updater!=null){
-    if(updater.Available){
-     GUI.Label(new Rect(390,380,800,35),"Новая версия "+updater.NewVersion+" · "+updater.SizeMB.ToString("0")+" МБ",label);
-     updateScroll=GUI.BeginScrollView(new Rect(390,425,800,130),updateScroll,new Rect(0,0,760,220));GUI.Label(new Rect(0,0,760,220),updater.Notes,label);GUI.EndScrollView();
-    }
-    if(updater.Busy)GUI.Label(new Rect(390,565,800,35),updater.Progress>0?"Загружено "+updater.Progress+"%":"Подождите…",label);
-    GUI.enabled=!updater.Busy&&updater.CanUpdate;
-    if(updater.Staged){if(GUI.Button(new Rect(390,620,480,50),"Перезапустить"))updater.InstallAndRestart();}
-    else if(updater.Available){if(GUI.Button(new Rect(390,620,480,50),"Обновить"))_=updater.Download();}
-    else GUI.Label(new Rect(390,620,480,50),"Новых обновлений нет",label);
-    GUI.enabled=true;
-    if(updater.Downloading&&GUI.Button(new Rect(900,565,290,40),"Отменить загрузку"))updater.Cancel();
+  void DrawResults(CloudlineSkin ui,RaceMenu menu){
+   menu.RegisterResultsScroll(delta=>resultsScroll.y=Mathf.Clamp(resultsScroll.y+delta*162,0,Mathf.Max(0,director.Cars.Length*54-466)));
+   ui.Panel(new Rect(286,65,1028,770),.97f);ui.Text(new Rect(332,94,870,80),"Результаты",50,true);
+   ui.Text(new Rect(338,196,130,32),"МЕСТО",15,true,CloudlineSkin.Muted);ui.Text(new Rect(482,196,475,32),"УЧАСТНИК",15,true,CloudlineSkin.Muted);ui.Text(new Rect(1020,196,240,32),"ВРЕМЯ",15,true,CloudlineSkin.Muted,TextAnchor.MiddleRight);
+   resultsScroll=GUI.BeginScrollView(new Rect(328,242,950,466),resultsScroll,new Rect(0,0,922,director.Cars.Length*54));
+   for(int place=1;place<=director.Cars.Length;place++)for(int i=0;i<director.Cars.Length;i++){
+    var racer=director.Session.Racers[i];if(racer.Place!=place)continue;int human=director.Roster.Entrants[i].HumanSeat;float y=(place-1)*54;
+    if(human>=0)CloudlineSkin.Box(new Rect(0,y,915,49),CloudlineSkin.Alpha(CloudlineSkin.PlayerColors[human],.13f),7);
+    var color=human>=0?CloudlineSkin.PlayerColors[human]:CloudlineSkin.Ink;
+    ui.Text(new Rect(18,y,90,49),place.ToString("00"),26,true,color);
+    string name=human>=0?director.AppliedConfig.PlayerName(human):director.Roster.Entrants[i].Name;
+    ui.Text(new Rect(154,y,480,49),name,23,human>=0,color);
+    string time=racer.Finished?TimeSpan.FromSeconds(racer.FinishTime).ToString(@"mm\:ss\.fff"):"DNF · "+Mathf.RoundToInt(racer.Progress/director.Session.RaceLength*100)+"%";
+    ui.Text(new Rect(650,y,245,49),time,22,human>=0,color,TextAnchor.MiddleRight);
    }
-   if(GUI.Button(new Rect(900,620,290,50),"Назад"))showUpdates=false;
-   GUI.Label(new Rect(390,695,800,40),"Скачанный пакет установится после выхода при следующем запуске. Настройки сохраняются.",label);
+   GUI.EndScrollView();ui.Text(new Rect(338,710,920,24),"Список: выберите и нажмите ← / → · колесо мыши",14,menu.ResultsScrollFocused,menu.ResultsScrollFocused?CloudlineSkin.Blue:CloudlineSkin.Muted);menu.OverlayButton("repeat",new Rect(332,741,440,64),"Повторить",()=>director.Restart(),true,!director.Input.MissingDevice);
+   menu.OverlayButton("menu",new Rect(810,741,456,64),"В меню",()=>director.ExitToMenu());
   }
-  void DrawAudio(float x,float y){var audio=director.GetComponent<RaceAudioCoordinator>();if(audio==null)return;GUI.Label(new Rect(x,y,400,35),"Звук",title);bool changed=GUI.changed;GUI.changed=false;bool mute=GUI.Toggle(new Rect(x,y+45,390,30),audio.Muted,"Без звука");float music=Slider(x,y+90,"Музыка",audio.MusicVolume),engines=Slider(x,y+135,"Двигатели",audio.EnginesVolume),effects=Slider(x,y+180,"Эффекты",audio.EffectsVolume);if(GUI.changed)audio.SetMix(mute,music,engines,effects);GUI.changed|=changed;}
-  float Slider(float x,float y,string text,float value){GUI.Label(new Rect(x,y,180,28),text,label);return GUI.HorizontalSlider(new Rect(x+180,y+10,210,18),value,0,1);}
-  void DrawResults(){Panel(new Rect(360,130,880,650));GUI.Label(new Rect(405,160,790,45),"Результаты",large);resultsScroll=GUI.BeginScrollView(new Rect(405,225,790,400),resultsScroll,new Rect(0,0,750,director.Cars.Length*42));for(int place=1;place<=director.Cars.Length;place++)for(int i=0;i<director.Cars.Length;i++){var r=director.Session.Racers[i];if(r.Place!=place)continue;GUI.Label(new Rect(10,(place-1)*42,730,38),"#"+place+"  "+director.Roster.Entrants[i].Name+"   "+(r.Finished?System.TimeSpan.FromSeconds(r.FinishTime).ToString(@"mm\:ss\.fff"):"DNF · "+Mathf.RoundToInt(r.Progress/director.Session.RaceLength*100)+"%"),label);}GUI.EndScrollView();if(GUI.Button(new Rect(410,675,360,55),"Повторить"))director.Restart();if(GUI.Button(new Rect(820,675,360,55),"В меню"))director.ExitToMenu();}
  }
 }
