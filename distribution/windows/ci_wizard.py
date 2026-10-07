@@ -5,7 +5,12 @@ from build_installer import build
 repo=os.environ['GITHUB_REPOSITORY'];tag=os.environ['INPUT_TAG'];source=os.environ['INPUT_SOURCE'];name=os.environ['INPUT_PORTABLE'];expected=os.environ['INPUT_SHA256']
 if repo!='afonasev/star-racing' or not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?',tag) or not re.fullmatch('[0-9a-f]{40}',source) or not re.fullmatch('[0-9a-f]{64}',expected) or name!=Path(name).name or not name.endswith('Portable.zip'):raise ValueError('Invalid compiler inputs')
 if subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()!=source:raise ValueError('Wrong source revision')
-release=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/releases/tags/{tag}'],text=True))
+# The tag endpoint returns published releases only. Enumerate drafts with the
+# contents:write workflow token, then require one exact match.
+pages=json.loads(subprocess.check_output(['gh','api','--paginate','--slurp',f'repos/{repo}/releases?per_page=100'],text=True))
+matches=[item for page in pages for item in page if item['tag_name']==tag]
+if len(matches)!=1:raise ValueError('Expected exactly one draft release')
+release=matches[0]
 if not release['draft']:raise ValueError('Compiler must only write draft assets')
 version=tag[1:];setup=f'Star-Racing-{version}-Windows-Setup.exe'
 if any(x['name']==setup for x in release['assets']):raise ValueError('Installer already exists; never overwrite')
