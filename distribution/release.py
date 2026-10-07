@@ -5,6 +5,25 @@ from pathlib import Path
 from metadata import REPO,sha,verify,finalize,tls_context
 from publish import validate_identity
 ROOT=Path(__file__).resolve().parents[1]
+def publication_policy():
+    """Read-only summary; automated guards and human gates are separate."""
+    return dict(schema=1, repository=REPO, documentation='docs/PUBLISHING.md',
+        tracks={'test':'prerelease SemVer; channel-test', 'production':'stable SemVer; channel-production'},
+        platforms=['win-x64','osx-universal'],
+        enforced=['clean source committed and available on GitHub',
+                  'private signing key outside repository matching pinned public key',
+                  'positive Int32 sequence, increasing version/sequence within track',
+                  'reject existing versions including drafts; no asset overwrite',
+                  'exclusive per-track publisher reservation',
+                  'build both platforms; exact-source Windows compiler in GitHub Actions',
+                  'sign platform/version/size/SHA256 and installer metadata locally',
+                  'upload draft; check exact asset set, API digest and real download SHA256',
+                  'publish complete version first; switch requested channel pointer last'],
+        manualGates=['review appropriate checks before committing/pushing source',
+                     'physical Windows/macOS acceptance and explicit authorization before production',
+                     'preserve exact release artifacts and evidence before owned cleanup',
+                     'retain legacy VPS feeds/relay until old-client migration is confirmed'],
+        routineVpsUpload=False, metadataSignatureIsOsCertificate=False)
 def run(args,**kw):return subprocess.run([str(x) for x in args],check=True,**kw)
 def api(endpoint,method='GET',body=None):
     args=['gh','api',f'repos/{REPO}/'+endpoint,'-X',method]
@@ -92,9 +111,14 @@ def wizard(tag,source,folder,evidence):
     policy.rename(folder/'installer-policy.json')
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--track',required=True,choices=['production','test']);p.add_argument('--version',required=True);p.add_argument('--sequence',required=True,type=int)
+    p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
+    p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
     p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--notes',default='Desktop updater candidate; physical platform acceptance pending.')
-    a=p.parse_args();validate_track(a.track,a.version)
+    a=p.parse_args()
+    if a.show_policy:
+        print(json.dumps(publication_policy(),indent=2,ensure_ascii=False));return
+    if a.track is None or a.version is None or a.sequence is None:p.error('--track, --version and --sequence are required for publication')
+    validate_track(a.track,a.version)
     if not a.key or not a.key.is_file():p.error('Set STAR_RACING_SIGNING_KEY to the private key outside the repository')
     key=a.key.resolve()
     if key.is_relative_to(ROOT):p.error('Private key must stay outside the repository')

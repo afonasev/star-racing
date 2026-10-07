@@ -35,3 +35,18 @@ class ChannelContract(unittest.TestCase):
   import subprocess
   with patch.object(release.subprocess,'run',side_effect=[subprocess.CompletedProcess([],1,'','HTTP 404'),subprocess.CompletedProcess([],1,'','HTTP 403')]):
    with self.assertRaises(RuntimeError):release.optional_release('v0.2.2-test.1')
+
+class PolicyCliContract(unittest.TestCase):
+ def test_read_only_policy_needs_no_release_arguments_or_key(self):
+  import subprocess,json,os
+  env=dict(os.environ);env.pop('STAR_RACING_SIGNING_KEY',None)
+  result=subprocess.run([sys.executable,str(Path(release.__file__)),'--show-policy'],capture_output=True,text=True,env=env,check=True)
+  policy=json.loads(result.stdout)
+  self.assertEqual(policy['repository'],'afonasev/star-racing')
+  self.assertFalse(policy['routineVpsUpload'])
+  self.assertEqual(set(policy['tracks']),{'test','production'})
+ def test_missing_publication_arguments_still_rejected(self):
+  import subprocess
+  result=subprocess.run([sys.executable,str(Path(release.__file__))],capture_output=True,text=True)
+  self.assertEqual(result.returncode,2)
+  self.assertIn('--track, --version and --sequence are required',result.stderr)

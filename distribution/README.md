@@ -1,5 +1,7 @@
 # Star Racing desktop delivery
 
+Обязательный регламент публикации: [docs/PUBLISHING.md](../docs/PUBLISHING.md). Машиночитаемые правила: `python3 distribution/release.py --show-policy` (без сборки, ключа и сетевых запросов).
+
 Unity Mono remains the game engine. Velopack 1.2.158 provides full-package updates without reinstalling the wizard. `AuthenticatedUpdateSource` authenticates RSA/SHA256 metadata before exposing a full asset to the SDK; it checks app ID, platform, version, release track, monotonic sequence, exact GitHub URL, size and SHA256. It rechecks the complete package before SDK helper extraction and before activation. The private key stays outside the repository, Player, CI and VPS.
 
 New Players use only GitHub: fixed REST releases `channel-production` / `channel-test` contain signed per-platform envelopes. Production builds accept stable versions; test builds accept prereleases. Each track has independent sequence state and receipts. The compile-time track is set using `BuildPlayerOptions.extraScriptingDefines`, not inferred from GitHub's latest release.
@@ -15,10 +17,10 @@ On the release Mac, install Unity **6000.3.23f1** with Windows/macOS build suppo
 From a clean, verified source revision already pushed to the public repository:
 
 ```sh
-STAR_RACING_SIGNING_KEY=/absolute/private/update-private.pem python3 distribution/release.py --track test --version 0.2.2-test.1 --sequence 9 --notes 'GitHub-only updater candidate'
+STAR_RACING_SIGNING_KEY=/absolute/private/update-private.pem python3 distribution/release.py --track test --version 0.2.2-test.3 --sequence 11 --notes 'GitHub-only updater candidate'
 ```
 
-For the next test use a new immutable version and increasing sequence (for example `0.2.2-test.2`, sequence `10`). Production publication uses `--track production --version 0.2.2` and its own increasing sequence. Physical acceptance must precede production promotion; this task authorizes test publication only.
+For the next test use a new immutable version and increasing sequence (for example `0.2.2-test.4`, sequence `12`). Production publication uses `--track production --version 0.2.2` and its own increasing sequence. Physical acceptance must precede production promotion; this task authorizes test publication only.
 
 The command builds both native Players, restores owned generated source files, packages full updates, and creates a draft. GitHub Actions compiles the branded Windows wizard from the exact portable SHA and source commit, uploading only to that draft. Local signing then authenticates both full packages and installers. Every asset, identity, SDK feed, signed envelope and manifest is uploaded; the command checks GitHub digest/size and actually downloads every draft asset to verify SHA256 before publication. An atomic temporary GitHub ref serializes publishers of each track across hosts; a fresh channel read also detects external promotion. Never steal a stale reservation after a crash without checking its owner. Only after publishing the complete version release does it update the chosen channel pointer; pointers never become GitHub's “latest”. The release stays unpublished on any earlier failure. Existing versions/drafts and assets are never overwritten: inspect a failed draft and use a new version after correcting the failure.
 
