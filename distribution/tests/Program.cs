@@ -52,7 +52,8 @@ try{
  Require(!UpdateAttemptJournal.AlreadyAttempted(journal,signed,"0.2.0","0.2.1-test.2"),"no prior attempt");
  UpdateAttemptJournal.Begin(journal,signed,"0.2.0","0.2.1-test.2");
  Require(UpdateAttemptJournal.AlreadyAttempted(journal,signed,"0.2.0","0.2.1-test.2"),"failed install suppresses automatic UAC retry");
- Require(!UpdateAttemptJournal.AlreadyAttempted(journal,signed+" ","0.2.0","0.2.1-test.2"),"new authenticated descriptor independent");
+ Require(UpdateAttemptJournal.AlreadyAttempted(journal,signed+" ","0.2.0","0.2.1-test.2"),"envelope formatting cannot retrigger UAC");
+ var changed=(JObject)data.DeepClone();changed["sequence"]=3;Require(!UpdateAttemptJournal.AlreadyAttempted(journal,Envelope(changed),"0.2.0","0.2.1-test.2"),"new signed payload independent");
  File.WriteAllText(journal,"broken");Require(UpdateAttemptJournal.AlreadyAttempted(journal,signed,"0.2.0","0.2.1-test.2"),"corrupt journal fails safe");
  UpdateAttemptJournal.Save(journal,signed);Require(File.ReadAllText(journal)==signed,"atomic receipt replacement");
 }finally{File.Delete(journal);}

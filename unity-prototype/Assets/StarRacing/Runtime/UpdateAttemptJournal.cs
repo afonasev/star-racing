@@ -5,7 +5,7 @@ using System.Text;
 using Newtonsoft.Json.Linq;
 namespace StarRacingPrototype.Distribution {
  public static class UpdateAttemptJournal {
-  public static string Digest(string envelope){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(envelope))).Replace("-","");}
+  public static string Digest(string envelope){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Convert.FromBase64String((string)JObject.Parse(envelope)["payloadBase64"]))).Replace("-","");}
   public static bool AlreadyAttempted(string journal,string envelope,string fromVersion,string targetVersion){
    if(!File.Exists(journal))return false;
    try{var data=JObject.Parse(File.ReadAllText(journal));return (string)data["descriptorDigest"]==Digest(envelope)&&(string)data["targetVersion"]==targetVersion;}
