@@ -18,20 +18,23 @@ namespace StarRacingPrototype {
   string[] popupOptions;Action<int> popupSelect;Vector2 popupScroll;
   int nameEditor=-1;bool latinNames;string editingName;
   bool collect=true,showFps;float elapsed;int frames,fps;float nextStick;
-  bool updatesOpen;Vector2 updateScroll;
+  public DisplaySettings Display {get;private set;}
+  Vector2Int[] displayOptions;Vector2Int nativeSize;
+  void ApplyDisplay(){Display.Save();Display.Apply(nativeSize);}
+  void RefreshDisplay(){nativeSize=DisplaySettings.NativeSize();displayOptions=DisplaySettings.Options(UnityEngine.Screen.resolutions,nativeSize);Display.Validate(displayOptions);}
   public bool PopupOpen=>popupOptions!=null;
   public bool EditingName=>nameEditor>=0||GUI.GetNameOfFocusedControl().StartsWith("PlayerName");
   public bool ShowFps=>showFps;
   public bool PauseSettings {get;private set;}
   int pauseBackFrame=-1,controlPage;
-  public void OpenPauseSettings(){PauseSettings=true;focus="settings-back";controls.Clear();focusRequest="";}
-  public void ClosePauseSettings(){PauseSettings=false;focus="settings";controls.Clear();focusRequest="";pauseBackFrame=Time.frameCount;}
-  public bool ConsumePauseSettingsBack(bool pressed){if(!PauseSettings||!pressed)return false;ClosePauseSettings();return true;}
+  public void OpenPauseSettings(){RefreshDisplay();PauseSettings=true;focus="settings-back";controls.Clear();focusRequest="";}
+  public void ClosePauseSettings(){ClosePopup();PauseSettings=false;focus="settings";controls.Clear();focusRequest="";pauseBackFrame=Time.frameCount;}
+  public bool ConsumePauseSettingsBack(bool pressed){if(!PauseSettings||!pressed)return false;if(PopupOpen){ClosePopup();pauseBackFrame=Time.frameCount;}else ClosePauseSettings();return true;}
   public void ResetPauseSettings(){PauseSettings=false;controls.Clear();focusRequest="";}
 
-  void Awake(){Selected=LocalRaceConfig.Load();SessionControllers.SeedNames(Selected);seedText=Selected.seed;showFps=PlayerPrefs.GetInt("StarRacing.ShowFps",1)!=0;}
+  void Awake(){Selected=LocalRaceConfig.Load();SessionControllers.SeedNames(Selected);seedText=Selected.seed;showFps=PlayerPrefs.GetInt("StarRacing.ShowFps",1)!=0;Display=DisplaySettings.Load();RefreshDisplay();Display.Apply(nativeSize);}
   public void EnsureSkin(){if(Skin==null)Skin=new CloudlineSkin();}
-  public void Open(RaceMenuScreen screen){nameEditor=-1;ResetPauseSettings();ScreenState=screen;if(screen==RaceMenuScreen.LocalSetup)RollSeed();Error="";ClosePopup();focus=screen==RaceMenuScreen.Main?"local":"back";controls.Clear();EditingSeed=false;focusRequest="";}
+  public void Open(RaceMenuScreen screen){nameEditor=-1;ResetPauseSettings();ScreenState=screen;if(screen==RaceMenuScreen.Settings)RefreshDisplay();if(screen==RaceMenuScreen.LocalSetup)RollSeed();Error="";ClosePopup();focus=screen==RaceMenuScreen.Main?"local":"back";controls.Clear();EditingSeed=false;focusRequest="";}
   public void RollSeed(){Selected.RandomizeSeed();seedText=Selected.seed;Selected.Save();}
   public bool JoinDevice(int device){
    for(int i=0;i<Selected.humans;i++)if(Selected.devices[i]==device)return false;
@@ -208,13 +211,19 @@ namespace StarRacingPrototype {
   }
   void DrawSettings(){Header("Настройки");DrawSettingsContent();}
   public void DrawPauseSettings(){
+   collect=!PopupOpen;GUI.enabled=collect;
    Button("settings-back",new Rect(56,36,300,54),"‹  К меню паузы",ClosePauseSettings,false,true,21);
    Skin.Text(new Rect(56,111,1430,75),"Настройки",48,true);DrawSettingsContent();
+   GUI.enabled=true;collect=true;if(PopupOpen)DrawPopup();GUIFocusIsSearch=GUI.GetNameOfFocusedControl()=="ThemeSearch";
   }
   void DrawSettingsContent(){
    Skin.Panel(new Rect(56,223,698,576),1);Skin.Panel(new Rect(784,223,760,576),1);
-   Skin.Text(new Rect(88,252,500,50),"Звук",30,true);DrawAudio(new Rect(88,327,634,350));
-   Toggle("fps",new Rect(88,699,634,48),"Показывать FPS",showFps,()=>{showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();});
+   Skin.Text(new Rect(88,242,500,40),"Экран",28,true);
+   Toggle("fullscreen",new Rect(88,288,634,44),"Полный экран",Display.fullscreen,()=>{Display.fullscreen=!Display.fullscreen;ApplyDisplay();});
+   var labels=new string[displayOptions.Length];labels[0]="Авто ("+nativeSize.x+" × "+nativeSize.y+")";for(int i=1;i<labels.Length;i++)labels[i]=displayOptions[i].x+" × "+displayOptions[i].y;
+   Dropdown("resolution",new Rect(88,341,634,44),"Разрешение",labels,Mathf.Max(0,Display.Selected(displayOptions)),index=>{Display.width=displayOptions[index].x;Display.height=displayOptions[index].y;ApplyDisplay();});
+   Skin.Text(new Rect(88,404,500,40),"Звук",28,true);DrawAudio(new Rect(88,454,634,256));
+   Toggle("fps",new Rect(88,733,634,44),"Показывать FPS",showFps,()=>{showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();});
    var guide=controlPage==0?Skin.KeyboardGuide:Skin.GamepadGuide;
    if(guide!=null)GUI.DrawTexture(new Rect(792,231,744,560),guide,ScaleMode.ScaleToFit);
    Button("controls-prev",new Rect(1040,814,60,48),"‹",()=>controlPage=1-controlPage,false,true,30);
@@ -227,10 +236,10 @@ namespace StarRacingPrototype {
   public void OverlayButton(string id,Rect r,string text,Action action,bool primary=false,bool enabled=true){Button(id,r,text,action,primary,enabled);}
   public void DrawAudio(Rect r){
    var audio=director.GetComponent<RaceAudioCoordinator>();if(audio==null)return;
-   Toggle("mute",new Rect(r.x,r.y,r.width,48),"Без звука",audio.Muted,()=>audio.SetMix(!audio.Muted,audio.MusicVolume,audio.EnginesVolume,audio.EffectsVolume));
-   AudioSlider("music",r.x,r.y+83,r.width,"Музыка",audio.MusicVolume,v=>audio.SetMix(audio.Muted,v,audio.EnginesVolume,audio.EffectsVolume));
-   AudioSlider("engine",r.x,r.y+166,r.width,"Двигатели",audio.EnginesVolume,v=>audio.SetMix(audio.Muted,audio.MusicVolume,v,audio.EffectsVolume));
-   AudioSlider("effects",r.x,r.y+249,r.width,"Эффекты",audio.EffectsVolume,v=>audio.SetMix(audio.Muted,audio.MusicVolume,audio.EnginesVolume,v));
+   Toggle("mute",new Rect(r.x,r.y,r.width,40),"Без звука",audio.Muted,()=>audio.SetMix(!audio.Muted,audio.MusicVolume,audio.EnginesVolume,audio.EffectsVolume));
+   AudioSlider("music",r.x,r.y+48,r.width,"Музыка",audio.MusicVolume,v=>audio.SetMix(audio.Muted,v,audio.EnginesVolume,audio.EffectsVolume));
+   AudioSlider("engine",r.x,r.y+118,r.width,"Двигатели",audio.EnginesVolume,v=>audio.SetMix(audio.Muted,audio.MusicVolume,v,audio.EffectsVolume));
+   AudioSlider("effects",r.x,r.y+188,r.width,"Эффекты",audio.EffectsVolume,v=>audio.SetMix(audio.Muted,audio.MusicVolume,audio.EnginesVolume,v));
   }
   void AudioSlider(string id,float x,float y,float width,string name,float value,Action<float> set){
    Skin.Text(new Rect(x,y,width-80,30),name,22,true);Skin.Text(new Rect(x+width-80,y,80,30),Mathf.RoundToInt(value*100)+"%",19,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);
