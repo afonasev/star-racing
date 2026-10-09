@@ -18,6 +18,7 @@ namespace StarRacingPrototype {
   string[] popupOptions;Action<int> popupSelect;Vector2 popupScroll;
   int nameEditor=-1;bool latinNames;string editingName;
   bool collect=true,showFps;float elapsed;int frames,fps;float nextStick;
+  bool updatesOpen;Vector2 updateScroll;
   public DisplaySettings Display {get;private set;}
   Vector2Int[] displayOptions;Vector2Int nativeSize;
   void ApplyDisplay(){Display.Save();Display.Apply(nativeSize);}

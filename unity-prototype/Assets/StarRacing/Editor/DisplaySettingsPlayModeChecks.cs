@@ -8,7 +8,7 @@ namespace StarRacingPrototype {
  [InitializeOnLoad]
  public static class DisplaySettingsPlayModeChecks {
   const string Key="StarRacing.DisplayChecks";
-  static int ticks;static double started;static GameObject preview;static EditorWindow view;
+  static int ticks;static double started;static GameObject preview;static RaceDirector fixtureDirector;static EditorWindow view;
   static bool hadPrefs;static string prefs;static float volume;
   static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_MENU_QA_DIR");
   static DisplaySettingsPlayModeChecks(){EditorApplication.playModeStateChanged+=Changed;}
@@ -30,7 +30,10 @@ namespace StarRacingPrototype {
     if(ticks==1){
      hadPrefs=PlayerPrefs.HasKey(DisplaySettings.PreferenceKey);prefs=PlayerPrefs.GetString(DisplaySettings.PreferenceKey);PlayerPrefs.DeleteKey(DisplaySettings.PreferenceKey);volume=AudioListener.volume;AudioListener.volume=0;
      new GameObject("Settings QA camera").AddComponent<Camera>();
-     preview=new GameObject("Display settings preview");var director=preview.AddComponent<RaceDirector>();director.GetComponent<RaceMenu>().Open(RaceMenuScreen.Settings);
+     // Exercise the actual settings UI independently of the older publication roster/physics bootstrap.
+     var holder=new GameObject("Inactive settings director fixture");holder.SetActive(false);fixtureDirector=holder.AddComponent<RaceDirector>();holder.AddComponent<RaceAudioCoordinator>();
+     typeof(RaceDirector).GetProperty("Session").SetValue(fixtureDirector,new RaceSession(0,100,1));
+     preview=new GameObject("Display settings preview");var menu=preview.AddComponent<RaceMenu>();menu.director=fixtureDirector;preview.AddComponent<RaceHud>().director=fixtureDirector;menu.Open(RaceMenuScreen.Settings);
     }
     if(ticks==25)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"settings.png"));
     if(ticks==40){
@@ -43,7 +46,7 @@ namespace StarRacingPrototype {
      var menu=preview.GetComponent<RaceMenu>();Invoke(menu,"option-1");
      if(menu.PopupOpen||menu.Display.width<=0||DisplaySettings.Load().width!=menu.Display.width)throw new Exception("resolution choice did not persist");
      menu.OpenPauseSettings();if(!menu.PauseSettings)throw new Exception("pause settings not available");
-     var director=preview.GetComponent<RaceDirector>();director.enabled=false;typeof(RaceDirector).GetProperty("Started").SetValue(director,true);
+     var director=fixtureDirector;director.enabled=false;typeof(RaceDirector).GetProperty("Started").SetValue(director,true);
     }
     if(ticks==90)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"pause-settings.png"));
     if(ticks==100)Invoke(preview.GetComponent<RaceMenu>(),"resolution");
@@ -51,7 +54,7 @@ namespace StarRacingPrototype {
     if(ticks==135){
      var menu=preview.GetComponent<RaceMenu>();
      if(!menu.PopupOpen||!menu.ConsumePauseSettingsBack(true)||menu.PopupOpen||!menu.PauseSettings)throw new Exception("pause popup back failed");
-     menu.ConsumePauseSettingsBack(true);if(menu.PauseSettings||!preview.GetComponent<RaceDirector>().Paused)throw new Exception("pause settings back resumed race");
+     menu.ConsumePauseSettingsBack(true);if(menu.PauseSettings||!fixtureDirector.Paused)throw new Exception("pause settings back resumed race");
      foreach(var go in SceneManager.GetActiveScene().GetRootGameObjects())UnityEngine.Object.DestroyImmediate(go);
      DisplaySettingsChecks.Run();File.WriteAllText(Path.Combine(Output,"playmode.txt"),"DISPLAY_SETTINGS_PLAYMODE_OK\n");Debug.Log("DISPLAY_SETTINGS_PLAYMODE_OK");Finish(false);
     }
