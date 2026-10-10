@@ -22,10 +22,11 @@ namespace StarRacingPrototype {
   NativeTempoPlayback musicTempo;
   readonly NativeTempoPlayback[] shotTempo=new NativeTempoPlayback[RaceAudioPolicy.MaxOneShots];
   float[] countdownPcm;int countdownFrames,countdownChannels,countdownFrequency;
-  AudioSource music,wind,skid;
+  AudioSource music,wind,skid,menuMusic;
+  float menuGain;
+  const float MenuMusicGain=.65f, MenuFadeSeconds=.6f;
   readonly AudioSource[] engines=new AudioSource[RaceAudioPolicy.MaxEngines],shots=new AudioSource[RaceAudioPolicy.MaxOneShots];
   readonly EngineAudioDsp[] dsp=new EngineAudioDsp[RaceAudioPolicy.MaxEngines];
-  readonly AudioClip[] engineClips=new AudioClip[RaceAudioPolicy.MaxEngines];
   readonly float[] engineGains=new float[RaceAudioPolicy.MaxEngines],shotGains=new float[RaceAudioPolicy.MaxOneShots];
   readonly float[] engineSpeeds=new float[RaceAudioPolicy.MaxEngines],engineThrottle=new float[RaceAudioPolicy.MaxEngines];
   readonly float[] engineBoost=new float[RaceAudioPolicy.MaxEngines];
@@ -35,6 +36,8 @@ namespace StarRacingPrototype {
   readonly List<RecoveryEvent> recoveryBatch=new List<RecoveryEvent>(4);
   long[] lastRecoverySequence=Array.Empty<long>();
   int[] lastRecoveryEpisode=Array.Empty<int>();
+  readonly EngineMixVoice[] mixVoices=new EngineMixVoice[RaceAudioPolicy.MaxEngines];
+  readonly float[] engineTargets=new float[RaceAudioPolicy.MaxEngines];
   float windGain,skidGain;
   int previousBeat=-1;RacePhase previousPhase=RacePhase.Ready;
   double duckUntil;
@@ -66,6 +69,7 @@ namespace StarRacingPrototype {
    var source=child.AddComponent<AudioSource>();source.playOnAwake=false;source.spatialBlend=0;source.dopplerLevel=0;source.loop=loop;source.clip=clip;source.volume=0;source.ignoreListenerPause=true;return source;
   }
   void Begin(){
+   StopMenuMusic();
    StopRace();Generation=Director.RaceGeneration;Sequence=0;Running=true;
    lastRecoverySequence=new long[Director.Cars.Length];lastRecoveryEpisode=new int[Director.Cars.Length];
    Array.Clear(lastRecoveryEpisode,0,lastRecoveryEpisode.Length);
@@ -98,9 +102,25 @@ namespace StarRacingPrototype {
    Emit(contact.Kind==DrivingContactKind.Vehicle?RaceSound.VehicleImpact:RaceSound.BarrierImpact,0,contact.Strength,presence);
   }
   bool Silent=>Muted||forceMuted;
+  void TickMenuMusic(){
+   if(menuMusic==null){
+    var clip=Resources.Load<AudioClip>("Audio/menu-cloudline");
+    if(clip==null)throw new InvalidOperationException("AUDIO_MISSING menu-cloudline");
+    menuMusic=Voice("Menu music",clip,true);
+   }
+   if(!Silent&&MusicVolume>0&&!menuMusic.isPlaying)menuMusic.Play();
+   menuGain=Mathf.MoveTowards(menuGain,MenuMusicGain,Time.unscaledDeltaTime*MenuMusicGain/MenuFadeSeconds);
+   SyncMix();
+  }
+  void StopMenuMusic(){
+   menuGain=0;
+   if(menuMusic!=null){menuMusic.Stop();menuMusic.volume=0;}
+  }
   void LateUpdate(){
-   if(Director==null||Director.Cars==null||Director.Session==null)return;
-   if(!Director.Started){if(Running)StopRace();return;}
+   if(Director==null)return;
+   if(!Director.Started){if(Running)StopRace();TickMenuMusic();return;}
+   StopMenuMusic();
+   if(Director.Cars==null||Director.Session==null)return;
    if(!Running||Generation!=Director.RaceGeneration)Begin();
    recoveryBatch.Clear();Director.ConsumeRecoveryEvents(recoveryBatch);
    foreach(var e in recoveryBatch) {
@@ -129,27 +149,30 @@ namespace StarRacingPrototype {
    }
    if(Director.Paused)strongest=0; // Pause/recovery cannot sustain a tyre loop.
    int count=SelectAudible();ActiveEngineCount=0;
-   float mixScale=RaceAudioPolicy.EngineMixScale(humans,count-humans);
    for(int i=0;i<engines.Length;i++){
     int entrant=i<count?audible[i]:-1;var car=entrant<0?null:Director.Cars[entrant];
-    float speed=car==null?0:Mathf.Abs(car.Telemetry.speedKmh)/3.6f,throttle=car==null?0:car.DriveFeedback?.GasSignal??0;
+    float speed=car==null?0:Mathf.Abs(car.Telemetry.speedKmh)/3.6f,throttle=car==null?0:car.AudioThrottle;
     bool falling=car!=null&&car.IsFalling;
-    float boost=car==null||falling?0:car.DriveFeedback?.NitroSignal??0;
-    bool nitro=boost>.001f;
+    float boost=car==null||falling?0:car.DriveFeedback?.NitroAudioSignal??0;
     // Native input is blocked on pause, while browser vehicle state freezes.
     // Keep the last audible controls so pause retains the source audio state.
-    if(Director.Paused){speed=engineSpeeds[i];throttle=engineThrottle[i];boost=engineBoost[i];nitro=boost>.001f;}
+    if(Director.Paused){speed=engineSpeeds[i];throttle=engineThrottle[i];boost=engineBoost[i];}
     else{engineSpeeds[i]=speed;engineThrottle[i]=throttle;engineBoost[i]=boost;}
     float priority=entrant<0?0:IsHuman(entrant)?1:.42f*RaceAudioPolicy.RivalGain(NearestHuman(entrant));
-    float target=car==null||falling?0:Mathf.Min(.34f,RaceAudioPolicy.EngineGain(speed,throttle,nitro)*priority)*mixScale*(IsHuman(entrant)?RaceAudioPolicy.SkidEngineDuck(strongest):1);
+    mixVoices[i]=new EngineMixVoice(speed,throttle,boost,i<humans,priority*(IsHuman(entrant)?RaceAudioPolicy.SkidEngineDuck(strongest):1),car!=null&&!falling);
+   }
+   EngineMixPolicy.Targets(mixVoices,engineTargets);
+   for(int i=0;i<engines.Length;i++)engineGains[i]=RaceAudioPolicy.Smooth(engineGains[i],engineTargets[i],Time.unscaledDeltaTime,.055f,.12f);
+   EngineMixPolicy.Limit(mixVoices,engineGains);
+   for(int i=0;i<engines.Length;i++){
+    var voice=mixVoices[i];float target=engineTargets[i];
     if(engines[i]==null&&target>RaceAudioPolicy.EngineVoiceThreshold){
      int sampleRate=AudioSettings.outputSampleRate;dsp[i]=new EngineAudioDsp(sampleRate,i);
-     var generator=dsp[i];engineClips[i]=AudioClip.Create("Kart synth "+i,sampleRate,1,sampleRate,true,generator.Render);
-     engines[i]=Voice("Kart engine "+i,engineClips[i],true);engines[i].volume=1;engines[i].Play();
+     engines[i]=Voice("Kart engine "+i,null,true);
+     engines[i].gameObject.AddComponent<EngineAudioOutput>().Bind(dsp[i]);engines[i].volume=1;engines[i].Play();
     }
-    engineGains[i]=RaceAudioPolicy.Smooth(engineGains[i],target,Time.unscaledDeltaTime,.055f,.12f);
     if(engines[i]!=null){
-     engines[i].mute=Silent;dsp[i].SetPresentation(speed,throttle,boost,engineGains[i]*EnginesVolume);
+     engines[i].mute=Silent;dsp[i].SetPresentation(voice.Speed,voice.Throttle,voice.Boost,engineGains[i]*EnginesVolume);
      if(target==0&&engineGains[i]<RaceAudioPolicy.EngineVoiceThreshold)DisposeEngine(i);
      else ActiveEngineCount++;
     }
@@ -194,6 +217,7 @@ namespace StarRacingPrototype {
    return true;
   }
   void SyncMix(){
+   if(menuMusic!=null){menuMusic.mute=Silent;menuMusic.volume=Silent?0:menuGain*MusicVolume;}
    if(music!=null){music.mute=false;music.volume=1;musicTempo.Gain=Silent?0:RaceAudioPolicy.MusicGain*MusicVolume/musicAssetGain*(Time.realtimeSinceStartupAsDouble<duckUntil?RaceAudioPolicy.CountdownDuck:1);if(!Silent&&!musicStartIssued&&music.clip!=null){musicStartIssued=true;musicTempo.Arm();music.Play();}}
    MixLoop(wind,windGain);MixLoop(skid,skidGain);
    for(int i=0;i<shots.Length;i++)if(shots[i]!=null){if(shotTempo[i]!=null){shots[i].mute=false;shots[i].volume=1;shotTempo[i].Gain=Silent?0:shotGains[i]*EffectsVolume;}else{shots[i].mute=Silent;shots[i].volume=Mathf.Min(1,shotGains[i]*EffectsVolume);}}
@@ -204,13 +228,14 @@ namespace StarRacingPrototype {
    PlayerPrefs.SetInt(Preference+"Muted",mute?1:0);PlayerPrefs.SetFloat(Preference+"Music",MusicVolume);PlayerPrefs.SetFloat(Preference+"Engines",EnginesVolume);PlayerPrefs.SetFloat(Preference+"Effects",EffectsVolume);PlayerPrefs.Save();SyncMix();
   }
   void DisposeVoice(AudioSource source){if(source==null)return;source.Stop();Destroy(source.gameObject);}
-  void DisposeEngine(int i){DisposeVoice(engines[i]);engines[i]=null;if(engineClips[i]!=null)Destroy(engineClips[i]);engineClips[i]=null;dsp[i]=null;engineGains[i]=0;engineSpeeds[i]=engineThrottle[i]=0;engineBoost[i]=0;}
+  void DisposeEngine(int i){DisposeVoice(engines[i]);engines[i]=null;dsp[i]=null;engineGains[i]=0;engineSpeeds[i]=engineThrottle[i]=0;engineBoost[i]=0;}
   public void StopRace(){
    Running=false;musicStartIssued=false;DisposeVoice(music);DisposeVoice(wind);DisposeVoice(skid);music=wind=skid=null;
    if(musicTempo!=null){musicTempo.Dispose();musicTempo=null;}
    for(int i=0;i<engines.Length;i++)DisposeEngine(i);for(int i=0;i<shots.Length;i++){DisposeVoice(shots[i]);shots[i]=null;if(shotTempo[i]!=null){shotTempo[i].Dispose();shotTempo[i]=null;}}
    windGain=skidGain=0;duckUntil=0;ActiveEngineCount=0;
   }
-  void OnDestroy(){if(Director!=null)Director.DrivingContact-=OnDrivingContact;StopRace();if(ownedListener!=null)Destroy(ownedListener);}
+  void OnDisable(){StopMenuMusic();StopRace();}
+  void OnDestroy(){if(Director!=null)Director.DrivingContact-=OnDrivingContact;StopRace();DisposeVoice(menuMusic);menuMusic=null;if(ownedListener!=null)Destroy(ownedListener);}
  }
 }

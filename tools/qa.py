@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed UI or complete Editor QA receipt. Native acceptance stays explicit."""
+"""Reviewed UI or explicitly authorized complete Editor QA receipt. Native acceptance stays explicit."""
 import argparse
 import hashlib
 import json
@@ -16,16 +16,16 @@ EDITOR_CHECKS = {
     'unity-prototype/Assets/StarRacing/Editor/RecoveryGhostChecks.cs',
     'unity-prototype/Assets/StarRacing/Editor/RosterFixtureEquivalenceChecks.cs',
 }
-TOOLING = {'tools/test_qa.py', 'tools/test_local_workflow.py', '.agents/references/qa-scope.md'}
+TOOLING = {'tools/test_qa.py', 'tools/test_local_workflow.py', 'tools/test_ui_route.py', 'tools/qa.py', '.agents/references/qa-scope.md'}
 # A candidate UI route still requires review of behavior and dependencies.
 UI_FILES = {f'unity-prototype/Assets/StarRacing/Runtime/{name}.cs'
             for name in ('RaceHud', 'RaceHudLayout', 'RaceMenu', 'CloudlineSkin')}
 UI_FILES.add('unity-prototype/Assets/StarRacing/Editor/RaceHudChecks.cs')
 GATES = {
-    'documentation': ['review-links', 'openspec-strict'],
-    'tooling': ['tooling-regressions', 'openspec-strict'],
+    'documentation': ['review-links', 'review-changed-planning-if-any'],
+    'tooling': ['tooling-regressions', 'review-changed-planning-if-any'],
     'local-ui': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-ui-checks', 'affected-editor-playmode'],
-    'editor-checks': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence'],
+    'review-required': ['review-behavior-and-dependencies', 'select-affected-checks'],
     'full': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence'],
 }
 BROAD = ['menu-countdown-natural-AI-finish-Results-menu', 'repeat-pause', 'both-themes', 'recovery']
@@ -34,9 +34,7 @@ BROAD = ['menu-countdown-natural-AI-finish-Results-menu', 'repeat-pause', 'both-
 def scope_for(paths, profile_safe=False):
     scopes = []
     for path in paths:
-        if path == 'tools/qa.py':
-            scopes.append('editor-checks')
-        elif path == 'workflow/project.json' and profile_safe:
+        if path == 'workflow/project.json' and profile_safe:
             scopes.append('tooling')
         elif path in TOOLING:
             scopes.append('tooling')
@@ -45,12 +43,12 @@ def scope_for(paths, profile_safe=False):
         elif path == 'AGENTS.md' or (path.startswith('.agents/references/') and path.endswith('.md')):
             scopes.append('documentation')
         elif path in EDITOR_CHECKS or path.removesuffix('.meta') in EDITOR_CHECKS:
-            scopes.append('editor-checks')
+            scopes.append('review-required')
         elif path.startswith(('docs/', 'openspec/')) and path.endswith('.md'):
             scopes.append('documentation')
         else:
-            return 'full'
-    return max(scopes, key=lambda s: list(GATES).index(s)) if scopes else 'full'
+            return 'review-required'
+    return max(scopes, key=lambda s: list(GATES).index(s)) if scopes else 'review-required'
 
 
 def git(*args):
@@ -71,7 +69,7 @@ def source_fingerprint():
 
 
 def local_profile_diff(before, after):
-    # Only QA metadata additions are local. Build/deploy/runtime authorization/config is full.
+    # Only these QA metadata fields are local. Other profile changes require dependency review.
     def strip(value):
         value = json.loads(json.dumps(value))
         for key in ('qa_plan', 'editor_checks'):
@@ -95,7 +93,8 @@ def plan(base, requested_scope="auto", reason=None):
     if requested_scope != 'auto':
         scope = requested_scope
     return {'base': baseline, 'commit': git('rev-parse', 'HEAD'), 'paths': sorted(paths),
-            'scope': scope, 'scope_reason': reason, 'required': GATES[scope], 'broad_integration_if_affected': BROAD if scope == 'full' else [],
+            'scope': scope, 'scope_reason': reason, 'required': GATES[scope], 'broad_integration_if_affected': BROAD if scope in {'full', 'review-required'} else [],
+            'full_test_policy': 'Separate explicit human confirmation, including production; never automatic',
             'human_acceptance': 'pending', 'deploy_authorized': profile.get('deploy_authorized'),
             'deferred_player_gates': ['native-build', 'affected-player-playtest'] if scope == 'full' else [],
             'player_gate_policy': 'Explicit request or justified minimal QA build; no automatic build/deploy'}
@@ -126,8 +125,11 @@ def validate_ui_receipt(log, token):
 
 
 def check_method(scope):
-    return ('StarRacingPrototype.RaceHudChecks.Run' if scope == 'local-ui' else
-            'StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence')
+    if scope == 'local-ui':
+        return 'StarRacingPrototype.RaceHudChecks.Run'
+    if scope == 'full':
+        return 'StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence'
+    raise ValueError('Review dependencies and select affected checks; no automatic full suite')
 
 
 def validate_equivalence(log, token):
@@ -140,6 +142,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['plan', 'checks'])
     parser.add_argument('--scope', choices=['auto', 'local-ui', 'full'], default='auto')
+    parser.add_argument('--confirm-full', action='store_true',
+                        help='Record separate explicit human authorization for this full run')
     parser.add_argument('--reason', help='Reviewed behavior/dependency reason for the chosen scope')
     parser.add_argument('--base', required=True, help='Explicit reviewed baseline, including its full diff')
     parser.add_argument('--output', type=Path, help='New owned evidence directory (checks)')
@@ -152,6 +156,10 @@ def main():
         print(json.dumps(selection, indent=2)); return
     if selection['scope'] in {'documentation', 'tooling'}:
         parser.error('Selected scope uses diff/tooling checks; no Unity suite is required')
+    if selection['scope'] == 'review-required':
+        parser.error('Review changed behavior and use affected Editor methods; full needs separate human confirmation')
+    if selection['scope'] == 'full' and not args.confirm_full:
+        parser.error('Full tests require separate human confirmation; then pass --confirm-full')
     if not args.reason:
         parser.error('checks requires --reason: record affected behavior; do not auto-escalate to full')
     if not args.output:
@@ -159,6 +167,8 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     profile = hashlib.sha256((REPO/'unity-prototype/Assets/StarRacing/Resources/balance-config.json').read_bytes()).hexdigest()
     token = str(uuid.uuid4()); env = dict(os.environ, STAR_RACING_QA_TOKEN=token)
+    if selection['scope'] == 'full':
+        env['STAR_RACING_CONFIRM_FULL_TESTS'] = 'yes'
     log = out/'editor.log'
     command = [str(REPO/'tools/unity.sh'), 'shared', '-batchmode', '-nographics', '-quit',
                '-executeMethod', check_method(selection['scope']), '-logFile', str(log)]

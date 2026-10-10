@@ -20,6 +20,7 @@ namespace StarRacingPrototype {
   int nameEditor=-1;bool latinNames;string editingName;
   bool collect=true,showFps;float elapsed;int frames,fps;float nextStick;
   Gamepad activatingPad;
+  bool gamepadNavigation,applicationFocused=true;
   public DisplaySettings Display {get;private set;}
   Vector2Int[] displayOptions;Vector2Int nativeSize;
   void ApplyDisplay(){Display.Save();Display.Apply(nativeSize);}
@@ -138,6 +139,21 @@ namespace StarRacingPrototype {
     try{current?.action?.Invoke();}finally{activatingPad=null;}
    }
   }
+  // Run after menu/race transitions, including Update paths that return early.
+  void LateUpdate(){
+   foreach(var pad in Gamepad.all){
+    bool active=pad.leftStick.ReadValue().sqrMagnitude>.25f||pad.rightStick.ReadValue().sqrMagnitude>.25f;
+    foreach(var control in pad.allControls)if(control is UnityEngine.InputSystem.Controls.ButtonControl button&&button.wasPressedThisFrame){active=true;break;}
+    if(active){gamepadNavigation=true;break;}
+   }
+   var mouse=Mouse.current;
+   if(mouse!=null&&(mouse.delta.ReadValue().sqrMagnitude>.01f||mouse.scroll.ReadValue().sqrMagnitude>.01f||mouse.leftButton.wasPressedThisFrame||mouse.rightButton.wasPressedThisFrame||mouse.middleButton.wasPressedThisFrame))gamepadNavigation=false;
+   if(Keyboard.current!=null&&Keyboard.current.anyKey.wasPressedThisFrame)gamepadNavigation=false;
+   bool racing=director!=null&&director.Started&&!director.Paused&&director.Session!=null&&director.Session.Phase!=RacePhase.Results;
+   Cursor.visible=!applicationFocused||(!racing&&!gamepadNavigation);
+  }
+  void OnApplicationFocus(bool focused){applicationFocused=focused;if(!focused)Cursor.visible=true;}
+  void OnDisable(){Cursor.visible=true;}
   bool GUIFocusIsSearch;
   void Move(int direction){if(controls.Count==0)return;int index=controls.FindIndex(c=>c.id==focus);focus=controls[(index+direction+controls.Count)%controls.Count].id;if(PopupOpen)popupScroll.y=Mathf.Max(0,(controls.FindIndex(c=>c.id==focus)-1)*56-112);}
   void Register(string id,Action action,Action<int> adjust=null){if(collect)controls.Add(new Control{id=id,action=action,adjust=adjust});}
@@ -235,13 +251,14 @@ namespace StarRacingPrototype {
    GUI.enabled=true;collect=true;if(PopupOpen)DrawPopup();GUIFocusIsSearch=GUI.GetNameOfFocusedControl()=="ThemeSearch";
   }
   void DrawSettingsContent(){
-   Skin.Panel(new Rect(56,223,698,576),1);Skin.Panel(new Rect(784,223,760,576),1);
+   Skin.Panel(new Rect(56,223,698,634),1);Skin.Panel(new Rect(784,223,760,576),1);
    Skin.Text(new Rect(88,242,500,40),"Экран",28,true);
    Toggle("fullscreen",new Rect(88,288,634,44),"Полный экран",Display.fullscreen,()=>{Display.fullscreen=!Display.fullscreen;ApplyDisplay();});
    var labels=new string[displayOptions.Length];labels[0]="Авто ("+nativeSize.x+" × "+nativeSize.y+")";for(int i=1;i<labels.Length;i++)labels[i]=displayOptions[i].x+" × "+displayOptions[i].y;
    Dropdown("resolution",new Rect(88,341,634,44),"Разрешение",labels,Mathf.Max(0,Display.Selected(displayOptions)),index=>{Display.width=displayOptions[index].x;Display.height=displayOptions[index].y;ApplyDisplay();});
    Skin.Text(new Rect(88,404,500,40),"Звук",28,true);DrawAudio(new Rect(88,454,634,256));
    Toggle("fps",new Rect(88,733,634,44),"Показывать FPS",showFps,()=>{showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();});
+   Toggle("nitro-blur",new Rect(88,789,634,44),"Размытие на нитро",NitroBlurSettings.Enabled,()=>NitroBlurSettings.Enabled=!NitroBlurSettings.Enabled);
    var guide=controlPage==0?Skin.KeyboardGuide:Skin.GamepadGuide;
    if(guide!=null)GUI.DrawTexture(new Rect(792,231,744,560),guide,ScaleMode.ScaleToFit);
    Button("controls-prev",new Rect(1040,814,60,48),"‹",()=>controlPage=1-controlPage,false,true,30);
@@ -291,9 +308,9 @@ namespace StarRacingPrototype {
    float top=panel.y+94;
    if(searchHeight>0){popupSearch=Skin.Field(new Rect(panel.x+36,top,728,42),popupSearch,"ThemeSearch",80);top+=54;}
    var options=popupOptions;var matches=new List<int>();for(int i=0;i<options.Length;i++)if(options[i].IndexOf(popupSearch,StringComparison.OrdinalIgnoreCase)>=0)matches.Add(i);
-   popupScroll=GUI.BeginScrollView(new Rect(panel.x+28,top,744,listHeight),popupScroll,new Rect(0,0,722,Mathf.Max(listHeight,matches.Count*64+16)));
+   popupScroll=CloudlineSkin.BeginScrollView(new Rect(panel.x+28,top,744,listHeight),popupScroll,new Rect(0,0,722,Mathf.Max(listHeight,matches.Count*64+16)));
    for(int i=0;i<matches.Count;i++){int choice=matches[i];Button("option-"+choice,new Rect(8,8+i*64,706,52),options[choice],()=>{var select=popupSelect;ClosePopup();select(choice);},false,true,23);}
-   GUI.EndScrollView();
+   CloudlineSkin.EndScrollView();
   }
  }
 }

@@ -2,12 +2,13 @@
 .PHONY: help check check-full check-local check-ui tooling unity-editor build check-player
 
 help:
-	@printf '%s\n' 'make unity-editor — open Editor; use Play for current changes' 'make check-local — HUD/UI contracts only; add affected UI checks' 'make check-full — complete Editor checks; no Player build' 'make build — explicitly requested local Player build' 'make check-player — explicitly requested full checks and build'
+	@printf '%s\n' 'make unity-editor — open Editor; use Play for current changes' 'make check-local — HUD/UI contracts only; add affected UI checks' 'make check-full CONFIRM_FULL_TESTS=yes — human-authorized complete Editor checks; no Player build' 'make build — explicitly requested local Player build' 'make check-player — explicitly requested full checks and build'
 
 check: check-local
 
 check-full:
-	./tools/unity.sh shared -batchmode -nographics -quit -executeMethod StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence -logFile /tmp/star-racing-check.log
+	@test "$(CONFIRM_FULL_TESTS)" = yes || { echo "Full tests require separate human confirmation; then use CONFIRM_FULL_TESTS=yes" >&2; exit 2; }
+	STAR_RACING_CONFIRM_FULL_TESTS=yes ./tools/unity.sh shared -batchmode -nographics -quit -executeMethod StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence -logFile /tmp/star-racing-check.log
 
 check-local: check-ui
 

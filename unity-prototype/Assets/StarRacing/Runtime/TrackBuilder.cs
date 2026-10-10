@@ -7,7 +7,10 @@ namespace StarRacingPrototype {
     public sealed class TrackBuilder : MonoBehaviour {
         public TrackRoute Route;
         public const int RoadCollisionLayer=9;
+        public const int BarrierCollisionLayer=10;
 
+        readonly List<Collider> barriers=new List<Collider>();
+        internal IReadOnlyList<Collider> BarrierColliders=>barriers;
         readonly List<Material> ownedMaterials = new List<Material>();
         readonly List<Mesh> ownedMeshes = new List<Mesh>();
         TrackSurface[] roadSurfaces=System.Array.Empty<TrackSurface>();
@@ -46,7 +49,11 @@ namespace StarRacingPrototype {
             ProceduralTrackMesh.Build(transform, Route, roadMaterial, railMaterial);
             foreach(var collider in GetComponentsInChildren<MeshCollider>())
                 if(collider.sharedMesh!=null && collider.sharedMesh.name=="Procedural guard rails")
+                {
+                    collider.gameObject.layer=BarrierCollisionLayer;
                     collider.sharedMaterial=barrierContactMaterial;
+                    barriers.Add(collider);
+                }
             roadSurfaces=GetComponentsInChildren<TrackSurface>();roadColliders=new MeshCollider[roadSurfaces.Length];
             for(int i=0;i<roadSurfaces.Length;i++) {
                 var surface=roadSurfaces[i];roadColliders[i]=surface.GetComponent<MeshCollider>();
@@ -154,6 +161,8 @@ namespace StarRacingPrototype {
         }
 
         void DisposeResources() {
+            barriers.Clear();
+
             nearestRoad = null;
             roadSurfaces=System.Array.Empty<TrackSurface>();roadColliders=System.Array.Empty<MeshCollider>();
             if(barrierContactMaterial!=null){if(Application.isPlaying)Destroy(barrierContactMaterial);else DestroyImmediate(barrierContactMaterial);barrierContactMaterial=null;}

@@ -102,6 +102,21 @@ namespace StarRacingPrototype {
             }
             return false;
         }
+        // Exact interpolated paved strip containing this centre; never select a
+        // neighbouring branch across an open divider.
+        public bool TryRoadBounds(float distance,float lane,out float left,out float right) {
+            left=right=0;
+            if(Definition==null){var f=Evaluate(distance);left=-f.halfWidth;right=f.halfWidth;return lane>=left&&lane<=right&&!f.gap;}
+            int index=Mathf.FloorToInt((distance-30)/5);if(index<0||index>=roadPanels.Length)return false;
+            float t=(distance-(30+index*5))/5,best=float.NegativeInfinity;
+            foreach(var panel in roadPanels[index]) {
+                float a=Mathf.Lerp(-(float)panel.first.Right,-(float)panel.second.Right,t);
+                float b=Mathf.Lerp(-(float)panel.first.Left,-(float)panel.second.Left,t);
+                float clearance=Mathf.Min(lane-a,b-lane);
+                if(clearance>=0&&clearance>best){left=a;right=b;best=clearance;}
+            }
+            return best>=0;
+        }
         public bool IsJumpRegion(float distance) {
             if (Definition == null) return distance >= JumpStart && distance <= JumpEnd && JumpEnd > JumpStart;
             float index = (distance - 30) / 5;

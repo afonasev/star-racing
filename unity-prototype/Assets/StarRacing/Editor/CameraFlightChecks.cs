@@ -3,12 +3,14 @@ using System.Reflection;
 using UnityEngine;
 namespace StarRacingPrototype {
  public static class CameraFlightChecks {
-  public static void Run(MagneticVehicle car, Procedural.Jump jump) {
+  public static void Run(MagneticVehicle car, Procedural.Jump jump, Rect? viewport=null) {
    var position=car.Body.position;var rotation=car.Body.rotation;var velocity=car.Body.linearVelocity;
    var active=typeof(MagneticVehicle).GetField("activeJump",BindingFlags.Instance|BindingFlags.NonPublic);
    var original=active.GetValue(car);var go=new GameObject("camera flight check");
    try {
-    var view=go.AddComponent<Camera>();view.fieldOfView=65;var follow=go.AddComponent<ChaseCamera>();follow.target=car;
+    var view=go.AddComponent<Camera>();view.fieldOfView=65;
+    if(viewport.HasValue){view.rect=viewport.Value;view.aspect=(1920f/1080)*view.rect.width/view.rect.height;}
+    var follow=go.AddComponent<ChaseCamera>();follow.target=car;
     var tick=typeof(ChaseCamera).GetMethod("LateUpdate",BindingFlags.Instance|BindingFlags.NonPublic);
     active.SetValue(car,null);car.Body.position=car.Frame.position+car.Frame.normal*1.1f;
     car.transform.SetPositionAndRotation(car.Body.position,rotation);car.ResetPresentation();follow.Snap();tick.Invoke(follow,null);

@@ -1,0 +1,930 @@
+{
+  "date": "2026-10-10",
+  "method": "Saved evidence only; no new Unity runs or builds",
+  "inputs": [
+    {
+      "path": "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/committed-final/receipt.json",
+      "sha256": "7dff1e6a2fa82a0af65b97f3ed43bafd05d0ea8af07ca3fec25fecc44f5c02bf",
+      "data": {
+        "plan": {
+          "base": "a599c9cb1d99bf07bbb7e5330ebe2faba0ce0a3e",
+          "commit": "7ff317b5d95244358a2d0904c6cddddfebe72600",
+          "paths": [
+            ".gitignore",
+            "distribution/README.md",
+            "distribution/dependencies.json",
+            "distribution/github_publish.py",
+            "distribution/icons/Star-Racing.ico",
+            "distribution/icons/Star-Racing.png",
+            "distribution/legacy_relay.py",
+            "distribution/metadata.py",
+            "distribution/package.py",
+            "distribution/prepare.py",
+            "distribution/probes/MonoProbe.cs",
+            "distribution/publish.py",
+            "distribution/release.py",
+            "distribution/run_packaged_qa.py",
+            "distribution/tests/Program.cs",
+            "distribution/tests/UpdateContracts.csproj",
+            "distribution/tests/test_legacy_relay.py",
+            "distribution/tests/test_publish.py",
+            "distribution/tests/test_release.py",
+            "distribution/tests/test_unsigned_production.py",
+            "distribution/tests/test_windows_installer.py",
+            "distribution/toolchain.json",
+            "distribution/update-public.pem",
+            "distribution/windows/LICENSE-velopack.txt",
+            "distribution/windows/Velopack.h",
+            "distribution/windows/bootstrap.cpp",
+            "distribution/windows/build_installer.py",
+            "distribution/windows/installer.nsi",
+            "distribution/windows/velopack_libc_win_x64_msvc.dll",
+            "landing/ASSET-SOURCES.md",
+            "landing/downloads.js",
+            "landing/downloads.json",
+            "landing/favicon.svg",
+            "landing/images/race.png",
+            "landing/index.html",
+            "landing/style.css",
+            "tools/qa.py",
+            "unity-prototype/Assets/Plugins/Velopack.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll.meta",
+            "unity-prototype/Assets/Resources.meta",
+            "unity-prototype/Assets/StarRacing/Editor/PrototypeBuilder.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/RaceMenu.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs.meta"
+          ],
+          "scope": "full",
+          "scope_reason": "Final committed source with canonical URP metadata preserved; previous stable gate used Editor-serialized URP version 10, so repeat on exact shipping source without further tracked mutations",
+          "required": [
+            "tooling-regressions",
+            "openspec-strict",
+            "unity-compile-and-all-checks",
+            "fixture-equivalence"
+          ],
+          "broad_integration_if_affected": [
+            "menu-countdown-natural-AI-finish-Results-menu",
+            "repeat-pause",
+            "both-themes",
+            "recovery"
+          ],
+          "human_acceptance": "pending",
+          "deploy_authorized": true,
+          "deferred_player_gates": [
+            "native-build",
+            "affected-player-playtest"
+          ],
+          "player_gate_policy": "Explicit request or justified minimal QA build; no automatic build/deploy"
+        },
+        "command": [
+          "/Users/eaafonasev/Projects/star-racing-unsigned-production/tools/unity.sh",
+          "shared",
+          "-batchmode",
+          "-nographics",
+          "-quit",
+          "-executeMethod",
+          "StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence",
+          "-logFile",
+          "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/committed-final/editor.log"
+        ],
+        "exit": 0,
+        "wrapper_wall_seconds": 493.8225450515747,
+        "token": "aed4d2c1-7d6d-4973-9887-ab3400114ed1",
+        "profile": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+        "source_fingerprint": "588d9e38da84e3c7e27755877fc396af00340a946d1611b6cea97f3a22bcf3a3",
+        "success": false,
+        "remaining": [
+          "tooling-regressions",
+          "openspec-strict"
+        ],
+        "human_acceptance": false,
+        "suite": {
+          "token": "aed4d2c1-7d6d-4973-9887-ab3400114ed1",
+          "balanceHash": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+          "utc": "",
+          "assertions": 450,
+          "rosterCases": 6,
+          "ghostAssertions": 25,
+          "methodSeconds": 20.8258376
+        },
+        "editor_checks_success": true,
+        "checks_success": true
+      }
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/frozen-final/receipt.json",
+      "sha256": "b8204c6c1f0f897a10d097204164c105ac458d537f71a89f44d57709465f875e",
+      "data": {
+        "plan": {
+          "base": "a599c9cb1d99bf07bbb7e5330ebe2faba0ce0a3e",
+          "commit": "99249110a6fac3ba168b692143a3b5e59d3a835f",
+          "paths": [
+            ".gitignore",
+            "distribution/README.md",
+            "distribution/dependencies.json",
+            "distribution/github_publish.py",
+            "distribution/icons/Star-Racing.ico",
+            "distribution/icons/Star-Racing.png",
+            "distribution/legacy_relay.py",
+            "distribution/metadata.py",
+            "distribution/package.py",
+            "distribution/prepare.py",
+            "distribution/probes/MonoProbe.cs",
+            "distribution/publish.py",
+            "distribution/release.py",
+            "distribution/run_packaged_qa.py",
+            "distribution/tests/Program.cs",
+            "distribution/tests/UpdateContracts.csproj",
+            "distribution/tests/test_legacy_relay.py",
+            "distribution/tests/test_publish.py",
+            "distribution/tests/test_release.py",
+            "distribution/tests/test_unsigned_production.py",
+            "distribution/tests/test_windows_installer.py",
+            "distribution/toolchain.json",
+            "distribution/update-public.pem",
+            "distribution/windows/LICENSE-velopack.txt",
+            "distribution/windows/Velopack.h",
+            "distribution/windows/bootstrap.cpp",
+            "distribution/windows/build_installer.py",
+            "distribution/windows/installer.nsi",
+            "distribution/windows/velopack_libc_win_x64_msvc.dll",
+            "landing/ASSET-SOURCES.md",
+            "landing/downloads.js",
+            "landing/downloads.json",
+            "landing/favicon.svg",
+            "landing/images/race.png",
+            "landing/index.html",
+            "landing/style.css",
+            "tools/qa.py",
+            "unity-prototype/Assets/Plugins/Velopack.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll.meta",
+            "unity-prototype/Assets/Resources.meta",
+            "unity-prototype/Assets/StarRacing/Editor/PrototypeBuilder.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/RaceMenu.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs.meta",
+            "unity-prototype/ProjectSettings/URPProjectSettings.asset"
+          ],
+          "scope": "full",
+          "scope_reason": "Frozen reconciled source: current main loading lifecycle, menu, production updater and packaging dependencies; combined full Editor/equivalence gate after publisher fixes",
+          "required": [
+            "tooling-regressions",
+            "openspec-strict",
+            "unity-compile-and-all-checks",
+            "fixture-equivalence"
+          ],
+          "broad_integration_if_affected": [
+            "menu-countdown-natural-AI-finish-Results-menu",
+            "repeat-pause",
+            "both-themes",
+            "recovery"
+          ],
+          "human_acceptance": "pending",
+          "deploy_authorized": true,
+          "deferred_player_gates": [
+            "native-build",
+            "affected-player-playtest"
+          ],
+          "player_gate_policy": "Explicit request or justified minimal QA build; no automatic build/deploy"
+        },
+        "command": [
+          "/Users/eaafonasev/Projects/star-racing-unsigned-production/tools/unity.sh",
+          "shared",
+          "-batchmode",
+          "-nographics",
+          "-quit",
+          "-executeMethod",
+          "StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence",
+          "-logFile",
+          "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/frozen-final/editor.log"
+        ],
+        "exit": 0,
+        "wrapper_wall_seconds": 457.1135129928589,
+        "token": "e7c28b97-4741-40a8-b2de-7a12be60a6f8",
+        "profile": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+        "source_fingerprint": "f09515cbf58ac443062e306f2f9a7ccbbbf6f0fc05128e8c29eedb16749fcbff",
+        "success": false,
+        "remaining": [
+          "tooling-regressions",
+          "openspec-strict"
+        ],
+        "human_acceptance": false,
+        "suite": {
+          "token": "e7c28b97-4741-40a8-b2de-7a12be60a6f8",
+          "balanceHash": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+          "utc": "",
+          "assertions": 450,
+          "rosterCases": 6,
+          "ghostAssertions": 25,
+          "methodSeconds": 19.0688417
+        },
+        "editor_checks_success": true,
+        "checks_success": true
+      }
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/editor-full-stable/receipt.json",
+      "sha256": "a7cdba78bfd00929d3e33db5eb14b181685962ce7589886d24918104faf211ae",
+      "data": {
+        "plan": {
+          "base": "1c3b25d9ba985ddbb040b6531e679fb7a4875a3b",
+          "commit": "1c3b25d9ba985ddbb040b6531e679fb7a4875a3b",
+          "paths": [
+            ".gitignore",
+            "distribution/README.md",
+            "distribution/dependencies.json",
+            "distribution/github_publish.py",
+            "distribution/icons/Star-Racing.ico",
+            "distribution/icons/Star-Racing.png",
+            "distribution/legacy_relay.py",
+            "distribution/package.py",
+            "distribution/prepare.py",
+            "distribution/probes/MonoProbe.cs",
+            "distribution/publish.py",
+            "distribution/release.py",
+            "distribution/run_packaged_qa.py",
+            "distribution/tests/Program.cs",
+            "distribution/tests/UpdateContracts.csproj",
+            "distribution/tests/test_legacy_relay.py",
+            "distribution/tests/test_publish.py",
+            "distribution/tests/test_unsigned_production.py",
+            "distribution/tests/test_windows_installer.py",
+            "distribution/update-public.pem",
+            "distribution/windows/LICENSE-velopack.txt",
+            "distribution/windows/Velopack.h",
+            "distribution/windows/bootstrap.cpp",
+            "distribution/windows/build_installer.py",
+            "distribution/windows/installer.nsi",
+            "distribution/windows/velopack_libc_win_x64_msvc.dll",
+            "landing/ASSET-SOURCES.md",
+            "landing/downloads.js",
+            "landing/downloads.json",
+            "landing/favicon.svg",
+            "landing/images/race.png",
+            "landing/index.html",
+            "landing/style.css",
+            "tools/qa.py",
+            "unity-prototype/Assets/Plugins/Velopack.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-newtonsoft.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-registry.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt",
+            "unity-prototype/Assets/Plugins/Velopack/LICENSE-velopack.txt.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Microsoft.Win32.Registry.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Newtonsoft.Json.dll.meta",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll",
+            "unity-prototype/Assets/Plugins/Velopack/Velopack.dll.meta",
+            "unity-prototype/Assets/Resources.meta",
+            "unity-prototype/Assets/StarRacing/Editor/PrototypeBuilder.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs.meta",
+            "unity-prototype/Assets/StarRacing/Runtime/RaceMenu.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs",
+            "unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs.meta"
+          ],
+          "scope": "full",
+          "scope_reason": "Desktop updater runtime, compile-time production catalog policy, packaging hooks and explicit menu consent span shared native initialization.",
+          "required": [
+            "tooling-regressions",
+            "openspec-strict",
+            "unity-compile-and-all-checks",
+            "fixture-equivalence"
+          ],
+          "broad_integration_if_affected": [
+            "menu-countdown-natural-AI-finish-Results-menu",
+            "repeat-pause",
+            "both-themes",
+            "recovery"
+          ],
+          "human_acceptance": "pending",
+          "deploy_authorized": true,
+          "deferred_player_gates": [
+            "native-build",
+            "affected-player-playtest"
+          ],
+          "player_gate_policy": "Explicit request or justified minimal QA build; no automatic build/deploy"
+        },
+        "command": [
+          "/Users/eaafonasev/Projects/star-racing-unsigned-production/tools/unity.sh",
+          "shared",
+          "-batchmode",
+          "-nographics",
+          "-quit",
+          "-executeMethod",
+          "StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence",
+          "-logFile",
+          "/Users/eaafonasev/Projects/star-racing-planning/evidence/unsigned-production-desktop-delivery/qa/editor-full-stable/editor.log"
+        ],
+        "exit": 0,
+        "wrapper_wall_seconds": 473.02195405960083,
+        "token": "92c37138-e712-48c7-a17b-b75f8a04cf55",
+        "profile": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+        "source_fingerprint": "3ba7f35f45e358f48fe98842f9da253b10ad1872cb40301cdcdf126c770973d4",
+        "success": false,
+        "remaining": [
+          "tooling-regressions",
+          "openspec-strict"
+        ],
+        "human_acceptance": false,
+        "suite": {
+          "token": "92c37138-e712-48c7-a17b-b75f8a04cf55",
+          "balanceHash": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
+          "utc": "",
+          "assertions": 450,
+          "rosterCases": 6,
+          "ghostAssertions": 25,
+          "methodSeconds": 19.670830799999997
+        },
+        "editor_checks_success": true,
+        "checks_success": true
+      }
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/star-tournament-planning/openspec/changes/async-lab-selection/evidence/unity/focused-editmode.OgdPya/editmode.xml",
+      "sha256": "b97fb7cb717ae07e55fd335f791a50b06c9b79d94f4ca70a52347282e4b6bf00",
+      "result": "Passed",
+      "duration": "391.1180246",
+      "cases": [
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.AsyncSelectionPreservesSnapshotsAndBlocksConcurrentMutation",
+          "seconds": "4.924892",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.AsyncWriteFailureLeavesSelectionAndHistoryIntact",
+          "seconds": "18.344381",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.AudioUpgradePreservesOldRevisionHashAndCustomCombatValues",
+          "seconds": "9.386514",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.AuditCleanupPreservesOldTechnicalAndModelOverridesAndBlocksNewChanges",
+          "seconds": "4.015175",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.AuthoringAndDiagnosticMetadataCannotBeSavedAsGameplayTuning",
+          "seconds": "0.057158",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CombinedPulseV1AndPaletteV2UpgradePreservesCustomHistory",
+          "seconds": "11.350709",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CompleteRegistryHasUniquePathsAndValidDefaults",
+          "seconds": "0.046296",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CorruptionIsPreservedAndCannotBeOverwritten",
+          "seconds": "0.043411",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CutterDamageUpgradePreservesHistoryAndRefreshesPublishedBaseline(False)",
+          "seconds": "6.855826",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CutterDamageUpgradePreservesHistoryAndRefreshesPublishedBaseline(True)",
+          "seconds": "6.700619",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CutterThicknessUpgradePreservesCustomHistoryAndUpdatesRelease",
+          "seconds": "23.206347",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.CutterThicknessUpgradeSelectsNewShippedRevision",
+          "seconds": "8.279325",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.DeathImpulseUpgradeKeepsCustomValuesAndOldHashes",
+          "seconds": "9.116769",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.DeathProfileUpgradePreservesPriorRevisionHashesAndCustomValues",
+          "seconds": "8.491684",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.DefaultDisplayPreservesLegacyHistoryAndUserNames",
+          "seconds": "6.816042",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.DescriptorMigrationRefreshesPreviouslyUsedValueIndex",
+          "seconds": "0.003097",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.DiscretePanelUpgradePreservesV2SurfaceTuningAndHistory",
+          "seconds": "11.179453",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.FootstepMixUpgradeKeepsCustomOldInterval",
+          "seconds": "8.745314",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.FootstepMixUpgradeRetunesOldDefaultAndPreservesHistory",
+          "seconds": "2.707391",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.GamepadAxesUpgradePreservesLegacyRevisionAndCustomSensitivity(False)",
+          "seconds": "7.564812",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.GamepadAxesUpgradePreservesLegacyRevisionAndCustomSensitivity(True)",
+          "seconds": "7.246250",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.GamepadUpgradePreservesAudioOnlyRevisionHash",
+          "seconds": "6.919212",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.IdentitySurfaceUpgradePreservesPaletteRevisionAndCustomColors",
+          "seconds": "10.408671",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.InvalidRangeStepAndCrossFieldDraftCannotSave",
+          "seconds": "0.198680",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.LegacyPlacementOverrideLoadsAndIsPreservedByNewGameplayRevision",
+          "seconds": "2.954428",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.LevelAuthoringIsExcludedWhileGameplayAndReadabilityRemainVisible",
+          "seconds": "0.021075",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.MigrationCacheSeparatesShippedMetadataAndKeepsDetachedHistoricalSnapshots",
+          "seconds": "32.111151",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.MovementAudioUpgradePreservesV11HistoryAndCustomMix(False)",
+          "seconds": "10.260658",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.MovementAudioUpgradePreservesV11HistoryAndCustomMix(True)",
+          "seconds": "10.310076",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.PaletteUpgradePreservesOldRevisionAndAllowsMetadataValidatedTuning",
+          "seconds": "11.672323",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.PreCutterHistoryAppendsDefaultsAndPreservesOriginalHash",
+          "seconds": "13.648839",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.ProtectedReleaseCannotBeDeletedAndLocalProfileDeletionReturnsToRelease",
+          "seconds": "0.819425",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.PulseEffectsAppendCompatibleRevisionAndKeepHistoricalHashAndRocketTuning",
+          "seconds": "22.662102",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.PulseV1RevisionMigratesLightMetadataWithoutChangingItsHashOrCustomValues",
+          "seconds": "24.790183",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.PulseV2VisibilityUpgradePreservesHistoryAndUsesSelectedScale",
+          "seconds": "24.907398",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.SaveFromOldBaseAppendsWithoutMutatingEarlierHashesAndRestarts",
+          "seconds": "5.391116",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.ScoreboardUpgradePreservesOldValuesAndHashes",
+          "seconds": "10.189743",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.SerializedPulseProfileUpgradesAtStartupAndPreservesTuning(1)",
+          "seconds": "0.002011",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.SerializedPulseProfileUpgradesAtStartupAndPreservesTuning(2)",
+          "seconds": "0.000947",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.SerializedV10ProfileGetsNewStepDefaultsWithoutOverwritingCustomInterval",
+          "seconds": "0.004065",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.ShotOriginDescriptorMigratesOldHistoryWithoutChangingSavedValues",
+          "seconds": "8.475821",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.TamperedSnapshotHashFailsWithoutDestroyingFile",
+          "seconds": "0.826627",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.TravelingRifleMigratesExactOldHistoryWithoutLosingRevisionOrTuning",
+          "seconds": "10.257585",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.TravelingRiflePreservesPrePulseVersionAndLoadsItsHistory",
+          "seconds": "16.229663",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.WeaponPickupUpgradePreservesPreviousReleaseAndUserHistory",
+          "seconds": "10.316513",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.DesignLabHistoryTests.WriteFailureLeavesSelectionAndExistingFileIntact",
+          "seconds": "2.224862",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.IncompleteProfileCopyKeepsTheExistingJsonFallback",
+          "seconds": "0.000929",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.RevisionCopyPreservesJsonNormalizationAndDetachesTheSnapshot",
+          "seconds": "0.002769",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.ShippedBundleCopyMatchesJsonRoundTripAndOwnsItsMetadataAndValues",
+          "seconds": "0.269193",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.ValidationDoesNotReuseAnIndexAfterMetadataChanges",
+          "seconds": "0.002010",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.ValidationKeepsTheFirstDuplicateDescriptorAndDiagnosticOrder",
+          "seconds": "0.000261",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.EditMode.LabSnapshotCopyTests.ValidationRetainsNullEntryDiagnostics",
+          "seconds": "0.000222",
+          "result": "Passed"
+        }
+      ]
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/star-tournament-planning/openspec/changes/automatic-update-button/evidence/post-merge-2026-10-08/focused-playmode.Hd34OD-playmode.xml",
+      "sha256": "34cd03c06543f10e3d3fd618d707cc3cb770318c29e784ce045eb3b9f4699319",
+      "result": "Passed",
+      "duration": "195.9684464",
+      "cases": [
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.FourPlayerMenuTests.FourGamepadsCanJoinStartPauseAndResumeWithoutMouse",
+          "seconds": "29.364292",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.FourPlayerMenuTests.FpsSettingPersistsAndKeepsSamplingWhilePaused",
+          "seconds": "0.706494",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.FourPlayerMenuTests.FramesStayWithAssignedSeatAndEdgesAreConsumedOnce",
+          "seconds": "0.005336",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.FourPlayerMenuTests.NewBotsConfirmDefaultDifficultyWithOneSubmit",
+          "seconds": "17.437707",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.DisconnectedSeatCannotResumeThroughTheOtherMenu",
+          "seconds": "18.697186",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.GamepadNavigationSubmitsOnlyItsOwnViewport",
+          "seconds": "18.409967",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.MatchDisplayConfirmationHasOneOwnerAndRollsBackOnClose",
+          "seconds": "18.261116",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.PersonalSettingsAndGlobalConfirmationStayScoped",
+          "seconds": "18.849433",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.SectionPreviewChangesOnlyItsOwnViewportWithoutSubmit",
+          "seconds": "18.346409",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.SettingsHaveIdenticalCapabilitiesAndHelpInEveryViewport",
+          "seconds": "18.646154",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.SplitScreenDrawsOneGlobalFpsCounter",
+          "seconds": "18.829316",
+          "result": "Passed"
+        },
+        {
+          "name": "StarTournament.ProvingGround.Tests.PlayMode.IndependentPauseMenuTests.TwoSeatMenusKeepOneFrozenMatchUntilTheLastCloses",
+          "seconds": "18.393764",
+          "result": "Passed"
+        }
+      ]
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/spacewars-planning/evidence/native-ai-openings-intelligence/o1/replay-cost-20261010/profile.json",
+      "sha256": "8ebc3339984d856f38ab88b55324c9163f23fcfdba6d7005554e09355852ecb5",
+      "data": {
+        "source_candidate": "a7b1a144",
+        "baseline_runtime": "0d9f1d4c identicalAssets31c8078a",
+        "metric": "exclusive Unity CPU-cost attribution of240 originalFalse replayticks315..555; same bytes lengths41824085",
+        "baseline_ms": {
+          "step": 3009.9815,
+          "capture": 5943.7465,
+          "compare": 26492.602,
+          "projection": 55.4147
+        },
+        "optimized_ms": {
+          "step": 2763.8422,
+          "capture": 2119.2522,
+          "compare": 22596.7668,
+          "projection": 47.5656
+        },
+        "diagnostic_duration_s": [
+          37.335346,
+          29.252964
+        ],
+        "capture_reduction_percent": 64.34,
+        "limits": "one before/after sample; no product/performance acceptance; unchanged exact NUnit comparison dominates; diagnostic not gate",
+        "compatibility_tests": "7/7PASS",
+        "failure_before_measurement": "own harness reflection parameter count; no original gameplay test run; fixed",
+        "implementation": "single final authority envelope; block-copy digest suffix; bulk length-prefixed coverage retaining bounds",
+        "code": "a7b1a1447231949cb571c5f79e9f246b9d7728fc"
+      }
+    },
+    {
+      "path": "/Users/eaafonasev/Projects/spacewars-planning/evidence/native-ai-openings-intelligence/o1/replay-cost-20261010/gates/qualification.json",
+      "sha256": "8653ec34b9bb6dd09825f85f977c8a5e805087f725c0d980857791e0413568e1",
+      "data": {
+        "source": "cac959cd26ed5000410207b8e06ab0ef45ace1fc",
+        "integrated": false,
+        "EditMode": {
+          "counts": {
+            "id": "2",
+            "testcasecount": "458",
+            "result": "Failed(Child)",
+            "total": "458",
+            "passed": "456",
+            "failed": "2",
+            "inconclusive": "0",
+            "skipped": "0",
+            "asserts": "0",
+            "engine-version": "3.5.0.0",
+            "clr-version": "4.0.30319.42000",
+            "start-time": "2026-10-10 05:29:45Z",
+            "end-time": "2026-10-10 06:12:02Z",
+            "duration": "2537.437974"
+          },
+          "identities_exact": true,
+          "failed": [
+            {
+              "name": "Spacewars.Tests.EditMode.NativeAiArmyTests.Retreat_ActualVisibleThreatCompletesNativeArrivalRecoveryAndReplay(False)",
+              "duration": "201.516791",
+              "message": "Timeout value of 180000 ms was exceeded. If this is intended, increase the timeout value using a TimeoutAttribute."
+            },
+            {
+              "name": "Spacewars.Tests.EditMode.PlayableWorldRestoreTests.IndependentBytesReconstructWithoutGenesisAndContinueEveryTick(True)",
+              "duration": "215.564860",
+              "message": "Timeout value of 180000 ms was exceeded. If this is intended, increase the timeout value using a TimeoutAttribute."
+            }
+          ]
+        },
+        "PlayMode": {
+          "path": "/Users/eaafonasev/.codex/worktrees/5376/spacewars/.local/qa/focused-bzeqwi2h/playmode.xml",
+          "sha256": "418de59e49d25f2d897769cef56f7eca4a2101a628992553eaa04ea34af4b8d5",
+          "counts": {
+            "id": "2",
+            "testcasecount": "21",
+            "result": "Passed",
+            "total": "21",
+            "passed": "21",
+            "failed": "0",
+            "inconclusive": "0",
+            "skipped": "0",
+            "asserts": "0",
+            "engine-version": "3.5.0.0",
+            "clr-version": "4.0.30319.42000",
+            "start-time": "2026-10-10 06:14:32Z",
+            "end-time": "2026-10-10 06:15:54Z",
+            "duration": "81.7596034"
+          },
+          "identities_exact": true,
+          "method_multiplicity_exact": true,
+          "classes_exact": true,
+          "cases": [
+            {
+              "name": "NativeLobbyUiTests.BackPreservesDraftAndOnlySwitchesMenu",
+              "duration": "4.905567",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.ControllerGlyphsCentreLettersAndStartLaunchesOnlyReadyLobby",
+              "duration": "5.026991",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.EditableRosterUsesPressedDeviceAndCapturesApprovedStates",
+              "duration": "9.693294",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.FoundryStartsThroughLobbyAndRestartsAllSixOwners",
+              "duration": "14.425703",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.InstalledMenuOpensLobbyAndRetainsUpdateOnReturn",
+              "duration": "4.633557",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.LobbyDropdownsFitTheirViewportWithoutScrollbarControls",
+              "duration": "4.877936",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.LobbyIsRealSetupAndHasNoAuthority",
+              "duration": "4.615940",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.MouseJoinAddsKeyboardMouseSeatOnlyOnce",
+              "duration": "4.633213",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.NarrowLobbyKeepsLaunchAndFieldsInsideViewport",
+              "duration": "4.640784",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.OrdinarySessionBindsDifficultySeedGenesisResultAndRestart",
+              "duration": "5.512036",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.ParticipantInputsShareOneBaseline",
+              "duration": "4.707056",
+              "result": "Passed"
+            },
+            {
+              "name": "NativeLobbyUiTests.StandardAndCompactWindowSettingsDoNotOverlapDeviceAssignment",
+              "duration": "4.641736",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiRetreatNavigationTests.Retreat_ActualThreeCrossingsRampRouteChangesSurfaceHeightThroughPermittedTransition",
+              "duration": "0.055378",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.CommonServiceCaptureAndCombat",
+              "duration": "0.806052",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.OrdinaryOwnerAiCannotReplaceHumanHoldButHumanStopCan",
+              "duration": "2.556753",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.RealtimeRuntimeUsesSameRouteBarrier",
+              "duration": "0.352988",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.RestoredWorldAiUsesNativeRouteService",
+              "duration": "3.627730",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.RouteBarrier",
+              "duration": "0.865081",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.SameTankSolverAndExplicitFailure",
+              "duration": "0.023371",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.ServiceRejectsForeignThread",
+              "duration": "0.017832",
+              "result": "Passed"
+            },
+            {
+              "name": "Spacewars.Tests.PlayMode.NativeAiSchedulerTests.SharedTick",
+              "duration": "1.105389",
+              "result": "Passed"
+            }
+          ]
+        },
+        "status": "Failed technical gate; no merge, no contract weakening",
+        "build_deploy": "NotRun; no build needed/authorized",
+        "human_acceptance": "Not recorded"
+      }
+    }
+  ]
+}

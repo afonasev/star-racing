@@ -4,6 +4,20 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 project_dir="$repo_dir/unity-prototype"
 runner=${UNITY_RUNNER:-$HOME/.local/bin/unity-run}
 editor=${UNITY_EDITOR:-/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity}
+# Aggregate suites must never become an implicit gate, including production routes.
+previous=
+for argument in "$@"; do
+  if [ "$previous" = -executeMethod ]; then
+    case "$argument" in
+      StarRacingPrototype.PrototypeChecks.Run|StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence)
+        [ "${STAR_RACING_CONFIRM_FULL_TESTS:-}" = yes ] || {
+          echo "Full tests require separate human confirmation (STAR_RACING_CONFIRM_FULL_TESTS=yes)" >&2
+          exit 2
+        } ;;
+    esac
+  fi
+  previous=$argument
+done
 [ -x "$runner" ] || { echo "Install ~/.local/share/unity-run/install.sh first" >&2; exit 2; }
 case "${1:-}" in
   shared|exclusive)

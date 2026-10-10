@@ -12,6 +12,8 @@ namespace StarRacingPrototype {
         Mesh cube, sphere;
         MeshRenderer roadRenderer;
         bool roadRendererOriginalEnabled;
+        MeshRenderer railRenderer;
+        bool railRendererOriginalEnabled;
         public EnvironmentPlan Plan { get; private set; }
         public int LampCount { get; private set; }
         public struct LampPlacement { public float distance; public int side; public Vector3 basePoint; }
@@ -25,6 +27,7 @@ namespace StarRacingPrototype {
             root = new GameObject("Track environment " + Plan.theme);
             cube = CreateCube(); sphere = CreateSphere(12, 16);
             BuildRoadDistricts(route, roadRoot);
+            BuildRailSurfaces(roadRoot);
             if (Plan.theme == "cloud-city") BuildCity(route);
             else BuildSpace(route);
             Sky = new TrackSky(Plan, route, root.transform);
@@ -34,6 +37,8 @@ namespace StarRacingPrototype {
         public void Clear() {
             Sky?.Clear(); Sky = null;
             if (roadRenderer != null) roadRenderer.enabled = roadRendererOriginalEnabled;
+            if (railRenderer != null) railRenderer.enabled = railRendererOriginalEnabled;
+            railRenderer = null;
             roadRenderer = null;
             roadRendererOriginalEnabled = false;
             if (root != null) { root.SetActive(false); Dispose(root); root = null; }
@@ -102,19 +107,7 @@ namespace StarRacingPrototype {
             var source = sourceFilter.sharedMesh;
             var surface = sourceFilter.GetComponent<TrackSurface>();
             if (surface == null || surface.triangleSamples.Length != source.triangles.Length / 3) return;
-            var groups = new[] { new List<int>(), new List<int>(), new List<int>(),
-                                 new List<int>(), new List<int>(), new List<int>() };
             var triangles = source.triangles;
-            for (int face = 0; face < surface.triangleSamples.Length; face++) {
-                int sample = Mathf.Clamp(surface.triangleSamples[face], 0, route.Samples.Length - 1);
-                float distance = route.Samples[sample].distance;
-                int district = Plan.District(distance);
-                // A darker 5 m band every 20 m gives broad panel seams without coplanar decals.
-                int material = district * 2 + (Mathf.FloorToInt(distance / 5f) % 4 == 0 ? 1 : 0);
-                groups[material].Add(triangles[face * 3]);
-                groups[material].Add(triangles[face * 3 + 1]);
-                groups[material].Add(triangles[face * 3 + 2]);
-            }
             var visual = new Mesh { name = "Environment road visual", indexFormat = source.indexFormat };
             visual.vertices = source.vertices;
             visual.normals = source.normals;
@@ -129,34 +122,54 @@ namespace StarRacingPrototype {
                 uv[at + 3] = new Vector2(face.rightEnd / 8f, face.endDistance / 8f);
             }
             visual.uv = uv;
-            visual.subMeshCount = groups.Length;
-            for (int i = 0; i < groups.Length; i++) visual.SetTriangles(groups[i], i);
+            visual.triangles = triangles;
             visual.RecalculateBounds(); meshes.Add(visual);
-            bool space = Plan.theme == "space-station";
-            Material[] palette = space
-                ? new[] { Lit(new Color(.24f, .34f, .44f), .65f), Lit(new Color(.16f, .25f, .33f), .65f),
-                          Lit(new Color(.36f, .45f, .51f), .65f), Lit(new Color(.24f, .32f, .38f), .65f),
-                          Lit(new Color(.095f, .13f, .2f), .55f), Lit(new Color(.055f, .085f, .14f), .55f) }
-                : new[] { Lit(new Color(.52f, .63f, .72f), .45f), Lit(new Color(.39f, .51f, .62f), .45f),
-                          Lit(new Color(.81f, .86f, .88f), .38f), Lit(new Color(.65f, .72f, .76f), .38f),
-                          Lit(new Color(.19f, .26f, .34f), .45f), Lit(new Color(.12f, .17f, .23f), .45f) };
-            foreach (var material in palette) {
-                material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/Road");
-                material.SetFloat("_Smoothness", .22f);
-                // Neutral albedo supplies the detail; district tint keeps the existing themes readable.
-                Color tint = material.color;
-                tint = Color.Lerp(tint, space ? new Color(.72f, .8f, .88f) : new Color(.91f, .95f, 1f), .65f);
-                material.color = tint; material.SetColor("_BaseColor", tint);
-            }
+            var material = SurfaceMaterial("RoadBlend", false);
+            // UVs retain their certified /8 metre mapping; material ST maps the atlas.
+            material.mainTextureScale = new Vector2(8f / 32f, 8f / 288f);
             var road = new GameObject("Visual road districts"); road.transform.SetParent(root.transform, false);
             road.AddComponent<MeshFilter>().sharedMesh = visual;
-            road.AddComponent<MeshRenderer>().sharedMaterials = palette;
+            road.AddComponent<MeshRenderer>().sharedMaterial = material;
             roadRenderer = sourceFilter.GetComponent<MeshRenderer>();
             if (roadRenderer != null) {
                 roadRendererOriginalEnabled = roadRenderer.enabled;
                 roadRenderer.enabled = false;
             }
             // The copied render mesh has the exact original vertices and triangles. The collider stays on the original object.
+        }
+
+        Material SurfaceMaterial(string texture, bool rail) {
+            bool space = Plan.theme == "space-station";
+            Color tint = space ? new Color(.76f, .85f, .93f) : new Color(.95f, .97f, 1f);
+            // Separate metallic wall finish and neutral tint distinguish housings from the cool floor.
+            if (rail) tint = space ? new Color(.88f, .9f, .93f) : new Color(1f, .98f, .93f);
+            return Lit(tint, rail ? .6f : .32f, texture: texture, smoothness: rail ? .32f : .18f);
+        }
+
+        void BuildRailSurfaces(Transform roadRoot) {
+            MeshFilter source = null;
+            foreach (var filter in roadRoot.GetComponentsInChildren<MeshFilter>())
+                if (filter.sharedMesh != null && filter.sharedMesh.name == "Procedural guard rails") { source = filter; break; }
+            if (source == null) return;
+            // A render-only clone preserves both collider topology and TrackBuilder ownership.
+            var visual = Object.Instantiate(source.sharedMesh);
+            visual.name = "Environment rail visual"; meshes.Add(visual);
+            var uv = visual.uv;
+            // Each rail cell has two vertical quads followed by its narrow top quad.
+            // Keep the full top in the light cap instead of restarting at the dark base.
+            for (int i = 0; i < uv.Length; i++) if (i % 12 >= 8) uv[i].y = 1.3f / 4f * .95f;
+            visual.uv = uv;
+            var go = new GameObject("Visual rail surfaces"); go.transform.SetParent(root.transform, false);
+            go.AddComponent<MeshFilter>().sharedMesh = visual;
+            var material = SurfaceMaterial("RailBlend", true);
+            // Source UV x is distance/4; y is physical face width/4.
+            material.mainTextureScale = new Vector2(4f / 288f, 4f / 1.3f);
+            go.AddComponent<MeshRenderer>().sharedMaterial = material;
+            railRenderer = source.GetComponent<MeshRenderer>();
+            if (railRenderer != null) {
+                railRendererOriginalEnabled = railRenderer.enabled;
+                railRenderer.enabled = false;
+            }
         }
 
         void BuildCity(TrackRoute route) {

@@ -1,12 +1,65 @@
 #!/usr/bin/env python3
 """Package an exact Unity Mono Player; sign an immutable full-update description."""
-import argparse, base64, datetime, hashlib, json, os, re, shutil, subprocess, zipfile
+import argparse, base64, datetime, hashlib, json, os, re, shutil, subprocess, zipfile, struct
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
 def digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def windows_resource_script(icon, manifest):
+    def quoted(path):
+        return '"'+Path(path).resolve().as_posix().replace('"', '\\"')+'"'
+    # ID 1 / RT_MANIFEST (24) sets awareness before Velopack or Unity creates a window.
+    return '1 ICON '+quoted(icon)+'\n1 24 '+quoted(manifest)+'\n'
+
+
+def windows_manifest(executable):
+    """Read the process manifest from PE resources, not an incidental XML string."""
+    data=Path(executable).read_bytes()
+    try:
+        if data[:2]!=b'MZ':raise ValueError('Not a Windows PE executable')
+        pe=struct.unpack_from('<I',data,0x3c)[0]
+        if data[pe:pe+4]!=b'PE\0\0':raise ValueError('Invalid PE header')
+        count=struct.unpack_from('<H',data,pe+6)[0]
+        optional_size=struct.unpack_from('<H',data,pe+20)[0];optional=pe+24
+        magic=struct.unpack_from('<H',data,optional)[0]
+        if magic not in (0x10b,0x20b):raise ValueError('Unsupported PE optional header')
+        directory=optional+(112 if magic==0x20b else 96)
+        resource_rva=struct.unpack_from('<I',data,directory+16)[0]
+        sections=optional+optional_size
+        def offset(rva):
+            for i in range(count):
+                _,address,size,start=struct.unpack_from('<IIII',data,sections+i*40+8)
+                if address<=rva<address+size:return start+rva-address
+            raise ValueError('PE resource RVA is outside file-backed sections')
+        root=offset(resource_rva)
+        def entries(at):
+            named,ids=struct.unpack_from('<HH',data,at+12)
+            return [struct.unpack_from('<II',data,at+16+i*8) for i in range(named+ids)]
+        def child(at,key):
+            for ident,value in entries(at):
+                if ident==key and value&0x80000000:return root+(value&0x7fffffff)
+            raise ValueError('Windows bootstrap process manifest is missing')
+        languages=entries(child(child(root,24),1))
+        if not languages or languages[0][1]&0x80000000:raise ValueError('Invalid manifest language resource')
+        rva,size=struct.unpack_from('<II',data,root+languages[0][1])
+        start=offset(rva)
+        if start+size>len(data):raise ValueError('Truncated manifest resource')
+        return data[start:start+size]
+    except struct.error as error:
+        raise ValueError('Truncated Windows PE resource table') from error
+
+
+def validate_windows_dpi(executable):
+    manifest=ET.fromstring(windows_manifest(executable))
+    legacy=manifest.find('.//{http://schemas.microsoft.com/SMI/2005/WindowsSettings}dpiAware')
+    modern=manifest.find('.//{http://schemas.microsoft.com/SMI/2016/WindowsSettings}dpiAwareness')
+    if legacy is None or legacy.text!='true' or modern is None or modern.text!='PerMonitorV2, PerMonitor':
+        raise ValueError('Windows bootstrap must declare per-monitor DPI awareness')
 
 
 def prepare_installer(release,channel,version,defer_windows_installer=False,makensis='makensis'):
@@ -79,9 +132,10 @@ def main():
         with zipfile.ZipFile(native_zip) as z:
             lib=payload/'velopack.dll.lib';lib.write_bytes(z.read('lib/velopack_libc_win_x64_msvc.dll.lib'))
         resource=payload/'icon.o'
-        rc=payload/'icon.rc';rc.write_text('1 ICON "'+(root/'icons/Star-Racing.ico').as_posix()+'"\n')
+        rc=payload/'icon.rc';rc.write_text(windows_resource_script(root/'icons/Star-Racing.ico',root/'windows/bootstrap.manifest'))
         subprocess.run([a.mingw.replace('g++','windres'),str(rc),str(resource)],check=True)
         subprocess.run([a.mingw,'-std=c++17','-O2','-static','-municode','-mwindows',str(root/'windows/bootstrap.cpp'),str(resource),str(lib),'-o',str(payload/exe)],check=True)
+        validate_windows_dpi(payload/exe)
         lib.unlink();rc.unlink();resource.unlink();shutil.copyfile(root/'windows/velopack_libc_win_x64_msvc.dll',payload/'velopack_libc.dll')
         # The vendor import library names velopack_libc.dll, irrespective of its
         # archive filename. Fail packaging if that required runtime is absent.

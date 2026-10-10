@@ -66,7 +66,7 @@ namespace StarRacingPrototype {
    }
    }
    // Real race rules: countdown, pause, checkpoints, natural crossings and finish window.
-   var session=new RaceSession(0,100,8);var observations=new RaceObservation[8];for(int i=0;i<8;i++)observations[i]=new RaceObservation(0);session.Reset(observations);session.Begin();session.Tick(3,observations);Require(session.Phase==RacePhase.Racing,"countdown");session.Paused=true;session.Tick(2,observations);Require(session.Elapsed==0,"pause advances clock");session.Paused=false;
+   var session=new RaceSession(0,100,8,1);var observations=new RaceObservation[8];for(int i=0;i<8;i++)observations[i]=new RaceObservation(0);session.Reset(observations);session.Begin();session.Tick(3,observations);Require(session.Phase==RacePhase.Racing,"countdown");session.Paused=true;session.Tick(2,observations);Require(session.Elapsed==0,"pause advances clock");session.Paused=false;
    for(int d=10;d<=100;d+=10){for(int i=0;i<8;i++)observations[i]=new RaceObservation(Mathf.Max(0,d-i));session.Tick(.2,observations);}Require(session.Racers[0].Finished&&!session.Racers[7].Finished,"crossing finish");session.Tick(11,observations);Require(session.Phase==RacePhase.Results,"finish window");session.Reset(observations);Require(session.Phase==RacePhase.Ready&&!session.Racers[0].Finished,"reset");
    var recovering=new RaceSession(0,100);recovering.Begin();recovering.Tick(3,new RaceObservation(0),new RaceObservation(0));
    recovering.Tick(.2,new RaceObservation(25),new RaceObservation(25));recovering.Tick(.2,new RaceObservation(45),new RaceObservation(45));

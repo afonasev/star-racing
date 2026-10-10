@@ -1,0 +1,38 @@
+{
+  "model": "Stable Audio 3",
+  "dit": "sm-music",
+  "decoder": "same-s",
+  "steps": 8,
+  "seconds": 48,
+  "cfg": 1.0,
+  "baseline": "24231df47ff7c16ccd6e8a05e47281809c4f172e",
+  "variants": [
+    {
+      "id": "01-cloudline",
+      "seed": 101001,
+      "prompt": "Instrumental main menu theme for a bright futuristic anti-gravity racing game, airy melodic electronica, clean spacious synth pads, sparkling arpeggios, warm rounded bass, understated steady electronic drums, optimistic sense of gliding above clouds, relaxed but forward moving at 108 BPM, polished game soundtrack, gentle memorable melody, consistent dynamics, no vocals, no dramatic drops, no aggressive distortion"
+    },
+    {
+      "id": "02-gridline",
+      "seed": 101002,
+      "prompt": "Instrumental futuristic arcade racing game main menu soundtrack, melodic restrained synthwave, pulsing warm analog synthesizer bass, bright shimmering arpeggios, memorable optimistic synth melody, crisp electronic drums at 116 BPM, clean glossy modern production, energetic anticipation of racing through a neon sky, steady relaxed groove, background music, no vocals, no heavy rock guitars, no big drops"
+    }
+  ],
+  "sha256": {
+    "01-cloudline.mp3": "db31eba96d5b4faaf05f47017cd4244a238c0b198ad80a16e351a7cd030f9b4b",
+    "02-gridline.wav": "43e54284d56cfbc6cfd74c2e67880be4b385987a919675984b5f1934f818ab2a",
+    "01-cloudline.wav": "7987bc2a9cb00cab408f6b334b4632261b01bf3b7c260192174e263333227329",
+    "02-gridline.mp3": "f587d2e0944aff0ad817c310a17893ea35f365feab8e98eb99e23e1200b0326b"
+  },
+  "selected": "01-cloudline",
+  "selection_source": "user message 2026-10-10: 1",
+  "loop": {
+    "resource": "Audio/menu-cloudline",
+    "path": "unity-prototype/Assets/StarRacing/Resources/Audio/menu-cloudline.wav",
+    "source": "01-cloudline.wav",
+    "crossfade_seconds": 2,
+    "duration_seconds": 46,
+    "constant_gain_db": -1.81,
+    "sha256": "8a7b3d9d2b015b9d25c20edb8c10d28d3fda1420280ed36ea2d247407b101931"
+  }
+}

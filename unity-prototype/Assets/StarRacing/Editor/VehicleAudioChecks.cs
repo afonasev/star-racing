@@ -21,16 +21,29 @@ namespace StarRacingPrototype {
    Require(RaceAudioPolicy.ImpactGain(.2f)<RaceAudioPolicy.ImpactGain(.8f)&&RaceAudioPolicy.ImpactGain(1)<.8f,"impact severity/headroom");
    Require(!RaceAudioPolicy.ImpactReady(.1,0,1)&&RaceAudioPolicy.ImpactReady(.19,0,1)&&!RaceAudioPolicy.ImpactReady(.19,0,.1f),"strong after weak and shared minimum gap");
    Require(RaceAudioPolicy.Policy(RaceSound.Finish).Priority>RaceAudioPolicy.Policy(RaceSound.BarrierImpact).Priority,"impact cannot evict finish");
-   foreach(int humans in new[]{1,4})Require(RaceAudioPolicy.EngineGain(0,0)*RaceAudioPolicy.EngineMixScale(humans,8-humans)>RaceAudioPolicy.EngineVoiceThreshold,"idle human starts with full roster "+humans);
+   foreach(int humans in new[]{1,4}){
+    var voices=new EngineMixVoice[8];var targets=new float[8];for(int i=0;i<8;i++)voices[i]=new EngineMixVoice(0,0,0,i<humans,i<humans?1:.42f);
+    EngineMixPolicy.Targets(voices,targets);Require(targets[0]>RaceAudioPolicy.EngineVoiceThreshold,"idle human starts with full roster "+humans);
+   }
    float full=RaceAudioPolicy.Smooth(0,1,.1f,.05f,.12f),half=RaceAudioPolicy.Smooth(0,1,.05f,.05f,.12f);
    Require(Math.Abs(full-RaceAudioPolicy.Smooth(half,1,.05f,.05f,.12f))<.00001,"frame-independent envelope");
    foreach(int rate in new[]{44100,48000}){
+    var monoDsp=new EngineAudioDsp(rate,0);var stereoDsp=new EngineAudioDsp(rate,0);
+    monoDsp.Set(40,.6f,true,.2f);stereoDsp.Set(40,.6f,true,.2f);
+    var mono=new float[512];var stereo=new float[1024];monoDsp.Render(mono);stereoDsp.RenderInterleaved(stereo,2);
+    bool identical=true;for(int n=0;n<mono.Length;n++)identical&=mono[n]==stereo[n*2]&&mono[n]==stereo[n*2+1];
+    Require(identical,"stereo keeps pitch and duplicates mono exactly "+rate);
+    long stereoBefore=GC.GetAllocatedBytesForCurrentThread();stereoDsp.RenderInterleaved(stereo,2);
+    Require(GC.GetAllocatedBytesForCurrentThread()==stereoBefore,"stereo callback allocation "+rate);
     // Publish a one-frame boost followed by release before the next PCM block.
     var envelope=new ExhaustEnvelope();var tapped=new EngineAudioDsp(rate,0);var idle=new EngineAudioDsp(rate,0);
     tapped.SetPresentation(30,1,0,.2f);idle.SetPresentation(30,1,0,.2f);
     var warmTap=new float[rate];var warmIdle=new float[rate];tapped.Render(warmTap);idle.Render(warmIdle);
-    envelope.Step(1,true,true,1f/240);envelope.Step(0,false,true,1f/60);
-    tapped.SetPresentation(30,envelope.GasSignal,envelope.NitroSignal,.2f);idle.SetPresentation(30,envelope.GasSignal,0,.2f);
+    envelope.Step(1,true,true,1f/240);
+    Require(envelope.GasAudioSignal==1,"gas tap uses control strength not flame length "+rate);
+    Require(envelope.NitroAudioSignal==1,"accepted nitro has full immediate target "+rate);
+    envelope.Step(0,false,true,1f/60);
+    tapped.SetPresentation(30,envelope.GasSignal,envelope.NitroAudioSignal,.2f);idle.SetPresentation(30,envelope.GasSignal,0,.2f);
     var shortTap=new float[rate/50];var noTap=new float[rate/50];tapped.Render(shortTap);idle.Render(noTap);
     Require(Energy(shortTap,true)>Energy(noTap,true)*1.2,"short tap reaches next PCM block "+rate);
     for(int frame=0;frame<120;frame++)envelope.Step(0,false,true,1f/60);
@@ -45,7 +58,7 @@ namespace StarRacingPrototype {
     long before=GC.GetAllocatedBytesForCurrentThread();a.Render(first);long allocated=GC.GetAllocatedBytesForCurrentThread()-before;
     Require(allocated==0,"DSP callback allocation");
     a.Set(60,1,true,0);var tail=new float[rate];a.Render(tail);a.Render(tail);Require(Energy(tail)<1e-8,"zero engine volume silences nitro "+rate);
-    double worst=0;for(int i=0;i<high.Length;i++)worst=Math.Max(worst,Math.Abs(high[i]*RaceAudioPolicy.EngineMixScale(4,4)*(4+4*.42f)));
+    double worst=0;for(int i=0;i<high.Length;i++)worst=Math.Max(worst,Math.Abs(high[i]*EngineMixPolicy.TotalBudget/.2f));
     Require(worst<.34,"maximum engine voice sum headroom");
    }
    var contacts=new DrivingContactPolicy();
@@ -58,7 +71,17 @@ namespace StarRacingPrototype {
    Require(Energy(tyre)*RaceAudioPolicy.SkidGain(.65f)>.02,"skid PCM is audible above original quiet recording");
    foreach(string key in new[]{"skid-race","vehicle-impact","barrier-impact"}){var pcm=Asset("sfx/"+key,out _);float peak=0;foreach(float x in pcm)peak=Math.Max(peak,Math.Abs(x));Require(peak>.45f&&peak<.7f,"effect source headroom "+key);}
    string output=Environment.GetEnvironmentVariable("STAR_RACING_AUDIO_PREVIEW");if(!string.IsNullOrEmpty(output))Preview(output);
+   string response=Environment.GetEnvironmentVariable("STAR_RACING_DRIVE_PREVIEW");if(!string.IsNullOrEmpty(response))ResponsePreview(response);
    Debug.Log("VEHICLE_AUDIO_CHECKS_OK assertions="+assertions+" rates=44100,48000 allocationFree silence nitro load contact");
+  }
+  static void ResponsePreview(string path){
+   const int rate=48000;var pcm=new float[rate*10];var block=new float[480];var dsp=new EngineAudioDsp(rate,0);
+   for(int n=0;n<pcm.Length;n+=block.Length){
+    float t=n/(float)rate,gas=t<1?0:t<3?.25f:t<6?1:t<7?0:1;
+    float speed=t<7?35:35+(t-7)*12;bool boost=t>=5&&t<6;
+    dsp.Set(speed,gas,boost,RaceAudioPolicy.EngineGain(speed,gas,boost));dsp.Render(block);Array.Copy(block,0,pcm,n,block.Length);
+   }
+   Directory.CreateDirectory(Path.GetDirectoryName(path));Wav(path,pcm,rate);
   }
   static float[] Asset(string key,out int rate){
    // Music is imported as Streaming, so GetData cannot read its PCM. Use the
@@ -104,16 +127,31 @@ namespace StarRacingPrototype {
    var car=Asset("sfx/vehicle-impact",out int carRate);var barrier=Asset("sfx/barrier-impact",out int barrierRate);
    Add(mix,car,carRate,rate,16,RaceAudioPolicy.ImpactGain(.2f),1.052f);Add(mix,barrier,barrierRate,rate,18,RaceAudioPolicy.ImpactGain(.85f),.961f);
   }
+  static float[] DemoMix(int humans,bool legacy){
+   const int rate=48000;var mix=new float[rate*24];var voices=new EngineMixVoice[8];var targets=new float[8];var gains=new float[8];var dsp=new EngineAudioDsp[8];var block=new float[480];
+   for(int i=0;i<8;i++)dsp[i]=new EngineAudioDsp(rate,i);
+   for(int n=0;n<mix.Length;n+=block.Length){
+    float t=n/(float)rate,speed=t<3?0:t<6?30:t<9?65:70,gas=t<3?.18f:t<6?.4f:t<21?1:0;
+    for(int i=0;i<8;i++){
+     bool local=i<humans;float throttle=local?((t>=3&&t<6&&i>0)?0:gas):gas*.8f;
+     float carSpeed=local?speed+(t>=12&&t<15?i*8:0):speed+i*3,boost=i==0&&t>=9&&t<12?1:0;
+     voices[i]=new EngineMixVoice(carSpeed,throttle,boost,local,local?(t>=12&&t<15?RaceAudioPolicy.SkidEngineDuck(.65f):1):.42f*RaceAudioPolicy.RivalGain(i*40));
+    }
+    if(legacy){float scale=1f/(humans+(8-humans)*.42f);for(int i=0;i<8;i++)targets[i]=Math.Min(.34f,RaceAudioPolicy.EngineGain(voices[i].Speed,voices[i].Throttle,voices[i].Boost>.001f)*voices[i].Presence)*scale;}
+    else EngineMixPolicy.Targets(voices,targets);
+    for(int i=0;i<8;i++)gains[i]=RaceAudioPolicy.Smooth(gains[i],targets[i],.01f,.055f,.12f);
+    if(!legacy)EngineMixPolicy.Limit(voices,gains);
+    for(int i=0;i<8;i++){dsp[i].SetPresentation(voices[i].Speed,voices[i].Throttle,voices[i].Boost,gains[i]);dsp[i].Render(block);for(int j=0;j<block.Length;j++)mix[n+j]+=block[j];}
+   }
+   Effects(mix,rate);var wind=Asset("sfx/wind-loop",out int windRate);Add(mix,wind,windRate,rate,6,.1f,1,18);
+   var music=Asset("music/city-loop",out int musicRate);Add(mix,music,musicRate,rate,0,RaceAudioPolicy.MusicGain/AssetGain("music/city-loop"),1,24);return mix;
+  }
   static void Preview(string output){
-   Directory.CreateDirectory(output);const int rate=48000,seconds=24;
-   var engine=Demo(0,1,true);Wav(Path.Combine(output,"engine-nitro.wav"),engine,rate);
-   var mix=(float[])engine.Clone();Effects(mix,rate);Wav(Path.Combine(output,"vehicle-demo.wav"),mix,rate);
-   mix=Demo(0,RaceAudioPolicy.EngineMixScale(1,7),true);
-   for(int index=1;index<8;index++){var rival=Demo(index,RaceAudioPolicy.EngineMixScale(1,7),false);for(int n=0;n<mix.Length;n++)mix[n]+=rival[n];}
-   Effects(mix,rate);
-   var wind=Asset("sfx/wind-loop",out int windRate);Add(mix,wind,windRate,rate,6,.1f,1,18);
-   var music=Asset("music/city-loop",out int musicRate);Add(mix,music,musicRate,rate,0,RaceAudioPolicy.MusicGain/AssetGain("music/city-loop"),1,seconds);Wav(Path.Combine(output,"race-mix-demo.wav"),mix,rate);
-   File.WriteAllText(Path.Combine(output,"preview.txt"),"PCM from actual EngineAudioDsp + shipping clips; not Player acceptance. Race-mix: 1 human + 7 rivals, manifest gain, engine normalization, full sliders. Scripted demo uses steady effect segments with edge fades, not driving QA.\n0–3 idle; 3–6 partial throttle; 6–9 full/high speed; 9–12 nitro; 12–15 skid; 16 light vehicle impact; 18 strong barrier impact; 21–24 throttle release.\n");
+   Directory.CreateDirectory(output);const int rate=48000;
+   Wav(Path.Combine(output,"race-mix-1-player.wav"),DemoMix(1,false),rate);
+   Wav(Path.Combine(output,"race-mix-4-players.wav"),DemoMix(4,false),rate);
+   Wav(Path.Combine(output,"race-mix-4-players-before.wav"),DemoMix(4,true),rate);
+   File.WriteAllText(Path.Combine(output,"preview.txt"),"Actual EngineAudioDsp + shipping clips, old/new EngineMixPolicy. Scripted PCM, not Player or listening acceptance. Same music/effects/slider levels in both variants. 0-3 idle; 3-6 only first human partial gas; 6-9 all full/high speed; 9-12 first human nitro; 12-15 different human speeds + skid; 16 light vehicle impact; 18 strong barrier impact; 21-24 gas release.\n");
   }
  }
 }

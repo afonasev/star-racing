@@ -12,12 +12,18 @@ namespace StarRacingPrototype {
         public static void BuildCheckedMac() { Run(); PrototypeBuilder.BuildMac(); }
 
         public static void Run() {
-            foreach (var name in new[] { "Road", "Hull", "Facade" }) {
+            foreach (var name in new[] { "Road", "Hull", "Facade", "RoadCeramic", "RoadPanels", "RoadRibbed", "RailCeramic", "RailPanels", "RailRibbed", "RoadBlend", "RailBlend" }) {
                 var texture = Resources.Load<Texture2D>("Environment/Textures/" + name);
                 Check(texture != null, "missing " + name);
-                Check(texture.width <= 1024 && texture.height <= 1024 && texture.mipmapCount > 1,
-                    "texture budget/mips " + name);
-                Check(texture.wrapMode == TextureWrapMode.Repeat && texture.anisoLevel == 8 && !texture.isReadable,
+                bool atlas = name == "RoadBlend" || name == "RailBlend";
+                bool withinBudget = name == "RoadBlend" ? texture.width == 1024 && texture.height == 8192 :
+                    name == "RailBlend" ? texture.width == 8192 && texture.height == 256 :
+                    texture.width <= 1024 && texture.height <= 1024;
+                Check(withinBudget && texture.mipmapCount > 1, "texture budget/mips " + name);
+                // 8192 texels / 288 m: seams have several texels, unlike the old 3.6 texels/m atlas.
+                if (atlas) Check(Mathf.Max(texture.width, texture.height) / 288f >= 28f,
+                    "longitudinal texel density " + name);
+                Check(texture.wrapMode == TextureWrapMode.Repeat && texture.anisoLevel == (atlas ? 16 : 8) && !texture.isReadable,
                     "import settings " + name);
             }
             foreach (var theme in new[] { "cloud-city", "space-station" }) {
@@ -32,6 +38,10 @@ namespace StarRacingPrototype {
                         var vertices = physical.vertices; var triangles = physical.triangles;
                         var normals = physical.normals;
                         var originalRenderer = surface.GetComponent<MeshRenderer>();
+                        var railSource = root.GetComponentsInChildren<MeshFilter>().Single(f => f.sharedMesh.name == "Procedural guard rails");
+                        var railPhysical = railSource.GetComponent<MeshCollider>().sharedMesh;
+                        var railVertices = railPhysical.vertices; var railTriangles = railPhysical.triangles;
+                        var originalRailRenderer = railSource.GetComponent<MeshRenderer>();
                         for (int cycle = 0; cycle < 2; cycle++) {
                             environment.Build(track.Route, root.transform);
                             Check(surface.GetComponent<MeshCollider>().sharedMesh == physical &&
@@ -45,6 +55,20 @@ namespace StarRacingPrototype {
                             Check(renderedTriangles.Length == triangles.Length &&
                                 renderedTriangles.OrderBy(i => i).SequenceEqual(triangles.OrderBy(i => i)),
                                 "visual/collision triangle inventory differs");
+                            var renderRail = environment.Root.GetComponentsInChildren<MeshFilter>().Single(f => f.sharedMesh.name == "Environment rail visual");
+                            Check(railSource.GetComponent<MeshCollider>().sharedMesh == railPhysical &&
+                                railPhysical.vertices.SequenceEqual(railVertices) && railPhysical.triangles.SequenceEqual(railTriangles), "rail collider changed");
+                            Check(renderRail.sharedMesh.vertices.SequenceEqual(railVertices) && renderRail.sharedMesh.triangles.SequenceEqual(railTriangles), "rail visual topology changed");
+                            Check(!originalRenderer.enabled && !originalRailRenderer.enabled, "duplicate original renderer");
+                            Check(renderRail.GetComponent<Collider>() == null, "visual rail has collider");
+                            var railMaterial = renderRail.GetComponent<Renderer>().sharedMaterial;
+                            var roadMaterial = environment.Root.GetComponentsInChildren<MeshRenderer>()
+                                .Single(r => r.GetComponent<MeshFilter>().sharedMesh == renderRoad).sharedMaterial;
+                            Check(railMaterial.mainTexture.name == "RailBlend", "rail blend not bound");
+                            Check(roadMaterial.mainTexture.name == "RoadBlend" &&
+                                roadMaterial != railMaterial && roadMaterial.mainTexture != railMaterial.mainTexture,
+                                "road and wall must use independent materials/textures");
+                            Check(renderRoad.subMeshCount == 1, "road draw pass proliferation");
                             var uv = renderRoad.uv;
                             Check(uv.Length == vertices.Length, "road has no complete UV map");
                             foreach (var face in surface.triangleFaces) {
@@ -70,7 +94,7 @@ namespace StarRacingPrototype {
                             }
                             var obsolete = environment.Root.gameObject;
                             environment.Clear();
-                            Check(obsolete == null && environment.Root == null && originalRenderer.enabled,
+                            Check(obsolete == null && environment.Root == null && originalRenderer.enabled && originalRailRenderer.enabled,
                                 "clear does not restore road/dispose environment");
                         }
                         Debug.Log("ENVIRONMENT_TEXTURE_THEME_OK " + theme + " seed=" + seed);

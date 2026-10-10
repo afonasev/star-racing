@@ -43,6 +43,21 @@ class UiRouteTests(unittest.TestCase):
             with self.assertRaises(SystemExit):qa.main()
             run.assert_not_called()
 
+    def test_unauthorized_full_and_unknown_scope_never_launch_unity(self):
+        for scope in ('full', 'review-required'):
+            with self.subTest(scope=scope), patch.object(qa, 'plan', return_value={'scope': scope}), \
+                 patch.object(qa.subprocess, 'run') as run, \
+                 patch('sys.argv', ['qa.py', 'checks', '--base', 'HEAD',
+                                    '--reason', 'production release', '--output', 'unused']), \
+                 contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    qa.main()
+                run.assert_not_called()
+
+    def test_unknown_scope_has_no_aggregate_method(self):
+        with self.assertRaises(ValueError):
+            qa.check_method('review-required')
+
     def test_visual_probe_has_no_full_game_call(self):
         source = (qa.REPO/'unity-prototype/Assets/StarRacing/Editor/RaceHudChecks.cs').read_text()
         self.assertNotIn('PrototypeChecks.',source)

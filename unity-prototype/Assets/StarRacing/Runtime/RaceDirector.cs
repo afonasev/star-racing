@@ -61,6 +61,7 @@ namespace StarRacingPrototype {
     var c=new GameObject("Camera "+(i+1)).AddComponent<Camera>();c.rect=new Rect(i*.5f,0,.5f,1);c.fieldOfView=65;c.nearClipPlane=.2f;c.farClipPlane=1800;
     c.backgroundColor=new Color(.018f,.027f,.06f);c.GetUniversalAdditionalCameraData().renderPostProcessing=true;
     cameras[i]=c.gameObject.AddComponent<ChaseCamera>();
+    c.gameObject.AddComponent<NitroEdgeBlur>().director=this;
    }
    sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.shadows=LightShadows.Soft;
    spaceFill=new GameObject("Space fill").AddComponent<Light>();spaceFill.type=LightType.Directional;spaceFill.shadows=LightShadows.None;
@@ -86,7 +87,7 @@ namespace StarRacingPrototype {
     int index=i;Cars[i].ContactObserved+=collision=>ObserveContact(index,collision);
     if(Balance!=null){Cars[i].Drive.ConfigureHandicap(e.Profile,Handicap);if(e.HumanSeat<0)Drivers[i]=new AiDriver(i,e.Profile,e.Seed,Balance);}
    }
-   Session=new RaceSession(Track.Route.StartDistance,Track.Route.FinishDistance,EntrantCount);
+   Session=new RaceSession(Track.Route.StartDistance,Track.Route.FinishDistance,EntrantCount,HumanCount);
    for(int i=0;i<4;i++){cameras[i].target=i<HumanCount?Cars[i]:null;cameras[i].enabled=i<HumanCount;cameras[i].GetComponent<Camera>().enabled=Started&&i<HumanCount;if(i<HumanCount)cameras[i].GetComponent<Camera>().rect=RaceViewports.For(HumanCount,i);}
   }
   void ApplyValues(LocalRaceConfig config){
@@ -118,7 +119,7 @@ namespace StarRacingPrototype {
      if(entrant.HumanSeat<0)drivers[i]=new AiDriver(i,entrant.Profile,entrant.Seed,Balance);
      int index=i;cars[i].ContactObserved+=collision=>ObserveContact(index,collision);seen[i]=new RaceObservation(distances[i],cars[i].PositionRevision,true);
     }
-    var session=new RaceSession(route.StartDistance,route.FinishDistance,count);session.Reset(seen);
+    var session=new RaceSession(route.StartDistance,route.FinishDistance,count,humans);session.Reset(seen);
     var timers=new float[count];var revisions=new int[count];for(int i=0;i<count;i++){timers[i]=i<humans?0:AiDecisionInterval*(i-humans)/Mathf.Max(1,count-humans);revisions[i]=cars[i].PositionRevision;}
     var world=new AiWorldSnapshot(count);var contacts=new DrivingContactObservation[count];var policy=new DrivingContactPolicy();
     var times=new double[count];var commands=new DrivingInput[count];
@@ -153,7 +154,7 @@ namespace StarRacingPrototype {
    Session.Reset(observations);for(int i=0;i<4;i++){cameras[i].GetComponent<Camera>().enabled=start&&i<HumanCount;if(i<HumanCount)cameras[i].Snap();}
    if(start){Session.Begin();Input.PrepareStart();}
   }
-  public void SetPaused(bool paused){Track.TireMarks?.BreakAll();if(!paused)GetComponent<RaceMenu>()?.ResetPauseSettings();Paused=paused;Time.timeScale=paused?0:1;Input.Block();Session.Paused=paused;}
+  public void SetPaused(bool paused){Track.TireMarks?.BreakAll();if(!paused)GetComponent<RaceMenu>()?.ResetPauseSettings();Paused=paused;Time.timeScale=paused?0:1;if(paused)foreach(var camera in cameras)camera?.GetComponent<NitroEdgeBlur>()?.ResetEffect();Input.Block();Session.Paused=paused;}
   public bool ExitToMenu(){if(!Started||(!Paused&&Session.Phase!=RacePhase.Results))return false;Restart(false);GetComponent<RaceMenu>()?.Open(RaceMenuScreen.LocalSetup);return true;}
   public void StartRace(){
    if(Balance==null)return;

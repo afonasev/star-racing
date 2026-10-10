@@ -10,7 +10,7 @@ namespace StarRacingPrototype {
  public static class RaceAudioPolicy {
   public const int MaxEngines=8, MaxOneShots=4;
   public const float EngineVoiceThreshold=.0005f;
-  public const float AudibleRivalDistance=480, MusicGain=.26f, CountdownDuck=.22f;
+  public const float AudibleRivalDistance=480, MusicGain=.13f, CountdownDuck=.22f;
   public static readonly string[] Music={"city-loop","technological-messup","zenostar","revelation","electronic-loop"};
   public static float Clamp(float value,float lo=0,float hi=1)=>Math.Max(lo,Math.Min(hi,value));
   public static float EngineFrequency(float speed,float throttle){
@@ -19,7 +19,6 @@ namespace StarRacingPrototype {
    return 44+rpmSpeed*.65f+Clamp(throttle)*(18+rpmSpeed*2.1f);
   }
   public static float EngineGain(float speed,float throttle,bool nitro=false){float normalized=Clamp(speed/75);return (.035f+normalized*.18f+normalized*normalized*.07f)*(.3f+Clamp(throttle)*.7f)*(nitro?1.12f:1);}
-  public static float EngineMixScale(int humans,int rivals)=>1/(Math.Max(1,humans)+Math.Max(0,rivals)*.42f);
   public static float SkidEngineDuck(float intensity)=>1-Clamp(intensity)*.3f;
   public static float Smooth(float current,float target,float delta,float attack,float release)=>current+(target-current)*(1-(float)Math.Exp(-Math.Max(0,delta)/(target>current?attack:release)));
   public static float ImpactGain(float strength)=>.22f+.5f*(float)Math.Sqrt(Clamp(strength));

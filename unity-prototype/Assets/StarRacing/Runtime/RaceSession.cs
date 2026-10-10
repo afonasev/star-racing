@@ -31,14 +31,18 @@ namespace StarRacingPrototype {
         public bool Paused { get; set; }
         public double Elapsed { get; private set; }
         public double Countdown { get; private set; } = 3;
-        public double Remaining => firstFinish < 0 ? 10 : Math.Max(0, firstFinish + 10 - Elapsed);
+        public double Remaining => resultsAt < 0 ? 3 : Math.Max(0, resultsAt - Elapsed);
         public float RaceLength => finish - start;
         readonly float start, finish;
-        double firstFinish = -1;
+        readonly int humanCount;
+        double resultsAt = -1;
+        int humanFinishCount;
         int finishCount;
 
-        public RaceSession(float start, float finish, int count=2) {
+        public RaceSession(float start, float finish, int count=2, int humans=-1) {
             if(count<1||count>64)throw new ArgumentOutOfRangeException(nameof(count));
+            humanCount = humans < 0 ? count : humans;
+            if (humanCount < 1 || humanCount > count) throw new ArgumentOutOfRangeException(nameof(humans));
             Racers=new Racer[count];candidates=new double[count];
             if (finish <= start) throw new ArgumentException("Finish must follow start");
             this.start = start; this.finish = finish;
@@ -48,7 +52,7 @@ namespace StarRacingPrototype {
         public void Reset(RaceObservation[] observations) {
             if(observations.Length!=Racers.Length)throw new ArgumentException("Roster observation count");
             Phase = RacePhase.Ready; Paused = false; Elapsed = 0; Countdown = 3;
-            firstFinish = -1; finishCount = 0;
+            resultsAt = -1; humanFinishCount = 0; finishCount = 0;
             for (int i = 0; i < Racers.Length; i++) {
                 var o = observations[i];
                 Racers[i] = new Racer { previous = o.distance, revision = o.revision, valid = o.valid, Progress=Math.Max(0,Math.Min(o.distance-start,RaceLength)), nextGate = Math.Min(start + (float)(Math.Floor(Math.Max(0,o.distance-start)/50)+1)*50, finish) };
@@ -66,7 +70,7 @@ namespace StarRacingPrototype {
                 return;
             }
             double end = Elapsed + dt;
-            if (firstFinish >= 0) end = Math.Min(end, firstFinish + 10);
+            if (resultsAt >= 0) end = Math.Min(end, resultsAt);
             double step = end - Elapsed;
             for(int i=0;i<Racers.Length;i++)candidates[i]=Observe(i,observations[i],step,dt);
             for(int j=0;j<Racers.Length;j++) {
@@ -74,9 +78,9 @@ namespace StarRacingPrototype {
                 for(int i=0;i<candidates.Length;i++)if(candidates[i]>=0 && candidates[i]<earliest){next=i;earliest=candidates[i];}
                 if(next<0)break;Finish(next,earliest);candidates[next]=-1;
             }
-            Elapsed = firstFinish >= 0 ? Math.Min(end, firstFinish + 10) : end;
+            Elapsed = resultsAt >= 0 ? Math.Min(end, resultsAt) : end;
             Rank();
-            if (finishCount == Racers.Length || (firstFinish >= 0 && Elapsed >= firstFinish + 10 - .000001)) Phase = RacePhase.Results;
+            if (resultsAt >= 0 && Elapsed >= resultsAt - .000001) Phase = RacePhase.Results;
         }
         double Observe(int seat, RaceObservation o, double step, double dt) {
             var r = Racers[seat];
@@ -102,9 +106,12 @@ namespace StarRacingPrototype {
             return -1;
         }
         void Finish(int seat, double time) {
-            if (time < 0 || (firstFinish >= 0 && time > firstFinish + 10)) return;
+            if (time < 0 || (resultsAt >= 0 && time > resultsAt)) return;
             var r = Racers[seat]; r.FinishTime = time; r.Place = ++finishCount; r.Progress = RaceLength;
-            if (firstFinish < 0) { firstFinish = time; Phase = RacePhase.FinishWindow; }
+            // Roster stores local humans first, independently of their shuffled grid slots.
+            if (seat < humanCount && ++humanFinishCount == humanCount) {
+                resultsAt = time + 3; Phase = RacePhase.FinishWindow;
+            }
         }
         void Rank() {
             for (int i = 0; i < Racers.Length; i++) {

@@ -6,7 +6,10 @@ namespace StarRacingPrototype
     {
         float gasPulse,nitroPulse,pulseThrottle;
         public float GasSignal => GasLength;
+        public float GasAudioSignal => gasPulse > 0 ? pulseThrottle : 0;
         public float NitroSignal => NitroLength / 2.6f;
+        // Sound follows the accepted onset, never the slow growth of flame length.
+        public float NitroAudioSignal => NitroHold > 0 ? 1 : NitroSignal;
         public float GasHold { get; private set; }
         public float NitroHold { get; private set; }
         public float GasLength { get; private set; }

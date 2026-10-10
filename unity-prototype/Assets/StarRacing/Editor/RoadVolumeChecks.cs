@@ -448,7 +448,7 @@ namespace StarRacingPrototype
             foreach(var box in boxes)if(box!=chassis) {
                 Vector3 low=box.center-box.size*.5f,high=box.center+box.size*.5f;
                 for(int axis=0;axis<3;axis++)Check(low[axis]>=bounds.min[axis] && high[axis]<=bounds.max[axis],"CCD guard extends outside original chassis");
-                Check(box.enabled && !box.isTrigger && box.attachedRigidbody==car.Body && box.sharedMaterial==chassis.sharedMaterial && box.excludeLayers.value==((1<<MagneticVehicle.VehicleCollisionLayer)|(box.size.z==.02f?1<<TrackBuilder.RoadCollisionLayer:0)),"CCD guard/car pair contract");
+                Check(box.enabled && !box.isTrigger && box.attachedRigidbody==car.Body && box.sharedMaterial==chassis.sharedMaterial && box.excludeLayers.value==((1<<MagneticVehicle.VehicleCollisionLayer)|(1<<TrackBuilder.BarrierCollisionLayer)|(box.size.z==.02f?1<<TrackBuilder.RoadCollisionLayer:0)),"CCD guard/car pair contract");
             }
             Check(car.Body.mass==1000f && car.Body.centerOfMass.Equals(new Vector3(0,-.18f,0)) && car.Body.inertiaTensor.Equals(VehicleGeometry.BaselineInertia) && car.Body.inertiaTensorRotation.Equals(VehicleGeometry.BaselineInertiaRotation),"compound chassis changed mass/COM/inertia");
         }

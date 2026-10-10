@@ -8,8 +8,8 @@ namespace StarRacingPrototype {
   public static Rect View(int humans,int seat){var v=RaceViewports.For(humans,seat);return new Rect(v.x*Width,(1-v.yMax)*Height,v.width*Width,v.height*Height);}
   public static bool Right(int humans,int seat)=>humans>1&&(seat%2)==1;
   public static bool Top(int humans,int seat)=>humans>2&&seat<2;
-  public static Rect Instrument(int humans,int seat){var v=View(humans,seat);return new Rect(Right(humans,seat)?v.xMax-124:v.x+16,Top(humans,seat)?v.y+16:v.yMax-72,108,54);}
-  public static Rect Position(int humans,int seat){var v=View(humans,seat);return new Rect(Right(humans,seat)?v.x+14:v.xMax-80,v.y+12,66,26);}
+  public static Rect Instrument(int humans,int seat){var v=View(humans,seat);return new Rect(Right(humans,seat)?v.xMax-196:v.x+20,Top(humans,seat)?v.y+20:v.yMax-104,176,80);}
+  public static Rect Position(int humans,int seat){var v=View(humans,seat);return new Rect(Right(humans,seat)?v.x+14:v.xMax-118,v.y+16,104,40);}
   public static float Progress01(float progress,float length)=>length>0&&float.IsFinite(progress)?Mathf.Clamp01(progress/length):0;
   public static Vector2 Marker(float progress,float length)=>new Vector2(ProgressLine.x+Progress01(progress,length)*ProgressLine.width,ProgressLine.center.y);
  }

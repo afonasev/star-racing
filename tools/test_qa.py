@@ -13,15 +13,15 @@ class ScopeTests(unittest.TestCase):
         for path in UI_FILES:
             self.assertEqual(scope_for([path]), 'local-ui')
             self.assertEqual(scope_for([path + '.meta']), 'local-ui')
-            self.assertEqual(scope_for([path, 'unity-prototype/Assets/StarRacing/Runtime/MagneticVehicle.cs']), 'full')
+            self.assertEqual(scope_for([path, 'unity-prototype/Assets/StarRacing/Runtime/MagneticVehicle.cs']), 'review-required')
         self.assertEqual(check_method('local-ui'), 'StarRacingPrototype.RaceHudChecks.Run')
         self.assertNotIn('unity-compile-and-all-checks', GATES['local-ui'])
         self.assertNotIn('fixture-equivalence', GATES['local-ui'])
 
     def test_local(self):
         self.assertEqual(scope_for(['docs/qa.md']), 'documentation')
-        self.assertEqual(scope_for(['tools/qa.py', '.agents/references/qa-scope.md']), 'editor-checks')
-        self.assertEqual(scope_for(['unity-prototype/Assets/StarRacing/Editor/PrototypeChecks.cs']), 'editor-checks')
+        self.assertEqual(scope_for(['tools/qa.py', '.agents/references/qa-scope.md']), 'tooling')
+        self.assertEqual(scope_for(['unity-prototype/Assets/StarRacing/Editor/PrototypeChecks.cs']), 'review-required')
 
     def test_full_dependency_boundary(self):
         for path in ['unity-prototype/Assets/StarRacing/Runtime/RaceDirector.cs',
@@ -29,15 +29,15 @@ class ScopeTests(unittest.TestCase):
                      'unity-prototype/Assets/StarRacing/Resources/balance-config.json',
                      'tools/unity.sh', 'unity-prototype/Packages/manifest.json', 'README.md', '../tools/qa.py']:
             with self.subTest(path=path):
-                self.assertEqual(scope_for(['tools/qa.py', path]), 'full')
-        self.assertEqual(scope_for([]), 'full')
+                self.assertEqual(scope_for(['tools/qa.py', path]), 'review-required')
+        self.assertEqual(scope_for([]), 'review-required')
 
     def test_profile_semantics(self):
         before = {'commands': {'build': 'build'}, 'check_scopes': {'unity': 'full'}, 'deploy_authorized': False}
         after = json.loads(json.dumps(before))
         after['commands']['qa_plan'] = 'plan'
         self.assertTrue(local_profile_diff(before, after))
-        self.assertEqual(scope_for(['workflow/project.json']), 'full')
+        self.assertEqual(scope_for(['workflow/project.json']), 'review-required')
         self.assertEqual(scope_for(['workflow/project.json'], profile_safe=True), 'tooling')
         after['commands']['build'] = 'weakened'
         self.assertFalse(local_profile_diff(before, after))
@@ -45,7 +45,7 @@ class ScopeTests(unittest.TestCase):
         self.assertFalse(local_profile_diff(before, after))
 
     def test_rename_both_paths(self):
-        self.assertEqual(scope_for(['docs/qa.md', 'unity-prototype/Assets/StarRacing/Runtime/qa.md']), 'full')
+        self.assertEqual(scope_for(['docs/qa.md', 'unity-prototype/Assets/StarRacing/Runtime/qa.md']), 'review-required')
 
 class UiReceiptTests(unittest.TestCase):
     def test_complete_ui_receipt(self):

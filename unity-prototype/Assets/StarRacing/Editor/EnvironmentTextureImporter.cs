@@ -12,10 +12,12 @@ namespace StarRacingPrototype {
             importer.alphaSource = TextureImporterAlphaSource.None;
             importer.wrapMode = UnityEngine.TextureWrapMode.Repeat;
             importer.filterMode = UnityEngine.FilterMode.Trilinear;
-            importer.anisoLevel = 8;
+            // Long cyclic blend atlases need metre-scale texel density at grazing angles.
+            bool blendAtlas = assetPath.EndsWith("/RoadBlend.png") || assetPath.EndsWith("/RailBlend.png");
+            importer.anisoLevel = blendAtlas ? 16 : 8;
             importer.mipmapEnabled = true;
             importer.isReadable = false;
-            importer.maxTextureSize = 1024;
+            importer.maxTextureSize = blendAtlas ? 8192 : 1024;
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
         }
     }
