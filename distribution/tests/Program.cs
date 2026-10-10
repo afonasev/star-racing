@@ -36,4 +36,31 @@ try{await source.DownloadReleaseEntry(null,release.Asset,"unreachable",null);thr
 Require(ReleaseAuthentication.GithubPackage(release)=="https://github.com/afonasev/star-racing/releases/download/v0.2.1-test.2/racing-0.2.1-test.2-full.nupkg","authenticated GitHub mapping");
 Require(ReleaseAuthentication.IsReleaseRedirect(new Uri("https://release-assets.githubusercontent.com/github-production-release-asset/123/a?token=test")),"GitHub asset redirect");
 foreach(var url in new[]{"http://release-assets.githubusercontent.com/a","https://evil.invalid/a","https://release-assets.githubusercontent.com.evil.invalid/a","https://user@release-assets.githubusercontent.com/a","https://release-assets.githubusercontent.com:444/a"}) Require(!ReleaseAuthentication.IsReleaseRedirect(new Uri(url)),"reject redirect "+url);
+var production=(JObject)data.DeepClone();production["releaseTrack"]="production";production["version"]="0.3.0";production["fileName"]="racing-0.3.0-full.nupkg";production["url"]="https://github.com/afonasev/star-racing/releases/download/v0.3.0/racing-0.3.0-full.nupkg";production["unsignedProductionCatalog"]=true;
+DesktopRelease Unsigned(JObject obj,long min=1,string track="production")=>ReleaseAuthentication.VerifyUnsignedProduction(obj.ToString(),"tech.afonasev.star-racing.win-x64","win-x64",min,track);
+Reject(()=>Verify(production.ToString()),"unsigned passed to signed route");
+Reject(()=>Unsigned(production,1,"test"),"unsigned test route");
+#if STAR_RACING_UNSIGNED_PRODUCTION
+var unsignedRelease=Unsigned(production);Require(unsignedRelease.version=="0.3.0","unsigned production accepted with compiled opt-in");
+Reject(()=>Unsigned(production,3),"unsigned replay");
+foreach(var pair in new[]{("appId","foreign"),("channel","osx-universal"),("releaseTrack","test"),("version","0.3.0-test.1"),("url","https://evil.invalid/a"),("fileName","../racing-full.nupkg"),("sha256","abc")}){var other=(JObject)production.DeepClone();other[pair.Item1]=pair.Item2;Reject(()=>Unsigned(other),"unsigned "+pair.Item1);}
+foreach(var marker in new JToken[]{new JValue(false),new JValue("true"),JValue.CreateNull()}){var other=(JObject)production.DeepClone();other["unsignedProductionCatalog"]=marker;Reject(()=>Unsigned(other),"unsigned marker type");}
+string unsignedFile=Path.GetTempFileName();try{File.WriteAllBytes(unsignedFile,new byte[]{1,2,3});ReleaseAuthentication.VerifyFile(unsignedRelease,unsignedFile);assertions++;File.WriteAllBytes(unsignedFile,new byte[]{1,2,4});Reject(()=>ReleaseAuthentication.VerifyFile(unsignedRelease,unsignedFile),"unsigned cache tampering");}finally{File.Delete(unsignedFile);}
+#else
+Reject(()=>Unsigned(production),"unsigned rejected without compiled opt-in");
+#endif
 Console.WriteLine("UPDATE_CONTRACTS_OK "+assertions);
+
+if(args.Length==2&&args[0]=="--live-production"){
+ Directory.CreateDirectory(args[1]);
+ foreach(var platform in new[]{"win-x64","osx-universal"}){
+  using var live=new AuthenticatedUpdateSource("tech.afonasev.star-racing."+platform,platform,1,"production");
+  var feed=await live.GetReleaseFeed(null,"tech.afonasev.star-racing."+platform,platform);
+  Require(feed.Assets.Length==1,"live single full asset");live.DownloadConsent=true;
+  string downloaded=Path.Combine(args[1],platform+".nupkg");
+  try{await live.DownloadReleaseEntry(null,feed.Assets[0],downloaded,null);ReleaseAuthentication.VerifyFile(live.Release,downloaded);
+   File.WriteAllText(Path.Combine(args[1],platform+".json"),new JObject{["success"]=true,["version"]=live.Release.version,["size"]=live.Release.size,["sha256"]=live.Release.sha256,["url"]=live.Release.url,["descriptor"]=JObject.Parse(live.Envelope)}.ToString());
+   Console.WriteLine("LIVE_PRODUCTION_DOWNLOAD_OK "+platform+" "+live.Release.version);
+  }finally{if(File.Exists(downloaded))File.Delete(downloaded);}
+ }
+}

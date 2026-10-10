@@ -55,7 +55,7 @@ namespace StarRacingPrototype {
      typeof(RaceMenu).GetMethod("ChooseDevice",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(menu,new object[]{0});yield return Shot("03-device-modal");
      typeof(RaceMenu).GetMethod("ClosePopup",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(menu,null);
     }
-    int generation=director.RaceGeneration;menu.StartSelected();Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
+    int generation=director.RaceGeneration;menu.StartSelected();while(menu.Loading)yield return null;Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
     Check(director.HumanCount==humans&&director.Cars.Length==8,"applied-roster-"+humans);
     Check(director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0,"staged-road-inventory-"+humans);
     foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
@@ -78,7 +78,7 @@ namespace StarRacingPrototype {
     Check(!director.Started&&menu.ScreenState==RaceMenuScreen.LocalSetup&&director.TrackSeed==77&&menu.Selected.Seed!=77,"return-refreshes-draft-seed-"+humans);
    }
    // Run the unmodified AI and race rules to an actual crossing/finish window.
-   var last=menu.Selected;last.humans=1;last.devices=new[]{-2,-1,0,1};last.theme="cloud-city";last.entrants=8;last.seed="77";typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();
+   var last=menu.Selected;last.humans=1;last.devices=new[]{-2,-1,0,1};last.theme="cloud-city";last.entrants=8;last.seed="77";typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();while(menu.Loading)yield return null;
    Check(director.Started,"natural-race-start");float deadline=Time.realtimeSinceStartup+600,nextProgress=Time.realtimeSinceStartup;
    while(director.Session.Phase!=RacePhase.Results&&Time.realtimeSinceStartup<deadline){
     if(Time.realtimeSinceStartup>=nextProgress){float leader=0;foreach(var racer in director.Session.Racers)leader=Mathf.Max(leader,racer.Progress);Debug.Log("CLOUDLINE_NATURAL_PROGRESS elapsed="+director.Session.Elapsed+" leader="+leader+" length="+director.Session.RaceLength);nextProgress=Time.realtimeSinceStartup+15;}

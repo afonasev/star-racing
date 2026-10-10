@@ -9,6 +9,22 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def prepare_installer(release,channel,version,defer_windows_installer=False,makensis='makensis'):
+    if channel=='win-x64':
+        # Distribute the wizard; stock Setup would take ownership of HKCU ARP.
+        from windows.build_installer import build
+        sdk_setup=next(release.glob('*Setup.exe'))
+        portable=next(release.glob('*Portable.zip'))
+        sdk_setup.unlink() # Superseded one-click installer is not distributed.
+        if not defer_windows_installer:
+            wizard_output=release/('Star-Racing-'+version+'-Windows-Setup.exe')
+            wizard_identity=build(portable,wizard_output,makensis,version)
+            (release/'installer-policy.json').write_text(json.dumps(wizard_identity,indent=2)+'\n')
+    else:
+        setup=next(release.glob('*Setup.pkg'))
+        setup.rename(release/('Star-Racing-'+version+'-macOS-Setup.pkg'))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--track', choices=['production','test'], required=True)
@@ -81,18 +97,7 @@ def main():
     if a.channel=='win-x64':cmd+=['--runtime','win-x64','--icon',str(root/'icons/Star-Racing.ico')]
     else:cmd+=['--signAppIdentity','-'] # Ad-hoc seal, no Developer ID or notarization.
     subprocess.run(cmd,check=True,env=env)
-    if a.channel=='win-x64' and not a.defer_windows_installer:
-        # Distribute the wizard; stock Setup would take ownership of HKCU ARP.
-        from windows.build_installer import build
-        sdk_setup=next(release.glob('*Setup.exe'))
-        portable=next(release.glob('*Portable.zip'))
-        sdk_setup.unlink() # Superseded one-click installer is not distributed.
-        wizard_output=release/('Star-Racing-'+a.version+'-Windows-Setup.exe')
-        wizard_identity=build(portable,wizard_output,a.makensis,a.version)
-        (release/'installer-policy.json').write_text(json.dumps(wizard_identity,indent=2)+'\n')
-    else:
-        setup=next(release.glob('*Setup.pkg'))
-        setup.rename(release/('Star-Racing-'+a.version+'-macOS-Setup.pkg'))
+    prepare_installer(release,a.channel,a.version,a.defer_windows_installer,a.makensis)
     # Velopack mutates the final Mac bundle; preserve executable bits and ad-hoc signatures for ARM.
     # Portable zip from vpk is the canonical final installed bundle, not the original Unity build.
     feed=json.loads((release/('releases.'+a.channel+'.json')).read_text())

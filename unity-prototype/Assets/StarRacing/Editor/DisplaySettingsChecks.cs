@@ -21,5 +21,6 @@ namespace StarRacingPrototype {
     Debug.Log("DISPLAY_SETTINGS_CHECKS_OK assertions="+checks);
    }finally{if(had)PlayerPrefs.SetString(DisplaySettings.PreferenceKey,previous);else PlayerPrefs.DeleteKey(DisplaySettings.PreferenceKey);PlayerPrefs.Save();}
   }
+  public static void RunWithHud(){Run();RaceHudChecks.Run();}
  }
 }

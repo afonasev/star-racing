@@ -8,15 +8,16 @@ namespace StarRacingPrototype {
   public bool EditingTrackSeed=>GetComponent<RaceMenu>().EditingSeed;
   public void RefreshTrackSettings(){}
   void OnGUI(){
-   if(director==null||!director.Started||director.Session==null)return;
+   if(director==null||GetComponent<RaceMenu>().Loading||!director.Started||director.Session==null)return;
    var menu=GetComponent<RaceMenu>();menu.EnsureSkin();var ui=menu.Skin;
    bool results=director.Session.Phase==RacePhase.Results;
    bool settings=director.Paused&&menu.PauseSettings;
    if(results||settings)ui.Backdrop();var old=GUI.matrix;if(results)CloudlineSkin.Begin();else GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
    if(director.HumanCount==3&&!results&&!settings){CloudlineSkin.Box(new Rect(800,450,800,450),new Color(.91f,.95f,1),0);ui.Brand(new Rect(975,622,520,80),45);}
-   if(!results&&!settings){for(int seat=0;seat<director.HumanCount;seat++)DrawSeat(ui,seat);DrawProgress(ui);}
+   if(!results&&!settings&&!director.Paused){for(int seat=0;seat<director.HumanCount;seat++)DrawSeat(ui,seat);DrawProgress(ui);}
    if(results){menu.BeginOverlay("repeat",!wasResults);DrawResults(ui,menu);}
    else if(director.Paused){GUI.matrix=old;CloudlineSkin.Begin();menu.BeginOverlay("resume",!wasPaused);DrawPause(ui,menu);}
+   if(results||director.Paused)ui.Footer(!results&&!settings);
    if(!results&&!settings){var hudMatrix=GUI.matrix;GUI.matrix=hudMatrix*Matrix4x4.Translate(new Vector3(0,-124,0));menu.DrawFps();GUI.matrix=hudMatrix;}else menu.DrawFps();wasPaused=director.Paused;wasResults=results;GUI.matrix=old;
   }
   void DrawSeat(CloudlineSkin ui,int seat){
@@ -75,7 +76,7 @@ namespace StarRacingPrototype {
    ui.Text(new Rect(534,200,532,76),"Пауза",45,true);
    menu.OverlayButton("resume",new Rect(534,300,532,70),"Продолжить",director.StartRace,true,!director.Input.MissingDevice);
    menu.OverlayButton("settings",new Rect(534,388,532,70),"Настройки",menu.OpenPauseSettings);
-   menu.OverlayButton("restart",new Rect(534,476,532,70),"Повторить",()=>director.Restart(),false,!director.Input.MissingDevice);
+   menu.OverlayButton("restart",new Rect(534,476,532,70),"Повторить",menu.RepeatRace,false,!director.Input.MissingDevice);
    menu.OverlayButton("menu",new Rect(534,564,532,70),"В меню",()=>director.ExitToMenu());
    if(director.Input.MissingDevice)ui.Text(new Rect(534,650,532,56),"Подключите устройство или измените состав в меню.",17,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
   }
@@ -94,7 +95,7 @@ namespace StarRacingPrototype {
     string time=racer.Finished?TimeSpan.FromSeconds(racer.FinishTime).ToString(@"mm\:ss\.fff"):"DNF · "+Mathf.RoundToInt(racer.Progress/director.Session.RaceLength*100)+"%";
     ui.Text(new Rect(650,y,245,49),time,22,human>=0,color,TextAnchor.MiddleRight);
    }
-   GUI.EndScrollView();ui.Text(new Rect(338,710,920,24),"Список: выберите и нажмите ← / → · колесо мыши",14,menu.ResultsScrollFocused,menu.ResultsScrollFocused?CloudlineSkin.Blue:CloudlineSkin.Muted);menu.OverlayButton("repeat",new Rect(332,741,440,64),"Повторить",()=>director.Restart(),true,!director.Input.MissingDevice);
+   GUI.EndScrollView();ui.Text(new Rect(338,710,920,24),"Список: выберите и нажмите ← / → · колесо мыши",14,menu.ResultsScrollFocused,menu.ResultsScrollFocused?CloudlineSkin.Blue:CloudlineSkin.Muted);menu.OverlayButton("repeat",new Rect(332,741,440,64),"Повторить",menu.RepeatRace,true,!director.Input.MissingDevice);
    menu.OverlayButton("menu",new Rect(810,741,456,64),"В меню",()=>director.ExitToMenu());
   }
  }

@@ -69,8 +69,7 @@ namespace StarRacingPrototype {
      Application.runInBackground=true;
      hadPreference=PlayerPrefs.HasKey(LocalRaceConfig.PreferenceKey);preference=PlayerPrefs.GetString(LocalRaceConfig.PreferenceKey);restoring=true;
      for(int i=0;i<4;i++)pads[i]=InputSystem.AddDevice<Gamepad>();
-     director=UnityEngine.Object.FindAnyObjectByType<RaceDirector>();menu=director.GetComponent<RaceMenu>();Check(menu!=null,"race initialization provides menu");
-     var audio=director.GetComponent<RaceAudioCoordinator>();if(audio!=null)audio.enabled=false;AudioListener.volume=0;
+     director=null;menu=null;AudioListener.volume=0;
      state=Environment.GetEnvironmentVariable("STAR_RACING_HUD_RESULTS_ONLY")=="1"?6:0;humans=1;next=EditorApplication.timeSinceStartup+.8;deadline=EditorApplication.timeSinceStartup+150;
      EditorApplication.update+=Tick;
     }catch(Exception e){Fail(e);}
@@ -89,12 +88,14 @@ namespace StarRacingPrototype {
    if(EditorApplication.timeSinceStartup<next)return;
    try{
     next=EditorApplication.timeSinceStartup+.6;
+    if(director==null){director=UnityEngine.Object.FindAnyObjectByType<RaceDirector>();if(director==null)return;menu=director.GetComponent<RaceMenu>();Check(menu!=null,"race initialization provides menu");var audio=director.GetComponent<RaceAudioCoordinator>();if(audio!=null)audio.enabled=false;}
     switch(state){
      case 0:
       menu.Open(RaceMenuScreen.LocalSetup);var chosen=menu.Selected;chosen.humans=humans;chosen.entrants=64;chosen.devices=new int[4];for(int i=0;i<4;i++)chosen.devices[i]=SessionControllers.Slot(pads[i]);
       chosen.seed="77";chosen.theme=humans==4?"space-station":"cloud-city";chosen.jumps=false;chosen.rails="normal";
       typeof(RaceMenu).GetField("seedText",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(menu,"77");menu.StartSelected();
-      Check(director.Started&&director.HumanCount==humans&&director.Cars.Length==64,"playmode roster "+humans);state=1;break;
+      state=-1;break;
+     case -1: if(menu.Loading)break;Check(director.Started&&director.HumanCount==humans&&director.Cars.Length==64,"playmode roster "+humans);state=1;break;
      case 1: Shot("countdown-"+humans);state=2;break;
      case 2:
       // Countdown advances on physics ticks, not Editor wall time (cold shader imports may stall frames).
@@ -119,7 +120,7 @@ namespace StarRacingPrototype {
      case 6:
       // Small roster and Results fixture verify HUD hide/show independently of natural finish acceptance.
       var config=menu.Selected;config.humans=1;config.entrants=8;menu.StartSelected();state=7;break;
-     case 7: Shot("solo-8-countdown");state=17;break;
+     case 7: if(menu.Loading)break;Shot("solo-8-countdown");state=17;break;
      case 17: for(int i=0;i<director.Session.Racers.Length;i++)Set(director.Session.Racers[i],"Place",i+1);Set(director.Session,"Phase",RacePhase.Results);state=8;break;
      case 8: Shot("results-fixture");state=18;break;
      case 18: Check(director.ExitToMenu(),"Results menu return");state=9;break;

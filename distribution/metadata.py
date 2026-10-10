@@ -22,7 +22,7 @@ def verify(envelope):
         sig=Path(tmp)/'signature';sig.write_bytes(base64.b64decode(envelope['signatureBase64'],validate=True))
         subprocess.run(['openssl','dgst','-sha256','-verify',str(Path(__file__).with_name('update-public.pem')),'-signature',str(sig)],input=raw,check=True,capture_output=True)
     return json.loads(raw)
-def finalize(directory,track,key):
+def finalize(directory,track,key=None,*,unsigned_production=False):
     directory=Path(directory);identity=json.loads((directory/'identity.json').read_text())
     version=identity['version'];platform=identity['channel']
     if (track=='test')!=('-' in version):raise ValueError('Version/track mismatch')
@@ -30,6 +30,14 @@ def finalize(directory,track,key):
     suffix='Windows-Setup.exe' if platform=='win-x64' else 'macOS-Setup.pkg'
     installer=directory/f'Star-Racing-{version}-{suffix}'
     descriptor=dict(schema=2,appId='tech.afonasev.star-racing.'+platform,channel=platform,releaseTrack=track,version=version,sequence=identity['sequence'],fileName=package.name,size=package.stat().st_size,sha256=sha(package).upper(),url=url(version,package.name),notes=(directory/'notes.md').read_text().strip(),installer=dict(fileName=installer.name,size=installer.stat().st_size,sha256=sha(installer),url=url(version,installer.name)))
+    if unsigned_production:
+        if track!='production':raise ValueError('Unsigned route is production-only')
+        descriptor['unsignedProductionCatalog']=True
+        (directory/'unsigned.json').write_text(json.dumps(descriptor,separators=(',',':'))+'\n')
+        identity['releaseTrack']=track
+        identity['files']=[dict(name=f.name,size=f.stat().st_size,sha256=sha(f)) for f in sorted(directory.iterdir()) if f.is_file() and f.name!='identity.json']
+        (directory/'identity.json').write_text(json.dumps(identity,indent=2)+'\n')
+        return descriptor
     envelope=sign(descriptor,key);verify(envelope)
     (directory/'signed.json').write_text(json.dumps(envelope)+'\n')
     # Only migration publisher uses this schema1. New Players never request it.

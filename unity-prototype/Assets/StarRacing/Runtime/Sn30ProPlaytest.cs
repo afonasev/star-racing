@@ -57,7 +57,7 @@ namespace StarRacingPrototype {
    InputSystem.QueueStateEvent(second,new GamepadState());yield return null;yield return null;
    Check(menu.Selected.humans==2&&menu.Selected.devices[1]==next,"Y on another gamepad joins its own seat");yield return Shot("02-joined");
    menu.RemoveSeat(1);menu.Selected.seed="77";
-   typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");menu.StartSelected();
+   typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");menu.StartSelected();while(menu.Loading)yield return null;
    Check(director.Started&&director.Input.DeviceName(0)==SessionControllers.Label(slot),"race binds chosen controller");
    while(director.Session.Phase==RacePhase.Countdown)yield return null;
    state=Sn30ProState.Neutral;state.rightTrigger=1023;yield return Report(state);

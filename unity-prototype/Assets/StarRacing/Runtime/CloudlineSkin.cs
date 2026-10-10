@@ -44,10 +44,17 @@ namespace StarRacingPrototype {
   }
   public void Toggle(Rect r,bool enabled){Box(r,enabled?Blue:new Color(.78f,.81f,.86f),r.height/2);float d=r.height-8;Box(new Rect(enabled?r.xMax-d-4:r.x+4,r.y+4,d,d),Color.white,d/2);}
   public void Brand(Rect r,int size){bold.fontStyle=FontStyle.Italic;Text(r,"STAR",size,true,Ink);float width=bold.CalcSize(new GUIContent("STAR ")).x;Text(new Rect(r.x+width,r.y,r.width-width,r.height),"RACING",size,true,Blue);bold.fontStyle=FontStyle.Normal;}
+  public void CenteredBrand(Rect r,int size){
+   bold.fontSize=size;bold.fontStyle=FontStyle.Italic;
+   float width=bold.CalcSize(new GUIContent("STAR RACING")).x;bold.fontStyle=FontStyle.Normal;
+   Brand(new Rect(r.center.x-width/2,r.y,width,r.height),size);
+  }
   public static Matrix4x4 Begin(){
    float scale=Mathf.Min(Screen.width/1600f,Screen.height/900f);var old=GUI.matrix;
    GUI.matrix=Matrix4x4.TRS(new Vector3((Screen.width-1600*scale)/2,(Screen.height-900*scale)/2,0),Quaternion.identity,Vector3.one*scale);return old;
   }
+  public const string FooterText="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex";
+  public void Footer(bool dark=false){Text(new Rect(56,864,1330,28),FooterText,15,false,dark?new Color(.9f,.94f,1):Muted,TextAnchor.MiddleLeft);}
   public void Backdrop(){if(Background!=null)GUI.DrawTexture(new Rect(0,0,Screen.width,Screen.height),Background,ScaleMode.ScaleAndCrop);else Box(new Rect(0,0,Screen.width,Screen.height),new Color(.88f,.93f,1),0);}
  }
 }

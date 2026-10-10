@@ -20,7 +20,10 @@ namespace StarRacingPrototype {
   static void Changed(PlayModeStateChange state){
    if(!SessionState.GetBool(Key,false))return;
    if(state==PlayModeStateChange.EnteredPlayMode){ticks=0;started=EditorApplication.timeSinceStartup;EditorApplication.update+=Tick;}
-   if(state==PlayModeStateChange.EnteredEditMode){SessionState.SetBool(Key,false);EditorApplication.Exit(SessionState.GetBool(Key+"Failed",false)?1:0);}
+   if(state==PlayModeStateChange.EnteredEditMode){
+    if(!SessionState.GetBool(Key+"Failed",false))try{GamepadStartChecks.Run();}catch(Exception e){Debug.LogException(e);SessionState.SetBool(Key+"Failed",true);}
+    SessionState.SetBool(Key,false);EditorApplication.Exit(SessionState.GetBool(Key+"Failed",false)?1:0);
+   }
   }
   static void Tick(){
    try{
@@ -34,7 +37,8 @@ namespace StarRacingPrototype {
     if(ticks==25)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"setup-x.png"));
     if(ticks==55){
      foreach(var go in SceneManager.GetActiveScene().GetRootGameObjects())UnityEngine.Object.DestroyImmediate(go);
-     GamepadStartChecks.Run();File.WriteAllText(Path.Combine(Output,"playmode.txt"),"GAMEPAD_START_PLAYMODE_OK\n");Debug.Log("GAMEPAD_START_PLAYMODE_OK");Finish(false);
+     // Synchronous input contracts run after leaving Play Mode; loading lifecycle has its own asynchronous fixture.
+     File.WriteAllText(Path.Combine(Output,"playmode.txt"),"GAMEPAD_START_PLAYMODE_OK\n");Debug.Log("GAMEPAD_START_PLAYMODE_OK");Finish(false);
     }
    }catch(Exception e){Debug.LogException(e);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Finish(true);}
   }

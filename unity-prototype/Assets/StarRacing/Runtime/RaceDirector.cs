@@ -158,19 +158,19 @@ namespace StarRacingPrototype {
   public void StartRace(){
    if(Balance==null)return;
    if(!Started){GetComponent<RaceMenu>()?.StartSelected();return;}
-   if(Session.Phase==RacePhase.Results){Restart();return;}if(Paused&&!Input.MissingDevice)SetPaused(false);
+   if(Session.Phase==RacePhase.Results){GetComponent<RaceMenu>().RepeatRace();return;}if(Paused&&!Input.MissingDevice)SetPaused(false);
   }
   void OnApplicationFocus(bool focus){if(!focus&&Input!=null&&Started)SetPaused(true);}
   void OnApplicationPause(bool paused){if(paused&&Input!=null&&Started)SetPaused(true);}
   void Update(){
-   if(Input==null)return;Input.Refresh();var k=Keyboard.current;
+   if(Input==null||GetComponent<RaceMenu>().Loading)return;Input.Refresh();var k=Keyboard.current;
    if(!Started)return;
    if(Input.MissingDevice&&!Paused)SetPaused(true);
    bool submenuBack=Input.PausePressed||(k!=null&&k.escapeKey.wasPressedThisFrame);
    foreach(var pad in Gamepad.all)submenuBack|=pad.buttonEast.wasPressedThisFrame;
    if(GetComponent<RaceMenu>().ConsumePauseSettingsBack(submenuBack))return;
    if(Input.PausePressed||(k!=null&&k.escapeKey.wasPressedThisFrame)){if(!Paused)SetPaused(true);else if(!Input.MissingDevice)SetPaused(false);}
-   if(k!=null){if(k.f5Key.wasPressedThisFrame&&!Input.MissingDevice)Restart();if(k.backspaceKey.wasPressedThisFrame)ExitToMenu();}
+   if(k!=null){if(k.f5Key.wasPressedThisFrame&&!Input.MissingDevice)GetComponent<RaceMenu>().RepeatRace();if(k.backspaceKey.wasPressedThisFrame)ExitToMenu();}
    for(int i=0;i<HumanCount;i++){
     var command=Input.Read(i);bool driving=Session.CanDrive(i)&&!Paused;
     Cars[i].SetInput(driving?command:default);

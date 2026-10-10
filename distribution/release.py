@@ -20,7 +20,7 @@ def publication_policy():
                   'upload draft; check exact asset set, API digest and real download SHA256',
                   'publish complete version first; switch requested channel pointer last'],
         manualGates=['review appropriate checks before committing/pushing source',
-                     'physical Windows/macOS acceptance and explicit authorization before production',
+                     'explicit production authorization; physical Windows/macOS acceptance recorded separately',
                      'preserve exact release artifacts and evidence before owned cleanup',
                      'retain legacy VPS feeds/relay until old-client migration is confirmed'],
         routineVpsUpload=False, metadataSignatureIsOsCertificate=False)
@@ -70,9 +70,9 @@ def toolchain():
 def build_players(version,track,evidence,unsigned_production=False):
     # Build preparation and Unity import may serialize these owned files. Restore
     # them even on failure so an exact-source release stays clean after building.
-    paths=[ROOT/'unity-prototype/ProjectSettings/ProjectSettings.asset']
+    paths=list((ROOT/'unity-prototype/ProjectSettings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing/Generated').rglob('*'))
-    paths+=list((ROOT/'unity-prototype/Assets/StarRacing').rglob('*.meta'))
+    paths+=list((ROOT/'unity-prototype/Assets').rglob('*.meta'))
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')
     if unsigned_production:env['STAR_RACING_UNSIGNED_PRODUCTION']='1'
@@ -83,6 +83,18 @@ def build_players(version,track,evidence,unsigned_production=False):
             if 'PROTOTYPE_BUILD_OK' not in log.read_text():raise ValueError('Native build receipt missing')
     finally:
         for p,data in original.items():p.write_bytes(data)
+def smoke_macos(folder,evidence):
+    # Exercise the canonical packaged bundle before any release/pointer mutation.
+    portable=next(folder.glob('*Portable.zip'));proof=evidence/'macos-smoke';proof.mkdir()
+    with tempfile.TemporaryDirectory(prefix='star-racing-production-smoke-') as tmp:
+        run(['ditto','-x','-k',portable,tmp])
+        app=Path(tmp)/'Star Racing.app'
+        env=dict(os.environ,UNITY_RUN_MODE='shared')
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--muted','--cloudline-proof-dir',proof,'-logFile',proof/'player.log'],env=env)
+        result=json.loads((proof/'success.json').read_text())
+        if result.get('success') is not True or result.get('natural_ai_finish') is not True:raise ValueError('Packaged macOS smoke failed')
+        (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
+
 def upload(tag,file,name=None):
     name=name or file.name
     # gh supports an asset label after #, not a renamed filename: use a temporary alias.
@@ -156,9 +168,10 @@ def publish_candidate(a,key,source,tag,previous):
         else:args+=['--key',key]
         if channel=='win-x64':args+=['--defer-windows-installer']
         run(args);directories.append(output/channel/a.version)
+    smoke_macos(directories[0],evidence)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
-    if not a.unsigned_production:finalize(directories[1],a.track,key)
+    for folder in directories:finalize(folder,a.track,key,unsigned_production=a.unsigned_production)
     remote={x['name']:x for x in api('releases/'+str(draft['id']))['assets']}
     expected={};catalog=dict(schema=2 if a.unsigned_production else 1,track=a.track,version=a.version,sourceRevision=source,platforms={})
     if a.unsigned_production:catalog['unsignedProductionCatalog']=True

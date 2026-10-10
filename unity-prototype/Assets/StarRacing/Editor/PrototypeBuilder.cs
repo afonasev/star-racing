@@ -25,7 +25,7 @@ namespace StarRacingPrototype {
    ConfigureApplicationIcon();
    PlayerSettings.defaultScreenWidth=1600;PlayerSettings.defaultScreenHeight=900;PlayerSettings.fullScreenMode=FullScreenMode.FullScreenWindow;PlayerSettings.runInBackground=false;PlayerSettings.resizableWindow=true;
    PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone,2);
-   var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);new GameObject("Star Racing").AddComponent<RaceDirector>();
+   var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);new GameObject("Star Racing").AddComponent<RaceStartup>();
    EditorSceneManager.SaveScene(scene,"Assets/StarRacing/Generated/Prototype.unity");EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/StarRacing/Generated/Prototype.unity",true)};AssetDatabase.SaveAssets();
   }
   public static void ConfigureApplicationIcon(){

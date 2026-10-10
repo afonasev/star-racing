@@ -1,3 +1,4 @@
+using System.Collections;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -77,13 +78,28 @@ namespace StarRacingPrototype {
    if(ScreenState!=RaceMenuScreen.LocalSetup||director==null||director.Started||PopupOpen||nameEditor>=0||EditingSeed||EditingName||!CanStartSelected||pad==null||!pad.added||!pad.buttonWest.wasPressedThisFrame)return false;
    StartSelected();return true;
   }
+  public bool Loading {get;private set;}
   public void StartSelected(){
+   if(Loading)return;
    if(!uint.TryParse(seedText,out uint seed)){Error="Seed: целое число от 0 до 4294967295";return;}
    Selected.seed=seed.ToString();Selected.Save();
-   if(!director.TryStartSelected(Selected,out var error)){Error=error;return;}
    EditingSeed=false;ClosePopup();controls.Clear();
+   if(!Application.isPlaying){if(!director.TryStartSelected(Selected,out var error))Error=error;return;}
+   Loading=true;StartCoroutine(PrepareSelected(Selected.Copy()));
+  }
+  public void RepeatRace(){
+   if(Loading)return;
+   if(!Application.isPlaying){director.Restart();return;}
+   Loading=true;StartCoroutine(PrepareSelected(null));
+  }
+  IEnumerator PrepareSelected(LocalRaceConfig config){
+   var loading=gameObject.AddComponent<RaceLoading>();loading.Status="Готовим гонку";
+   yield return RaceLoading.Present();
+   try{if(config==null)director.Restart();else if(!director.TryStartSelected(config,out var error))Error=error;}
+   finally{loading.enabled=false;Destroy(loading);Loading=false;}
   }
   void Update(){
+   if(Loading)return;
    if(pauseBackFrame==Time.frameCount)return;
    frames++;elapsed+=Time.unscaledDeltaTime;if(elapsed>=.5f){fps=Mathf.RoundToInt(frames/elapsed);elapsed=0;frames=0;}
    if(Keyboard.current!=null&&Keyboard.current.f3Key.wasPressedThisFrame){showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();}
@@ -141,14 +157,14 @@ namespace StarRacingPrototype {
   void ShowPopup(string title,string[] values,int selected,Action<int> choose){popupReturnFocus=focus;popupTitle=title;popupOptions=values;popupSelect=choose;popupSearch="";popupScroll=Vector2.zero;focus="option-"+selected;controls.Clear();EditingSeed=false;focusRequest="";}
   void ClosePopup(){string returnFocus=PopupOpen?popupReturnFocus:"back";popupOptions=null;popupSelect=null;popupSearch="";GUIFocusIsSearch=false;controls.Clear();focus=returnFocus;focusRequest="";}
   void OnGUI(){
-   if(director==null||director.Started)return;EnsureSkin();Skin.Backdrop();var old=CloudlineSkin.Begin();
+   if(director==null||director.Started||Loading)return;EnsureSkin();Skin.Backdrop();var old=CloudlineSkin.Begin();
    controls.Clear();collect=!PopupOpen&&nameEditor<0;GUI.enabled=collect;
    if(ScreenState==RaceMenuScreen.Main)DrawMain();else if(ScreenState==RaceMenuScreen.LocalSetup)DrawSetup();else DrawSettings();
    GUI.enabled=true;collect=true;
    if(PopupOpen)DrawPopup();else if(nameEditor>=0)DrawNameEditor();
    if(focusRequest!=null){GUI.FocusControl(focusRequest);focusRequest=null;}
    EditingSeed=GUI.GetNameOfFocusedControl()=="TrackSeed";GUIFocusIsSearch=GUI.GetNameOfFocusedControl()=="ThemeSearch";
-   DrawFps();
+   Skin.Footer();DrawFps();
    GUI.matrix=old;
   }
   public void DrawFps(){if(showFps)Skin.Text(new Rect(1450,870,110,24),fps+" FPS",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);}

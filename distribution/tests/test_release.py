@@ -59,13 +59,17 @@ class ReleaseSourcePreservation(unittest.TestCase):
    project=root/'unity-prototype/ProjectSettings/ProjectSettings.asset';project.parent.mkdir(parents=True);project.write_text('project')
    generated=assets/'Generated/Prototype.unity';generated.parent.mkdir();generated.write_text('scene')
    meta=assets/'Resources/Track.png.meta';meta.parent.mkdir();meta.write_text('texture:\n  userData:\n')
+   plugin=root/'unity-prototype/Assets/Plugins.meta';plugin.write_text('plugin')
+   quality=project.parent/'QualitySettings.asset';quality.write_text('quality')
    evidence=root/'evidence';evidence.mkdir()
    def fake_run(args,**kwargs):
     meta.write_text('texture:\n  userData: \n')
+    plugin.write_text('imported plugin');quality.write_text('build quality')
     Path(args[args.index('-logFile')+1]).write_text('PROTOTYPE_BUILD_OK')
    with patch.object(release,'ROOT',root),patch.object(release,'run',side_effect=fake_run) as build:
     release.build_players('0.2.2-test.3','test',evidence)
    self.assertEqual(meta.read_text(),'texture:\n  userData:\n')
    self.assertEqual(project.read_text(),'project')
+   self.assertEqual(plugin.read_text(),'plugin');self.assertEqual(quality.read_text(),'quality')
    self.assertEqual(generated.read_text(),'scene')
    self.assertEqual(build.call_count,2)
