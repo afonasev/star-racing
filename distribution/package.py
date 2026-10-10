@@ -24,6 +24,7 @@ def main():
     p.add_argument('--notes', required=True)
     p.add_argument('--mingw', default='x86_64-w64-mingw32-g++')
     p.add_argument('--makensis', default='makensis')
+    p.add_argument('--defer-windows-installer', action='store_true')
     a=p.parse_args()
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', a.version):p.error('Invalid SemVer')
     if not 0<a.sequence<2147483648:p.error('sequence must be positive Int32')
@@ -80,7 +81,7 @@ def main():
     if a.channel=='win-x64':cmd+=['--runtime','win-x64','--icon',str(root/'icons/Star-Racing.ico')]
     else:cmd+=['--signAppIdentity','-'] # Ad-hoc seal, no Developer ID or notarization.
     subprocess.run(cmd,check=True,env=env)
-    if a.channel=='win-x64':
+    if a.channel=='win-x64' and not a.defer_windows_installer:
         # Distribute the wizard; stock Setup would take ownership of HKCU ARP.
         from windows.build_installer import build
         sdk_setup=next(release.glob('*Setup.exe'))
