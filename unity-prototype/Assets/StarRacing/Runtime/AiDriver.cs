@@ -3,7 +3,7 @@ using UnityEngine;
 namespace StarRacingPrototype {
  public struct AiObservation {
   public int Id,Revision; public float Distance,Speed,Lateral,LateralSpeed,Charge; public bool Grounded,Recovering,Finished;
-  public Vector3 Position,Forward,Up; public float YawRate;
+  public Vector3 Position,Forward,Up; public float YawRate,LateralExtent;
  }
  // Populated once by the coordinator, then read by every driver before forces are applied.
  public sealed class AiWorldSnapshot {
@@ -15,11 +15,13 @@ namespace StarRacingPrototype {
    Time=time;
    for(int i=0;i<cars.Length;i++){
     var c=vehicles[i];var f=route.Evaluate(c.Distance);
-    cars[i]=new AiObservation{Id=i,Revision=c.PositionRevision,Distance=c.Distance,Speed=Vector3.Dot(c.Body.linearVelocity,c.transform.forward),Lateral=Vector3.Dot(c.Body.position-f.position,f.right),LateralSpeed=Vector3.Dot(c.Body.linearVelocity,f.right),Charge=c.Drive==null?0:c.Drive.Charge,Grounded=c.Telemetry.grounded,Recovering=c.Telemetry.recovering,Finished=c.FinishedCoasting,Position=c.Body.position,Forward=c.transform.forward,Up=c.transform.up,YawRate=Vector3.Dot(c.Body.angularVelocity,f.normal)};
+    cars[i]=new AiObservation{Id=i,Revision=c.PositionRevision,Distance=c.Distance,Speed=Vector3.Dot(c.Body.linearVelocity,c.transform.forward),Lateral=Vector3.Dot(c.Body.position-f.position,f.right),LateralSpeed=Vector3.Dot(c.Body.linearVelocity,f.right),Charge=c.Drive==null?0:c.Drive.Charge,Grounded=c.Telemetry.grounded,Recovering=c.Telemetry.recovering,Finished=c.FinishedCoasting,Position=c.Body.position,Forward=c.transform.forward,Up=c.transform.up,YawRate=Vector3.Dot(c.Body.angularVelocity,f.normal),LateralExtent=VehicleGeometry.LateralExtent(Mathf.Atan2(Vector3.Dot(c.transform.forward,f.right),Vector3.Dot(c.transform.forward,f.tangent)))};
    }
   }
  }
  public enum AiMode { Pace, Attack, Recovery }
+ public enum AiTemperament { Patient, Assertive, Opportunist }
+ public enum AiManeuver { Cruise, Pass, Yield, Pressure, Escape }
  [Flags] public enum AiNitroHazard { None=0, Speed=1, Heading=2, Unsupported=4, Recovery=8, Traffic=16, Corridor=32 }
  public enum AiSpeedLimitSource { CommonLimit, Geometry, Traffic, Following, Heading, Corridor }
  public struct AiNitroEvent {
@@ -67,12 +69,110 @@ namespace StarRacingPrototype {
   readonly float boostLimit,brake,accelEnvelope;
   readonly ReleaseBalance balance;readonly DriverProfile profile;readonly int id;readonly float personality;
   float stalled,reverseStartDistance;double reverseUntil;
+  public AiTemperament Temperament {get;private set;}
+  public AiManeuver Maneuver {get;private set;}
+  public int PassingSide {get;private set;}
+  public float NoProgressSeconds=>noProgress;
+  public bool ContactPressure {get;private set;}
+  int maneuverTarget=-1,maneuverRevision=-1,yieldEntrant=-1,yieldRevision=-1;
+  float maneuverLane,noProgress,lastProgressDistance,lastProgressLane;
+  bool escapeActive,reverseTraffic,arrestReverse;int escapeBlocker=-1,escapeRevision;float escapeLane;
+  public bool Escaping=>escapeActive;
+  void BeginEscape(AiWorldSnapshot world,TrackRoute route,AiObservation self,float look){
+   reverseTraffic=FrontBlocked(world,self);
+   if(Target<0)return;var blocker=world[Target];
+   int side=PassingSide!=0?PassingSide:personality<.5f?-1:1;
+   for(int attempt=0;attempt<2;attempt++,side=-side){
+    // Contact passing can be tighter; an exit from a stationary jam needs a
+    // genuinely free body-width corridor, not another shoulder-to-shoulder jam.
+    float wanted=blocker.Lateral+side*(VehicleGeometry.HalfWidth*2+.6f);
+    float candidate=SafeLane(route,self.Distance+look,wanted);
+    if(Mathf.Abs(candidate-wanted)>.2f||!ManeuverPath(world,route,self,candidate,look,out _))continue;
+    escapeActive=true;escapeBlocker=Target;escapeRevision=blocker.Revision;escapeLane=maneuverLane=candidate;PassingSide=side;maneuverSince=world.Time;return;
+   }
+  }
+  double maneuverSince,yieldUntil,pressureUntil,pressureCooldown;
+  bool hasProgressSample;
+  float Patience=>Temperament==AiTemperament.Patient?2.4f:Temperament==AiTemperament.Assertive?1.5f:1.9f;
+  float PassingClearance=>Temperament==AiTemperament.Assertive?3.05f:Temperament==AiTemperament.Patient?3.4f:3.2f;
+  static float PairClearance(AiObservation a,AiObservation b)=>Mathf.Max(VehicleGeometry.HalfWidth,a.LateralExtent)+Mathf.Max(VehicleGeometry.HalfWidth,b.LateralExtent)+.15f;
+  void ResetManeuver(){if(ReverseActive)arrestReverse=true;ReverseActive=false;reverseUntil=0;escapeActive=reverseTraffic=false;escapeBlocker=-1;Maneuver=AiManeuver.Cruise;PassingSide=0;maneuverTarget=maneuverRevision=yieldEntrant=yieldRevision=-1;noProgress=0;hasProgressSample=false;yieldUntil=pressureUntil=pressureCooldown=0;ContactPressure=false;}
+  void ObserveProgress(AiObservation self,float dt,bool impeded){
+   if(!hasProgressSample){lastProgressDistance=self.Distance;lastProgressLane=self.Lateral;hasProgressSample=true;return;}
+   float advance=self.Distance-lastProgressDistance;
+   bool lateralProgress=Mathf.Abs(self.Lateral-lastProgressLane)>.3f*dt;
+   if(impeded&&self.Grounded&&!self.Recovering&&self.Speed<12&&advance<2.5f*dt&&!lateralProgress)noProgress+=dt;
+   else noProgress=Mathf.Max(0,noProgress-dt*2);
+   lastProgressDistance=self.Distance;lastProgressLane=self.Lateral;
+  }
+  bool HasPriority(AiObservation self,AiObservation other)=>self.Distance>other.Distance+.75f || Mathf.Abs(self.Distance-other.Distance)<=.75f&&id<other.Id;
+  // Candidates are few and reuse the shared immutable snapshot. Moving away from
+  // an existing low-speed contact is permitted; cutting across another car is not.
+  bool ManeuverPath(AiWorldSnapshot world,TrackRoute route,AiObservation self,float lane,float look,out int conflict){
+   conflict=-1;
+   if(!HasCorridor(route,self.Distance,self.Lateral,self.Distance+look,lane))return false;
+   float speed=Mathf.Max(0,self.Speed);
+   for(int i=0;i<world.Count;i++){
+    if(i==id||world[i].Finished)continue;var other=world[i];float gap=other.Distance-self.Distance;
+    if(Mathf.Abs(gap)>Mathf.Max(18,speed*1.5f))continue;
+    float clearanceNeeded=PairClearance(self,other);
+    float current=Mathf.Abs(self.Lateral-other.Lateral),end=Mathf.Abs(lane-other.Lateral);
+    bool separates=end>current+.2f&&(lane-other.Lateral)*(self.Lateral-other.Lateral)>=0;
+    // Coincident lanes can separate in either direction, including a rear queue.
+    if(current<.2f&&end>VehicleGeometry.Width)separates=true;
+    if(Mathf.Abs(gap)<4.5f&&!separates&&Mathf.Min(current,end)<clearanceNeeded){conflict=i;return false;}
+    for(int step=1;step<=3;step++){
+     float t=step*.4f,predictedGap=gap+(other.Speed-self.Speed)*t;
+     float ownLane=Mathf.MoveTowards(self.Lateral,lane,2.5f*t);
+     float otherLane=other.Lateral+Mathf.Clamp(other.LateralSpeed*t,-2,2);
+     float clearance=Mathf.Abs(ownLane-otherLane);
+     if(Mathf.Abs(predictedGap)>=4.5f||clearance>=clearanceNeeded)continue;
+     if(separates&&clearance>=current-.15f&&Mathf.Abs(other.Speed-self.Speed)<=4&&Vector3.Dot(self.Forward,other.Forward)>.8f)continue;
+     conflict=i;return false;
+    }
+   }
+   return true;
+  }
+  float ChooseManeuver(AiWorldSnapshot world,TrackRoute route,AiObservation self,float wish,float look,double now){
+   ContactPressure=false;
+   if(Target<0||!self.Grounded||self.Recovering){Maneuver=AiManeuver.Cruise;PassingSide=0;return wish;}
+   var target=world[Target];float gap=target.Distance-self.Distance;
+   if(gap>Mathf.Max(25,Mathf.Max(0,self.Speed)*.9f)){Maneuver=AiManeuver.Cruise;return wish;}
+   if(maneuverTarget!=Target||maneuverRevision!=target.Revision){PassingSide=0;maneuverTarget=Target;maneuverRevision=target.Revision;maneuverSince=now;}
+   if(yieldEntrant>=0&&(world[yieldEntrant].Revision!=yieldRevision||world[yieldEntrant].Finished)){yieldEntrant=-1;yieldUntil=0;}
+   if(now<yieldUntil){Maneuver=AiManeuver.Yield;return self.Lateral;}
+   float bestScore=float.NegativeInfinity,best=self.Lateral;int bestSide=0,blockedBy=-1;
+   for(int n=0;n<4;n++){
+    int side=n%2==0?-1:1;
+    float request=target.Lateral+side*(PassingClearance+(n>=2?2.8f:0));
+    float lane=SafeLane(route,self.Distance+look,request);
+    if(Mathf.Abs(lane-target.Lateral)<VehicleGeometry.Width+.1f||Mathf.Abs(lane-request)>.5f)continue;
+    if(!ManeuverPath(world,route,self,lane,look,out int conflict)){if(blockedBy<0)blockedBy=conflict;continue;}
+    float score=10-Mathf.Abs(lane-self.Lateral)*.8f;
+    bool failedAttempt=noProgress>=Patience&&now-maneuverSince>=Patience;
+    if(side==PassingSide&&!failedAttempt)score+=3;
+    if(PassingSide==0&&side==(personality<.5f?-1:1))score+=.15f;
+    if(failedAttempt&&side==PassingSide)score-=4;
+    if(score>bestScore){bestScore=score;best=lane;bestSide=side;}
+   }
+   if(bestSide!=0){if(PassingSide!=bestSide){maneuverSince=now;PassingSide=bestSide;}maneuverLane=best;Maneuver=AiManeuver.Pass;pressureUntil=0;return best;}
+   PassingSide=0;
+   // In a symmetric conflict the trailing / higher-id car briefly opens a gap.
+   // A yield has a finite duration; its revision is checked on every decision.
+   if(blockedBy>=0&&noProgress>=Patience&&!HasPriority(self,world[blockedBy])&&now>=yieldUntil+.8){yieldEntrant=blockedBy;yieldRevision=world[blockedBy].Revision;yieldUntil=now+.45+(Temperament==AiTemperament.Patient?.25:0);Maneuver=AiManeuver.Yield;return self.Lateral;}
+   bool canPress=Temperament!=AiTemperament.Patient&&gap>0&&gap<6&&Mathf.Abs(target.Lateral-self.Lateral)<1.6f&&self.Speed<12&&Mathf.Abs(self.Speed-target.Speed)<3&&Vector3.Dot(self.Forward,target.Forward)>.9f&&HasCorridor(route,self.Distance,self.Lateral,self.Distance+look,self.Lateral);
+   if(canPress&&now>=pressureCooldown&&noProgress<Patience){if(pressureUntil<=0)pressureUntil=now+.7;ContactPressure=now<pressureUntil;if(ContactPressure){Maneuver=AiManeuver.Pressure;return self.Lateral;}}
+   if(pressureUntil>0){pressureUntil=0;pressureCooldown=now+2;}
+   Maneuver=noProgress>=Patience?AiManeuver.Escape:AiManeuver.Cruise;return self.Lateral;
+  }
+  bool FrontBlocked(AiWorldSnapshot world,AiObservation self){for(int i=0;i<world.Count;i++){var o=world[i];if(i!=id&&!o.Finished&&o.Distance>self.Distance&&o.Distance-self.Distance<6&&Mathf.Abs(o.Lateral-self.Lateral)<PairClearance(self,o))return true;}return false;}
+
   public bool ReverseActive {get;private set;}
   public string ReverseReason {get;private set;}="none";
   readonly uint decisionSeed;uint random;double recoveryUntil,nextError,errorUntil,boostUntil,nextBoost;int revision=-1,targetRevision;float errorLane;bool boost;
-  public AiDriver(int id,DriverProfile profile,uint seed,ReleaseBalance balance){boostLimit=balance["nitroMaxSpeedKmh"]/3.6f;brake=balance["brakeDeceleration"];accelEnvelope=balance["acceleration"]*(profile==DriverProfile.Ace?balance["aceAccelerationMultiplier"]:profile==DriverProfile.Racer?balance["racerAccelerationMultiplier"]:1)+balance["nitroAcceleration"];this.id=id;this.profile=profile;this.balance=balance;random=seed;personality=Random01();decisionSeed=random;Reset();}
+  public AiDriver(int id,DriverProfile profile,uint seed,ReleaseBalance balance){boostLimit=balance["nitroMaxSpeedKmh"]/3.6f;brake=balance["brakeDeceleration"];accelEnvelope=balance["acceleration"]*(profile==DriverProfile.Ace?balance["aceAccelerationMultiplier"]:profile==DriverProfile.Racer?balance["racerAccelerationMultiplier"]:1)+balance["nitroAcceleration"];this.id=id;this.profile=profile;this.balance=balance;random=seed;personality=Random01();Temperament=(AiTemperament)((seed^(seed>>16))%3);decisionSeed=random;Reset();}
   float Random01()=>RaceRoster.Next(ref random)/(float)uint.MaxValue;
-  public void Reset(){random=decisionSeed;Mode=AiMode.Pace;Target=-1;revision=-1;stalled=0;reverseUntil=0;ReverseActive=false;ReverseReason="none";Lane=0;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;CorridorBlocked=false;returningToInterior=false;NitroCommand=false;recoveryUntil=0;nextError=8+personality*13;errorUntil=0;boost=false;boostUntil=0;nextBoost=.25+personality*2.5;lastHeadingAt=double.NegativeInfinity;headingRate=0;LastFullDecision=0;Attacks=Overtakes=Plans=0;}
+  public void Reset(){ResetManeuver();arrestReverse=false;random=decisionSeed;Mode=AiMode.Pace;Target=-1;revision=-1;stalled=0;reverseUntil=0;ReverseActive=false;ReverseReason="none";Lane=0;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;CorridorBlocked=false;returningToInterior=false;NitroCommand=false;recoveryUntil=0;nextError=8+personality*13;errorUntil=0;boost=false;boostUntil=0;nextBoost=.25+personality*2.5;lastHeadingAt=double.NegativeInfinity;headingRate=0;LastFullDecision=0;Attacks=Overtakes=Plans=0;}
   float SpeedLimit=>balance["baseSpeedKmh"]/3.6f;
   float BoostLimit=>boostLimit;
   float Brake=>brake;
@@ -151,7 +251,7 @@ namespace StarRacingPrototype {
    for(int i=0;i<world.Count;i++){
     if(i==id||world[i].Finished)continue;
     var other=world[i];
-    if(other.Distance<=self.Distance+1&&other.Distance>=back-3&&Mathf.Abs(other.Lateral-projectedLane)<2.6f)return false;
+    if(other.Distance<=self.Distance+1&&other.Distance>=back-3&&Mathf.Abs(other.Lateral-projectedLane)<PairClearance(self,other))return false;
    }
    return true;
   }
@@ -170,27 +270,42 @@ namespace StarRacingPrototype {
   }
   public DrivingInput Step(AiWorldSnapshot world,TrackRoute route,float dt,bool allowNitro=true) {
    var self=world[id];double now=world.Time;NitroCommand=false;NitroHazards=AiNitroHazard.None;if(self.Finished||dt<=0){ReverseActive=false;return default;}
-   if(revision!=self.Revision){if(revision>=0){Mode=AiMode.Recovery;recoveryUntil=now+1.1+personality;EndBoost(now,self,"position-recovery");Target=-1;}revision=self.Revision;Lane=self.Lateral;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;returningToInterior=false;ReverseActive=false;reverseUntil=0;lastHeadingAt=double.NegativeInfinity;headingRate=0;}
+   if(revision!=self.Revision){if(revision>=0){Mode=AiMode.Recovery;recoveryUntil=now+1.1+personality;EndBoost(now,self,"position-recovery");Target=-1;}revision=self.Revision;stalled=0;ResetManeuver();Lane=self.Lateral;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;returningToInterior=false;ReverseActive=false;reverseUntil=0;lastHeadingAt=double.NegativeInfinity;headingRate=0;}
    float speed=Mathf.Max(0,self.Speed);
+   bool escapeWaiting=escapeActive&&world[escapeBlocker].Speed<-.5f&&world[escapeBlocker].Distance-self.Distance<14;
+   bool mergeWaiting=MergeYieldTo>=0&&!world[MergeYieldTo].Finished&&world[MergeYieldTo].Revision==mergeYieldRevision&&world[MergeYieldTo].Speed>2;
+   ObserveProgress(self,dt,!mergeWaiting&&!escapeWaiting&&(FrontBlocked(world,self)||TrafficBlocked));
    if(returningToInterior){Mode=AiMode.Recovery;recoveryUntil=Math.Max(recoveryUntil,now+.25);Target=-1;}
    if(Mode==AiMode.Recovery&&now>=recoveryUntil)Mode=AiMode.Pace;
-   if(Target>=0 && world[Target].Revision!=targetRevision){Target=-1;Mode=AiMode.Recovery;recoveryUntil=now+.5;}
-   if(Target>=0 && (world[Target].Finished || self.Distance>world[Target].Distance+4)){if(!world[Target].Finished&&now>=10&&now<=90)Overtakes++;Target=-1;Mode=AiMode.Recovery;recoveryUntil=now+.6+personality;}
-   if(Mode!=AiMode.Recovery && (Target<0 || self.Distance<world[Target].Distance || world[Target].Distance<self.Distance-4)){int nearest=-1;float gap=100+balance["aiOvertakeAggression"]*80;for(int i=0;i<world.Count;i++){var other=world[i];float d=other.Distance-self.Distance;if(i!=id&&!other.Finished&&d>0&&d<gap){nearest=i;gap=d;}}if(nearest!=Target&&nearest>=0)Attacks++;Target=nearest;if(Target>=0)targetRevision=world[Target].Revision;Mode=nearest>=0?AiMode.Attack:AiMode.Pace;}
+   if(Target>=0 && world[Target].Revision!=targetRevision){ResetManeuver();Target=-1;Mode=AiMode.Recovery;recoveryUntil=now+.5;}
+   if(Target>=0 && (world[Target].Finished || self.Distance>world[Target].Distance+4)){if(!world[Target].Finished)Overtakes++;ResetManeuver();Target=-1;Mode=AiMode.Recovery;recoveryUntil=now+.6+personality;}
+   if(Mode!=AiMode.Recovery && Target<0){int nearest=-1;float gap=100+balance["aiOvertakeAggression"]*80;for(int i=0;i<world.Count;i++){var other=world[i];float d=other.Distance-self.Distance;if(i!=id&&!other.Finished&&d>0&&d<gap){nearest=i;gap=d;}}if(nearest!=Target&&nearest>=0)Attacks++;Target=nearest;if(Target>=0)targetRevision=world[Target].Revision;Mode=nearest>=0?AiMode.Attack:AiMode.Pace;}
+   // A closer physical blocker supersedes a remote target. Keep a live nearby
+   // pass committed; target identity alone must not lock out every later car.
+   if(!ReverseActive&&!escapeActive&&Mode!=AiMode.Recovery){
+    int blocker=-1;float bestGap=Target>=0?world[Target].Distance-self.Distance:float.PositiveInfinity;
+    for(int i=0;i<world.Count;i++){var o=world[i];float gap=o.Distance-self.Distance;if(i!=id&&!o.Finished&&gap>0&&gap<Mathf.Min(14,bestGap)&&Mathf.Abs(o.Lateral-self.Lateral)<PairClearance(self,o)){bestGap=gap;blocker=i;}}
+    if(blocker>=0){Target=blocker;targetRevision=world[blocker].Revision;PassingSide=0;maneuverTarget=-1;Mode=AiMode.Attack;}
+    else if(Target>=0&&world[Target].Distance-self.Distance>100+balance["aiOvertakeAggression"]*80){Target=-1;PassingSide=0;Maneuver=AiManeuver.Cruise;}
+   }
    if(now>=nextError){float frequency=profile==DriverProfile.Rookie?8:profile==DriverProfile.Racer?18:35;nextError=now+frequency+Random01()*frequency;errorUntil=now+(profile==DriverProfile.Rookie?1.4:.55);errorLane=(Random01()-.5f)*(profile==DriverProfile.Rookie?2.8f:1.2f);}
    float look=Mathf.Clamp(speed*.3f,7,25);SelectBranch(route,world,self,look);
    PreviewBranchLane(route,world,self,out int previewBranch,out int previewLane);
    var previewChoice=new PreviewChoice{Branch=previewBranch,Lane=previewLane,World=world,Self=self};
    if(boost&&BranchIndex>=0&&BranchIndex!=boostBranch)EndBoost(now,self,"branch-change");
    float center=BranchCenter(route,self.Distance+look),wish=center+(personality-.5f)*6;
-   if(Target>=0){var target=world[Target];float side=self.Lateral<target.Lateral?-1:1;if(Math.Abs(self.Lateral-target.Lateral)<.5f)side=personality<.5f?-1:1;wish=target.Lateral+side*(profile==DriverProfile.Ace?2.05f:2.7f);}
-   if(now<errorUntil&&!returningToInterior)wish+=errorLane;
+   if(escapeActive){
+    if(world[escapeBlocker].Finished||world[escapeBlocker].Revision!=escapeRevision||self.Distance>world[escapeBlocker].Distance+4){escapeActive=false;}
+    else{Target=escapeBlocker;targetRevision=escapeRevision;wish=escapeLane;maneuverLane=escapeLane;Maneuver=AiManeuver.Pass;ContactPressure=false;}
+   }
+   if(!boost&&!returningToInterior&&!escapeActive)wish=ChooseManeuver(world,route,self,wish,look,now);
+   if(now<errorUntil&&!returningToInterior&&Maneuver==AiManeuver.Cruise)wish+=errorLane;
    if(boost)wish=BranchCenter(route,self.Distance+look,boostBranch,boostBranchLane)+boostTargetOffset;
    bool bypass=PartialBypassTarget(route,self.Distance,self.Lateral,speed,out float bypassLane);
    if(bypass)wish=bypassLane;
    // Offsets are native Frame.right; source spans use the opposite sign.
    wish=SafeLane(route,self.Distance+look,wish);
-   if(!bypass&&!boost&&Target>=0&&Mathf.Abs(wish-world[Target].Lateral)<2.0f){float alternative=world[Target].Lateral+(wish>=world[Target].Lateral?-2.7f:2.7f);wish=SafeLane(route,self.Distance+look,alternative);}
+   if(!bypass&&!boost&&Maneuver==AiManeuver.Pass&&Target>=0&&Mathf.Abs(wish-world[Target].Lateral)<2.0f){float alternative=world[Target].Lateral+(wish>=world[Target].Lateral?-2.7f:2.7f);wish=SafeLane(route,self.Distance+look,alternative);}
    bool traffic=false;int trafficEntrant=-1;
    float mergeEnd=0;bool mergeWatch=false;int mergeNeighbor=-1;float mergeClosest=float.PositiveInfinity;
    if(BranchIndex!=mergeYieldBranch){MergeYieldTo=mergeYieldRevision=-1;mergeYieldBranch=BranchIndex;}
@@ -206,11 +321,15 @@ namespace StarRacingPrototype {
    for(int i=0;i<world.Count;i++){
     if(i==id||world[i].Finished)continue;var other=world[i];float gap=other.Distance-self.Distance;
     float predictedGap=gap+(other.Speed-speed)*.5f;
-    float corridorMin=Mathf.Min(self.Lateral,wish)-1.95f,corridorMax=Mathf.Max(self.Lateral,wish)+1.95f;
+    float corridorMin=Mathf.Min(self.Lateral,wish)-PairClearance(self,other),corridorMax=Mathf.Max(self.Lateral,wish)+PairClearance(self,other);
     bool crosses=(wish-other.Lateral)*(self.Lateral-other.Lateral)<0;
     bool approaches=Mathf.Abs(wish-other.Lateral)<Mathf.Abs(self.Lateral-other.Lateral)+.05f;
     float closestGap=gap*predictedGap<=0?0:Mathf.Min(Mathf.Abs(gap),Mathf.Abs(predictedGap));
-    if(closestGap<4.4f && (crosses||approaches) && other.Lateral>corridorMin && other.Lateral<corridorMax){wish=SafeLane(route,self.Distance+look,self.Lateral);traffic=true;trafficEntrant=i;}
+    if(closestGap<4.4f && (crosses||approaches) && other.Lateral>corridorMin && other.Lateral<corridorMax){
+     bool separates=Maneuver==AiManeuver.Pass&&Mathf.Abs(wish-other.Lateral)>Mathf.Abs(self.Lateral-other.Lateral)+.2f&&(!crosses||Mathf.Abs(self.Lateral-other.Lateral)<.2f)&&Mathf.Abs(other.Speed-self.Speed)<=4;
+     bool pressure=ContactPressure&&i==Target;
+     if(!separates&&!pressure){wish=SafeLane(route,self.Distance+look,self.Lateral);traffic=true;trafficEntrant=i;}
+    }
     if(!mergeWatch)continue;
     var mergeBranch=route.Definition.branches[BranchIndex];float mergeStartDistance=30+mergeBranch.startIndex*5;
     if(other.Distance<mergeStartDistance-1.75f||other.Distance>mergeEnd+1.75f||Mathf.Abs(other.Lateral-self.Lateral)<1.2f)continue;
@@ -227,7 +346,7 @@ namespace StarRacingPrototype {
    }
    if(MergeYieldTo>=0&&(world[MergeYieldTo].Finished||world[MergeYieldTo].Revision!=mergeYieldRevision))MergeYieldTo=mergeYieldRevision=-1;
    TrafficBlocked=traffic;
-   float laneRate=boost?boostLaneRate:Mode==AiMode.Attack?2.5f:1.6f;
+   float laneRate=boost?boostLaneRate:escapeActive?3:Maneuver==AiManeuver.Pass?2.5f:1.6f;
    int intentBranch=boost?boostBranch:BranchIndex,intentLane=boost?boostBranchLane:BranchLane;
    float intentCenter=BranchCenter(route,self.Distance+look,intentBranch,intentLane),intentTarget=wish-intentCenter;
    float currentLocal=BranchIndex>=0?branchOffset:Lane;
@@ -282,26 +401,30 @@ namespace StarRacingPrototype {
    headingRate=headingDt>0&&headingDt<=.2?Mathf.DeltaAngle(lastHeading,angle)/(float)headingDt:0;
    lastHeading=angle;lastHeadingAt=now;
    float steer=Mathf.Clamp(angle/18f,-1,1);
+   if(arrestReverse){if(self.Speed<-.08f){EndBoost(now,self,"invalidated-reverse");NitroReason="invalidated-reverse";return new DrivingInput{throttle=1,steer=0};}arrestReverse=false;}
    if(ReverseActive){
-    bool aligned=Mathf.Abs(angle)<5&&safeTarget;
+    bool aligned=Mathf.Abs(angle)<5&&safeTarget&&!FrontBlocked(world,self)&&(!reverseTraffic||reverseStartDistance-self.Distance>=6);
+    bool exitWindow=reverseStartDistance-self.Distance>=6&&Maneuver==AiManeuver.Pass;
     bool pathSafe=ReversePathSafe(world,route,self);
     string stop=now>=reverseUntil?"reverse-time-limit":self.Distance<reverseStartDistance-8?"reverse-distance-limit":
-     !pathSafe?"reverse-path-blocked":aligned?"reverse-aligned":null;
-    if(stop==null){Mode=AiMode.Recovery;Target=-1;EndBoost(now,self,"reverse-recovery");NitroReason="reverse-recovery";return new DrivingInput{brake=1,steer=ReverseSteerForHeading(angle)};}
+     !pathSafe?"reverse-path-blocked":exitWindow?"reverse-exit-window":aligned?"reverse-aligned":null;
+    if(stop==null){Mode=AiMode.Recovery;EndBoost(now,self,"reverse-recovery");NitroReason="reverse-recovery";return new DrivingInput{brake=1,steer=escapeActive?0:ReverseSteerForHeading(angle)};}
     ReverseActive=false;reverseUntil=0;ReverseReason=stop;recoveryUntil=Math.Max(recoveryUntil,now+.6);stalled=0;
-    Mode=AiMode.Recovery;Target=-1;EndBoost(now,self,stop);NitroReason=stop;
-    if(self.Speed<-.08f)return new DrivingInput{throttle=1,steer=safeTarget?steer:0};
+    Mode=escapeActive?AiMode.Attack:AiMode.Recovery;if(!escapeActive)Target=-1;EndBoost(now,self,stop);NitroReason=stop;
+    if(self.Speed<-.08f)return new DrivingInput{throttle=1,steer=safeTarget&&!escapeActive?ReverseSteerForHeading(angle):0};
    }
-   stalled=self.Grounded&&self.Speed>=-.08f&&speed<3?stalled+dt:0;
-   if(stalled>2.2f){
+   stalled=!mergeWaiting&&!escapeWaiting&&self.Grounded&&self.Speed>=-.08f&&speed<3?stalled+dt:0;
+   if(!mergeWaiting&&!escapeWaiting&&(stalled>2.2f||noProgress>Patience)){
     stalled=0;
-    if(ReversePathSafe(world,route,self)){
-     reverseUntil=now+1.5;reverseStartDistance=self.Distance;ReverseActive=true;ReverseReason="stalled-recovery";
-     recoveryUntil=Math.Max(recoveryUntil,reverseUntil+.6);Mode=AiMode.Recovery;Target=-1;
+    if((Maneuver!=AiManeuver.Pass||noProgress>Patience)&&ReversePathSafe(world,route,self)){
+     BeginEscape(world,route,self,look);
+     reverseUntil=now+1.5;reverseStartDistance=self.Distance;ReverseActive=true;noProgress=0;ReverseReason="stalled-recovery";
+     recoveryUntil=Math.Max(recoveryUntil,reverseUntil+.6);Mode=AiMode.Recovery;
      EndBoost(now,self,"stalled-recovery");NitroReason="stalled-recovery";
-     return new DrivingInput{brake=1,steer=ReverseSteerForHeading(angle)};
+     return new DrivingInput{brake=1,steer=escapeActive?0:ReverseSteerForHeading(angle)};
     }
    }
+   if(escapeActive&&self.Speed<-.08f){EndBoost(now,self,"arrest-reverse");NitroReason="arrest-reverse";return new DrivingInput{throttle=1,steer=escapeActive?0:ReverseSteerForHeading(angle)};}
    if(!safeTarget){NitroHazards=AiNitroHazard.Corridor;NitroReason="no-connected-corridor";SpeedLimitSource=AiSpeedLimitSource.Corridor;LimitingEntrant=-1;DesiredSpeed=0;EndBoost(now,self,"corridor-blocked");return HoldAtBlockedCorridor(self.Speed);}
    // Reachability envelope, including braking before distant hazards. No profile speed cap.
    float desired=BoostLimit,horizon=BoostLimit*BoostLimit/(2*Brake)+BoostLimit*.4f+80;
@@ -339,17 +462,33 @@ namespace StarRacingPrototype {
     }
    }
    if(traffic)LimitSpeed(ref desired,Mathf.Max(12,speed-5),AiSpeedLimitSource.Traffic,trafficEntrant);
-   for(int i=0;i<world.Count;i++){if(i==id||world[i].Finished)continue;var other=world[i];float gap=other.Distance-self.Distance;if(gap>0&&gap<Mathf.Max(7,speed*.6f)&&Mathf.Abs(other.Lateral-self.Lateral)<1.9f)LimitSpeed(ref desired,FollowingSpeed(other.Speed,gap),AiSpeedLimitSource.Following,i);}
+   for(int i=0;i<world.Count;i++){
+    if(i==id||world[i].Finished)continue;var other=world[i];float gap=other.Distance-self.Distance;
+    if(gap>0&&gap<Mathf.Max(7,speed*.6f)&&Mathf.Abs(other.Lateral-self.Lateral)<PairClearance(self,other)){
+     float following=FollowingSpeed(Mathf.Max(0,other.Speed),gap);
+     // Low relative-speed creep lets ordinary tyre steering separate an existing
+     // queue. It is not a restored velocity or a boost, and ends on failed progress.
+     bool openPass=Maneuver==AiManeuver.Pass&&!traffic&&!mergeYield&&!bypass&&Mathf.Abs(wish-other.Lateral)>=VehicleGeometry.Width+.1f;
+     if((openPass||ContactPressure&&i==Target)&&speed<12&&Mathf.Abs(speed-other.Speed)<3.5f)following=Mathf.Max(following,Mathf.Max(0,other.Speed)+2.5f);
+     LimitSpeed(ref desired,following,AiSpeedLimitSource.Following,i);
+    }
+   }
+   if(Maneuver==AiManeuver.Yield&&now<yieldUntil&&yieldEntrant>=0)LimitSpeed(ref desired,Mathf.Max(0,world[yieldEntrant].Speed-3),AiSpeedLimitSource.Traffic,yieldEntrant);
    // Correct a failed turn through ordinary braking rather than pose manipulation.
    if(Mathf.Abs(angle)>45)LimitSpeed(ref desired,18,AiSpeedLimitSource.Heading);
    if(CorridorBlocked)LimitSpeed(ref desired,18,AiSpeedLimitSource.Corridor);
+   if(escapeActive){
+    var blocker=world[escapeBlocker];
+    if(Mathf.Abs(self.Lateral-blocker.Lateral)>=PairClearance(self,blocker)+.25f){escapeActive=false;}
+    else LimitSpeed(ref desired,escapeWaiting?0:4,AiSpeedLimitSource.Traffic,escapeBlocker);
+   }
    DesiredSpeed=desired;
    // Saturating the common speed limit is safe; geometry/traffic limits retain their braking margin.
    if(NeedsBraking(speed,desired))NitroHazards|=AiNitroHazard.Speed;
    if(Mathf.Abs(angle)>12)NitroHazards|=AiNitroHazard.Heading;
    if(!self.Grounded)NitroHazards|=AiNitroHazard.Unsupported;
    if(self.Recovering)NitroHazards|=AiNitroHazard.Recovery;
-   if(traffic||mergeGuarded||mergeYield)NitroHazards|=AiNitroHazard.Traffic;
+   if(traffic||mergeGuarded||mergeYield||ContactPressure||escapeActive||Maneuver==AiManeuver.Yield)NitroHazards|=AiNitroHazard.Traffic;
    if(CorridorBlocked)NitroHazards|=AiNitroHazard.Corridor;
    bool immediate=NitroHazards!=AiNitroHazard.None;
    if(boost&&(now>=boostUntil||immediate||self.Charge<=.1f))EndBoost(now,self,immediate?"safety":self.Charge<=.1f?"resource":"plan-complete");
@@ -360,7 +499,7 @@ namespace StarRacingPrototype {
     else if(now<nextBoost)NitroReason="individual-slot";
     else if(Mathf.Abs(angle)>8)NitroReason="alignment-margin";
     else if(Mathf.Abs(angle+Mathf.Clamp(headingRate,-180,180)*.45f)>12)NitroReason="heading-trend";
-    else if(self.Charge>=balance["aiNitroReserve"]||self.Charge>=balance["nitroCapacity"]-.1f){
+    else if(self.Charge>=balance["aiNitroReserve"]*(Temperament==AiTemperament.Patient?1.15f:Temperament==AiTemperament.Assertive?.85f:1)||self.Charge>=balance["nitroCapacity"]-.1f){
      float available=self.Charge/balance["nitroDrainPerSecond"],duration=0,travel=0,predicted=speed;
      float plannedOffset=wish-center,initialLocal=Lane-center;
      var boostIntent=new PathIntent(self.Distance,self.Lateral,self.Lateral-BranchCenter(route,self.Distance,BranchIndex,BranchLane),plannedOffset,laneRate,speed,AccelEnvelope,BranchIndex,BranchLane);
@@ -386,7 +525,7 @@ namespace StarRacingPrototype {
    }
    bool braking=speed>desired+1;
    NitroCommand=allowNitro&&boost&&!braking;
-   return new DrivingInput{throttle=1,brake=braking?Mathf.Clamp01((speed-desired)/5):0,steer=steer,nitro=NitroCommand};
+   return new DrivingInput{throttle=desired>.1f?1:0,brake=braking?Mathf.Clamp01((speed-desired)/5):0,steer=steer,nitro=NitroCommand};
   }
   bool NeedsBraking(float speed,float limit)=>speed>limit+1 || (limit<BoostLimit && limit<speed+2);
   void LimitSpeed(ref float desired,float candidate,AiSpeedLimitSource source,int entrant=-1){if(candidate<desired){desired=candidate;SpeedLimitSource=source;LimitingEntrant=entrant;}}
@@ -401,8 +540,8 @@ namespace StarRacingPrototype {
     // The commanded lane is a goal; the car still occupies its observed lane until
     // a later physics snapshot confirms the move. Check both during the forecast.
     float occupiedSide=otherLateral-self.Lateral,plannedSide=otherLateral-lateral;
-    if(Mathf.Abs(gap)<6&&(Mathf.Abs(occupiedSide)<2.1f||Mathf.Abs(plannedSide)<2.1f))return true;
-    if(gap>0&&gap<Mathf.Max(7,speed*.6f)&&(Mathf.Abs(occupiedSide)<1.9f||Mathf.Abs(plannedSide)<1.9f)&&NeedsBraking(speed,FollowingSpeed(other.Speed,gap)))return true;
+    if(Mathf.Abs(gap)<6&&(Mathf.Abs(occupiedSide)<PairClearance(self,other)||Mathf.Abs(plannedSide)<PairClearance(self,other)))return true;
+    if(gap>0&&gap<Mathf.Max(7,speed*.6f)&&(Mathf.Abs(occupiedSide)<PairClearance(self,other)||Mathf.Abs(plannedSide)<PairClearance(self,other))&&NeedsBraking(speed,FollowingSpeed(other.Speed,gap)))return true;
    }
    return false;
   }
