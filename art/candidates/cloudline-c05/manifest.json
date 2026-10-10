@@ -1,0 +1,40 @@
+{
+  "candidate": "C05",
+  "scope": "F4 attached lamps, six paints, two preview-only exhaust modes",
+  "reference": "../cloudline-c03/reference-orbital.png",
+  "preserved_candidates": [
+    "C01",
+    "C02",
+    "C03",
+    "C04"
+  ],
+  "files": {
+    "Cloudline_C05.blend": "ac3a54e942f8fea1fdc14bd07a51e684543cc09112035b67d53b80e1c387ba0e",
+    "Cloudline_C05.fbx": "d986b0747d0a956e4ccf9e3c659341a8f75cb85243433546d5cccc2669636d07",
+    "Cloudline_C05.glb": "57271535e0e5ea0a1fdad63531cb778b382f495cef7a99cd4ba36ccd21c7d7ec",
+    "Cloudline_C05_Studies.blend": "d42a0c92119da9e270ce8d9026d6b85a2e4cae92f0f4e7d27fe9b3027f4c8a63",
+    "README.md": "c93b8a1b95fb5d7b5544f8e7b82ff42a10df7081cf315fe122702d37760ea50a",
+    "colors-sheet.png": "23f244e41d34ffbc2e3eba034b85935ce0093af95b4dc70e56073084ae3e2efa",
+    "comparison.html": "a8d2d4fdd0cbaab695d7195009554b1e8a411c4cdb5d75961a8828c01946b772",
+    "create_model.py": "734f34df78ecf441d2045905f3570651c857315daf7b45af2ac5cf2bf31a1853",
+    "exhaust-gas.png": "46d43554ca0168de4bef4022d44a24a486c634ac37e2aaaea36366db0e292a75",
+    "exhaust-nitro.png": "c2fa8c480183fd7f1a9cb5a008036acaf99bc94361e9e93c1a91638b50c0fe47",
+    "exhaust-sheet.png": "1362f9de4d5ba4f495df65c1e49726e5b23c75c6adde586fbd4c6c612a5301cb",
+    "export-validation.json": "b133100e19ac51177828557702c17260c6bec170c3e2f13d893e4250db16a680",
+    "make_sheets.py": "e904b8a93dcecaad1869d0fa91e88caa2ca363e0d8228103ea92d376fc854a5f",
+    "model-stats.json": "a7eb517deb37aa84a812dc2e7dcd535c3833729ed7f0c5e640a5b7d3302b1151",
+    "paint-01-silver.png": "af5e6685aabffc85d2c6dd96f4121508df8952c97c27a4bcd17801920c582caa",
+    "paint-02-graphite.png": "b6caeb887e49e8e37386328be8c75e543aa51b129b6ad8831513d5979559a1a2",
+    "paint-03-pearl.png": "c3fa0e3d0a3003e9b7d3ad3873e11deca79f319ef30c2105a8b3b25d5cb310d0",
+    "paint-04-crimson.png": "297b0eb0efb9a349026111d910f6bba1fc13a143dac0ea1049a01e3fea15b03c",
+    "paint-05-cobalt.png": "6e00d92bcac7934e045566bbf7258c13211c749547a2e5ce1b403fa3b38a7b1b",
+    "paint-06-gold.png": "e12c2d9b255c67876125906b8724c955363fa0f4895dd8c4d0d1d798673642a5",
+    "preservation-validation.json": "a73407d72a7adcf34246791ecfbf3e1d5cc52c8391968ee4cb4b5d1dffecedbf",
+    "rear-light-detail.png": "e51aa23837bdbfc3f2ceb6a9592a2cf932bd55aee4d69c4816d3db589c9ac6a9",
+    "rear-three-quarter.png": "b9df638c63d9a5bb0a94ceb1ee97e913678a055dcbdfa848ed8c9a3ab62b77c0",
+    "render_studies.py": "d820a173b16c644459fe8c3d9b205fd19be0177e866717cc9b909e9bb422ecb9",
+    "studies.json": "253c51c06715b6baafbb0a1638f5572818cae8b3434183fe011ddae71aeee825",
+    "verify_exports.py": "d29ae2436b045f77ce1a1748f308c125f71922d5fc9bb880cdf35434f9e3c831",
+    "verify_preservation.py": "ed48660da2b7b99595cf2a9aa3d5cc5b2ce645f990090003fa563637680cf07c"
+  }
+}

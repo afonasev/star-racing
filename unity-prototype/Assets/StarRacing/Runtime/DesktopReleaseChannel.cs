@@ -5,5 +5,10 @@ namespace StarRacingPrototype.Distribution {
 #else
   public const string Track="production";
 #endif
+#if STAR_RACING_UNSIGNED_PRODUCTION
+  public const bool AllowsUnsignedProduction=true;
+#else
+  public const bool AllowsUnsignedProduction=false;
+#endif
  }
 }

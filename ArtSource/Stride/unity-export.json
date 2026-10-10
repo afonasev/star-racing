@@ -1,0 +1,17 @@
+{
+  "source_commit": "8951583",
+  "source_sha256": "d44cc1de6a7255bf4f4807f3177714518d65c2ec04924e65b234cd502c34bb62",
+  "renderers": 8,
+  "triangles": 74644,
+  "materials": [
+    "ExhaustInterior",
+    "GraphiteStructure",
+    "HeadLight",
+    "MachinedMetal",
+    "PlayerPaint",
+    "SmokedGlass",
+    "TailLight",
+    "TireRubber"
+  ],
+  "fbx_sha256": "b1dc1166255f5db0185e454ed6d6559a13fe06f38d2ec8e024f79253e7a0d034"
+}

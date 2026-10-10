@@ -21,7 +21,7 @@ namespace StarRacingPrototype.Distribution {
 
  // Only this authenticated, immutable description is ever exposed to Velopack.
  public static class ReleaseAuthentication {
-  static JObject Parse(string json){
+  internal static JObject Parse(string json){
    if(json==null||Encoding.UTF8.GetByteCount(json)>131072)throw new InvalidDataException("Каталог слишком велик");
    using(var reader=new JsonTextReader(new StringReader(json))){
     var obj=JObject.Load(reader,new JsonLoadSettings{DuplicatePropertyNameHandling=DuplicatePropertyNameHandling.Error});
@@ -39,6 +39,14 @@ namespace StarRacingPrototype.Distribution {
     if(!rsa.VerifyData(bytes,signature,HashAlgorithmName.SHA256,RSASignaturePadding.Pkcs1))throw new InvalidDataException("Подпись обновления не подтверждена");
    }
    var data=Parse(new UTF8Encoding(false,true).GetString(bytes));
+   return Validate(data,appId,channel,minimumSequence,track);
+  }
+  public static DesktopRelease VerifyUnsignedProduction(string catalog,string appId,string channel,long minimumSequence,string track="production"){
+   var data=Parse(catalog);
+   if(!DesktopReleaseChannel.AllowsUnsignedProduction||track!="production"||data["unsignedProductionCatalog"]?.Type!=JTokenType.Boolean||(bool)data["unsignedProductionCatalog"]!=true)throw new InvalidDataException("Неподписанный production-каталог не разрешен");
+   return Validate(data,appId,channel,minimumSequence,track);
+  }
+  static DesktopRelease Validate(JObject data,string appId,string channel,long minimumSequence,string track){
    var release=new DesktopRelease{appId=Text(data,"appId"),channel=Text(data,"channel"),releaseTrack=Text(data,"releaseTrack"),version=Text(data,"version"),fileName=Text(data,"fileName"),sha256=Text(data,"sha256"),url=Text(data,"url"),notes=Text(data,"notes"),size=Number(data,"size"),sequence=Number(data,"sequence")};
    if(Number(data,"schema")!=2||release.appId!=appId||release.channel!=channel||release.releaseTrack!=track||!(track=="test"||track=="production")||release.sequence<minimumSequence||release.sequence<=0||release.sequence>int.MaxValue)throw new InvalidDataException("Каталог другой игры, платформы или устаревший");
    var version=SemanticVersion.Parse(release.version);
@@ -75,7 +83,7 @@ namespace StarRacingPrototype.Distribution {
    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version","2022-11-28");
   }
-  public void Restore(string envelope){var release=ReleaseAuthentication.Verify(envelope,appId,channel,MinimumSequence,track,modulus);Release=release;Envelope=envelope;}
+  public void Restore(string envelope){var release=VerifyStored(envelope);Release=release;Envelope=envelope;}
   public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger,string requestedAppId,string requestedChannel,Guid? stagingId=null,VelopackAsset latestLocalRelease=null){
    if(requestedAppId!=appId||requestedChannel!=channel)throw new InvalidDataException("Неподходящий канал обновлений");
    using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)))
@@ -86,8 +94,10 @@ namespace StarRacingPrototype.Distribution {
      var github=JObject.Parse(new UTF8Encoding(false,true).GetString(output.ToArray()),new JsonLoadSettings{DuplicatePropertyNameHandling=DuplicatePropertyNameHandling.Error});
      if(github["draft"]?.Type!=JTokenType.Boolean||(bool)github["draft"]||github["prerelease"]?.Type!=JTokenType.Boolean||(bool)github["prerelease"]!=(track=="test")||(string)github["tag_name"]!="channel-"+track)throw new InvalidDataException("Неподходящий канал GitHub");
      var catalog=JObject.Parse((string)github["body"],new JsonLoadSettings{DuplicatePropertyNameHandling=DuplicatePropertyNameHandling.Error});
-     if((int?)catalog["schema"]!=1||(string)catalog["track"]!=track)throw new InvalidDataException("Неподходящий каталог GitHub");
+     bool unsigned=(int?)catalog["schema"]==2&&catalog["unsignedProductionCatalog"]?.Type==JTokenType.Boolean&&(bool)catalog["unsignedProductionCatalog"];
+     if((!unsigned&&(int?)catalog["schema"]!=1)||unsigned&&(!DesktopReleaseChannel.AllowsUnsignedProduction||track!="production")||(string)catalog["track"]!=track)throw new InvalidDataException("Неподходящий каталог GitHub");
      var envelope=catalog["platforms"]?[channel]?.ToString(Newtonsoft.Json.Formatting.None);
+     if(unsigned){var descriptor=ReleaseAuthentication.Parse(envelope);descriptor["unsignedProductionCatalog"]=true;envelope=descriptor.ToString(Newtonsoft.Json.Formatting.None);}
      Restore(envelope);
      if((string)catalog["version"]!=Release.version)throw new InvalidDataException("Версия каталога изменилась");
     }
@@ -95,7 +105,7 @@ namespace StarRacingPrototype.Distribution {
    return new VelopackAssetFeed{Assets=new[]{Release.Asset}};
   }
   public async Task DownloadReleaseEntry(IVelopackLogger logger,VelopackAsset asset,string localFile,Action<int> progress,CancellationToken cancelToken=default){
-   var release=ReleaseAuthentication.Verify(Envelope,appId,channel,MinimumSequence,track,modulus);
+   var release=VerifyStored(Envelope);
    if(!DownloadConsent||asset.PackageId!=release.appId||asset.Version!=SemanticVersion.Parse(release.version)||asset.Type!=VelopackAssetType.Full||asset.FileName!=release.fileName||asset.Size!=release.size||!string.Equals(asset.SHA256,release.sha256,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Загрузка не согласована или пакет изменился");
    try{
     using(var response=await GetGithubPackage(release,cancelToken).ConfigureAwait(false)){
@@ -107,6 +117,11 @@ namespace StarRacingPrototype.Distribution {
     }
     ReleaseAuthentication.VerifyFile(release,localFile); // Before SDK extracts/replaces its native helper.
    }catch{if(File.Exists(localFile))File.Delete(localFile);throw;}
+  }
+  DesktopRelease VerifyStored(string descriptor){
+   var value=ReleaseAuthentication.Parse(descriptor);
+   if(value["unsignedProductionCatalog"]?.Type==JTokenType.Boolean&&(bool)value["unsignedProductionCatalog"])return ReleaseAuthentication.VerifyUnsignedProduction(descriptor,appId,channel,MinimumSequence,track);
+   return ReleaseAuthentication.Verify(descriptor,appId,channel,MinimumSequence,track,modulus);
   }
   async Task<HttpResponseMessage> GetGithubPackage(DesktopRelease release,CancellationToken token){
    var response=await client.GetAsync(ReleaseAuthentication.GithubPackage(release),HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);

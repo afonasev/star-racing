@@ -3,7 +3,7 @@ using UnityEngine;
 namespace StarRacingPrototype {
  public sealed class RaceHud : MonoBehaviour {
   public RaceDirector director;
-  Vector2 resultsScroll;
+  Vector2 resultsScroll;Texture2D instrumentBackdrop;
   bool wasPaused,wasResults;
   public bool EditingTrackSeed=>GetComponent<RaceMenu>().EditingSeed;
   public void RefreshTrackSettings(){}
@@ -14,44 +14,60 @@ namespace StarRacingPrototype {
    bool settings=director.Paused&&menu.PauseSettings;
    if(results||settings)ui.Backdrop();var old=GUI.matrix;if(results)CloudlineSkin.Begin();else GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
    if(director.HumanCount==3&&!results&&!settings){CloudlineSkin.Box(new Rect(800,450,800,450),new Color(.91f,.95f,1),0);ui.Brand(new Rect(975,622,520,80),45);}
-   if(!results&&!settings)for(int seat=0;seat<director.HumanCount;seat++)DrawSeat(ui,seat);
+   if(!results&&!settings){for(int seat=0;seat<director.HumanCount;seat++)DrawSeat(ui,seat);DrawProgress(ui);}
    if(results){menu.BeginOverlay("repeat",!wasResults);DrawResults(ui,menu);}
    else if(director.Paused){GUI.matrix=old;CloudlineSkin.Begin();menu.BeginOverlay("resume",!wasPaused);DrawPause(ui,menu);}
-   var updater=StarRacingPrototype.Distribution.DesktopUpdater.Instance;
-   if(updater!=null&&updater.Downloading)ui.Text(new Rect(1170,864,370,24),"Загрузка обновления · "+updater.Progress+"%",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);
-   menu.DrawFps();wasPaused=director.Paused;wasResults=results;GUI.matrix=old;
+   if(!results&&!settings){var hudMatrix=GUI.matrix;GUI.matrix=hudMatrix*Matrix4x4.Translate(new Vector3(0,-124,0));menu.DrawFps();GUI.matrix=hudMatrix;}else menu.DrawFps();wasPaused=director.Paused;wasResults=results;GUI.matrix=old;
   }
   void DrawSeat(CloudlineSkin ui,int seat){
-   var view=RaceViewports.For(director.HumanCount,seat);var r=new Rect(view.x*1600,(1-view.yMax)*900,view.width*1600,view.height*900);
-   var car=director.Cars[seat];var racer=director.Session.Racers[seat];var accent=CloudlineSkin.PlayerColors[seat];
-   float margin=22;bool compact=director.HumanCount>2;
+   var r=RaceHudLayout.View(director.HumanCount,seat);
+   var car=director.Cars[seat];var racer=director.Session.Racers[seat];var accent=director.EntrantColor(seat);
    CloudlineSkin.Box(new Rect(r.x,r.y,r.width,2),Color.white,0);CloudlineSkin.Box(new Rect(r.x,r.y,2,r.height),Color.white,0);
-   ui.Panel(new Rect(r.x+margin,r.y+18,230,98),.93f);
-   CloudlineSkin.Box(new Rect(r.x+margin,r.y+18,5,98),accent,2);
-   ui.Text(new Rect(r.x+margin+18,r.y+24,196,28),director.AppliedConfig.PlayerName(seat),17,true,accent);
-   ui.Text(new Rect(r.x+margin+18,r.y+48,200,58),racer.Place+" / "+director.Cars.Length,34,true);
-   ui.Panel(new Rect(r.xMax-188,r.y+18,166,92),.91f);
-   ui.Text(new Rect(r.xMax-176,r.y+24,142,27),"ВРЕМЯ ГОНКИ",12,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
-   ui.Text(new Rect(r.xMax-176,r.y+43,142,32),TimeSpan.FromSeconds(director.Session.Elapsed).ToString(@"mm\:ss"),24,true,null,TextAnchor.MiddleCenter);
-   float leader=0;foreach(var standing in director.Session.Racers)leader=Mathf.Max(leader,standing.Progress/director.Session.RaceLength);
-   ui.Text(new Rect(r.xMax-176,r.y+76,142,24),"Лидер "+Mathf.RoundToInt(leader*100)+"%",14,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
-   float y=r.yMax-(compact?95:126);
-   ui.Panel(new Rect(r.x+margin,y,260,compact?76:96),.93f);
-   ui.Text(new Rect(r.x+margin+14,y,120,64),Mathf.RoundToInt(Mathf.Abs(car.Telemetry.speedKmh)).ToString(),compact?40:49,true);
-   ui.Text(new Rect(r.x+margin+132,y+25,92,27),"км/ч",17,false,CloudlineSkin.Muted);
-   ui.Text(new Rect(r.x+margin+14,y+55,62,21),"НИТРО",12,true,accent);
-   CloudlineSkin.Box(new Rect(r.x+margin+80,y+62,156,8),new Color(.77f,.82f,.9f),4);
-   CloudlineSkin.Box(new Rect(r.x+margin+80,y+62,156*car.Telemetry.nitro01,8),accent,4);
-   float progress=Mathf.Clamp01(racer.Progress/director.Session.RaceLength);
-   ui.Panel(new Rect(r.xMax-260,r.yMax-73,238,52),.93f);
-   ui.Text(new Rect(r.xMax-246,r.yMax-68,211,26),"Трасса   "+Mathf.RoundToInt(progress*100)+"%",16,true);
-   CloudlineSkin.Box(new Rect(r.xMax-246,r.yMax-36,208,5),new Color(.8f,.85f,.91f),2);
-   CloudlineSkin.Box(new Rect(r.xMax-246,r.yMax-36,208*progress,5),accent,2);
+   DrawInstrument(ui,RaceHudLayout.Instrument(director.HumanCount,seat),accent,Mathf.Abs(car.Telemetry.speedKmh),car.Telemetry.nitro01,RaceHudLayout.Right(director.HumanCount,seat));
+   var place=RaceHudLayout.Position(director.HumanCount,seat);
+   CloudlineSkin.Box(place,new Color(.027f,.078f,.137f,.66f),4);
+   Circle(new Vector2(place.x+8,place.center.y),2,accent);
+   // Separate sizes keep the place dominant while retaining the full roster count.
+   ui.Text(new Rect(place.x+14,place.y,25,place.height),racer.Place.ToString(),18,true,Color.white,TextAnchor.MiddleRight);
+   ui.Text(new Rect(place.x+40,place.y+2,25,place.height-2),"/"+director.Cars.Length,8,false,new Color(.8f,.87f,.94f));
    if(director.Session.Phase==RacePhase.Countdown){
     var box=new Rect(r.center.x-65,r.center.y-74,130,148);ui.Panel(box,.96f);ui.Text(box,Mathf.CeilToInt((float)director.Session.Countdown).ToString(),86,true,CloudlineSkin.Blue,TextAnchor.MiddleCenter);
    }
-   if(director.Session.Phase==RacePhase.FinishWindow)ui.Text(new Rect(r.x+270,r.y+90,r.width-300,35),"До результатов: "+director.Session.Remaining.ToString("0.0")+" с",20,true,Color.white,TextAnchor.MiddleCenter);
+   if(director.Session.Phase==RacePhase.FinishWindow)ui.Text(new Rect(r.x+120,r.y+132,r.width-240,35),"До результатов: "+director.Session.Remaining.ToString("0.0")+" с",20,true,Color.white,TextAnchor.MiddleCenter);
    if(racer.Finished)ui.Text(new Rect(r.x+100,r.center.y-25,r.width-200,50),"ФИНИШ",40,true,Color.white,TextAnchor.MiddleCenter);
+  }
+  static void Circle(Vector2 center,float radius,Color color){CloudlineSkin.Box(new Rect(center.x-radius,center.y-radius,radius*2,radius*2),color,radius);}
+  void DrawInstrument(CloudlineSkin ui,Rect r,Color accent,float speed,float nitro,bool right){
+   // The darkest edge faces the screen border; both sides fade inward.
+   if(instrumentBackdrop==null){
+    instrumentBackdrop=new Texture2D(64,1,TextureFormat.RGBA32,false){wrapMode=TextureWrapMode.Clamp,filterMode=FilterMode.Bilinear,hideFlags=HideFlags.HideAndDontSave};
+    for(int i=0;i<64;i++){float inward=i/63f;instrumentBackdrop.SetPixel(i,0,new Color(.027f,.078f,.137f,RaceHudLayout.InstrumentOpacity*(1-inward*inward)));}
+    instrumentBackdrop.Apply(false,true);
+   }
+   GUI.DrawTextureWithTexCoords(r,instrumentBackdrop,right?new Rect(1,0,-1,1):new Rect(0,0,1,1),true);
+   CloudlineSkin.Box(new Rect(right?r.xMax-1:r.x,r.y,1,r.height),accent,0);
+   ui.Text(new Rect(r.x+9,r.y+3,54,34),Mathf.RoundToInt(speed).ToString(),28,true,Color.white);
+   ui.Text(new Rect(r.x+63,r.y+13,32,16),"КМ/Ч",6,false,new Color(.82f,.89f,.96f));
+   var bar=new Rect(r.x+9,r.yMax-12,68,2);
+   CloudlineSkin.Box(bar,new Color(.7f,.78f,.87f,.3f),0);
+   float fill=bar.width*Mathf.Clamp01(nitro);if(fill>0)CloudlineSkin.Box(new Rect(bar.x,bar.y,fill,bar.height),accent,0);
+   ui.Text(new Rect(r.x+85,r.yMax-18,16,14),"N₂",6,false,new Color(.82f,.89f,.96f));
+  }
+  void OnDestroy(){if(instrumentBackdrop!=null)Destroy(instrumentBackdrop);}
+  void DrawProgress(CloudlineSkin ui){
+   var line=RaceHudLayout.ProgressLine;
+   CloudlineSkin.Box(new Rect(line.x,line.y+1,line.width,1),new Color(0,0,0,.35f),0);
+   CloudlineSkin.Box(line,new Color(.9f,.96f,1,.45f),0);
+   for(int tick=0;tick<=10;tick++)CloudlineSkin.Box(new Rect(line.x+line.width*tick/10,line.y-1,1,3),new Color(1,1,1,.3f),0);
+   ui.Text(new Rect(line.x-68,line.y-8,56,16),"СТАРТ",6,true,Color.white,TextAnchor.MiddleCenter);
+   ui.Text(new Rect(line.xMax+12,line.y-8,56,16),"ФИНИШ",6,true,Color.white,TextAnchor.MiddleCenter);
+   // Stable entrant colors match the actual cars. Local seats remain legible over the pack.
+   for(int pass=0;pass<2;pass++)for(int i=0;i<director.Session.Racers.Length;i++){
+    int seat=director.Roster.Entrants[i].HumanSeat;bool human=seat>=0;if(human!=(pass==1))continue;
+    var point=RaceHudLayout.Marker(director.Session.Racers[i].Progress,director.Session.RaceLength);
+    Circle(point,human?7:1.8f,CloudlineSkin.Alpha(Color.white,human?1:.25f));Circle(point,human?6:1.3f,CloudlineSkin.Alpha(director.EntrantColor(i),human?1:.4f));
+    if(human)ui.Text(new Rect(point.x-6,point.y-7,12,14),(seat+1).ToString(),7,true,Color.white,TextAnchor.MiddleCenter);
+   }
   }
   void DrawPause(CloudlineSkin ui,RaceMenu menu){
    if(menu.PauseSettings){menu.DrawPauseSettings();return;}

@@ -7,6 +7,7 @@ namespace StarRacingPrototype {
     public sealed class TrackRoute {
         public TrackFrame[] Samples;
         public Procedural.Definition Definition { get; private set; }
+        Vector3[] derivatives;
         Procedural.Span[][] paved;
         Procedural.SpanPair[][] roadPanels;
         public float Length;
@@ -36,6 +37,12 @@ namespace StarRacingPrototype {
             var last = source[source.Length - 1];
             for (int i = 1; i <= 80; i++) native.Add(FromSource(last, FinishDistance + i * 2, last.position.Float + last.tangent.Float * (i * 2)));
             Samples = native.ToArray(); Length = FinishDistance + 160;
+            derivatives = new Vector3[Samples.Length];
+            for (int i = 0; i < Samples.Length; i++) {
+                int before = Mathf.Max(0, i - 1), after = Mathf.Min(Samples.Length - 1, i + 1);
+                derivatives[i] = (Samples[after].position - Samples[before].position) /
+                    (Samples[after].distance - Samples[before].distance);
+            }
             var loops = Procedural.Generator.Runs(source, "loop");
             if (loops.Count > 0) { LoopStart = (float)source[loops[0].start].distance + 30; LoopEnd = LoopStart + loops[0].length * 5; }
         }
@@ -53,8 +60,8 @@ namespace StarRacingPrototype {
             int index = Mathf.Clamp(Mathf.FloorToInt((distance - 30) / 5), 0, Definition.samples.Length - 1);
             return Definition.samples[index];
         }
-        // Each panel is the same convex lateral strip used by the road mesh. A linear path
-        // contained at both ends of a panel remains contained between them, including its margin.
+        // Source-space lateral strips share the mesh's interpolated boundaries. This
+        // checks lane/topology containment; suspension validates actual physical support.
         public bool SupportsCorridorSegment(float from,float fromLane,float to,float toLane,float margin) {
             if(to<from)return false;
             if(Definition==null)return Mathf.Max(Mathf.Abs(fromLane),Mathf.Abs(toLane))+margin<=Mathf.Min(Evaluate(from).halfWidth,Evaluate(to).halfWidth);
@@ -122,7 +129,9 @@ namespace StarRacingPrototype {
                 Vector3.Dot(velocity,frame.tangent)>5 && Vector3.Dot(velocity,frame.normal)>.1f;
         }
         public bool InFlightCorridor(Procedural.Jump jump,Vector3 position,float distance) {
-            if(jump==null || distance<30+jump.rampStartIndex*5 || distance>30+jump.landingEndIndex*5)return false;
+            if(jump==null || distance<30+jump.rampStartIndex*5)return false;
+            int flightEnd=jump.ballisticLandingEndIndex>0?jump.ballisticLandingEndIndex:jump.landingEndIndex;
+            if(distance>30+flightEnd*5 || SourceAt(distance).segmentIndex!=SourceAt(30+jump.launchIndex*5).segmentIndex)return false;
             var frame=Evaluate(distance);
             float lateral=Vector3.Dot(position-frame.position,frame.right),height=Vector3.Dot(position-frame.position,frame.normal);
             return Mathf.Abs(lateral)<=frame.halfWidth+1 && height>=-.6f && height<20;
@@ -139,8 +148,10 @@ namespace StarRacingPrototype {
             TrackFrame b = Samples[(lo + 1) % Samples.Length];
             float end = lo == Samples.Length - 1 ? Length : b.distance;
             float t = Mathf.InverseLerp(a.distance, end, d);
-            var result = MakeFrame(d, Vector3.Lerp(a.position, b.position, t),
-                Vector3.Slerp(a.tangent, b.tangent, t).normalized,
+            Vector3 position = Vector3.Lerp(a.position, b.position, t);
+            Vector3 tangent = Vector3.Slerp(a.tangent, b.tangent, t).normalized;
+            if (derivatives != null) Curve(lo, t, out position, out tangent, out _);
+            var result = MakeFrame(d, position, tangent,
                 Vector3.Slerp(a.normal, b.normal, t).normalized,
                 t < .5f ? a.gap : b.gap, t < .5f ? a.segmentId : b.segmentId);
             result.halfWidth = Mathf.Lerp(a.halfWidth, b.halfWidth, t);
@@ -151,7 +162,22 @@ namespace StarRacingPrototype {
             float previous = Wrap(previousDistance);
             float bestScore = float.PositiveInfinity;
             float bestDistance = previous;
-            for (int i = 0; i < Samples.Length - (IsClosed ? 0 : 1); i++) {
+            int bestSegment = 0;
+            int lastIndex=Samples.Length-(IsClosed?1:2),firstStart=0,firstEnd=lastIndex,secondStart=lastIndex+1;
+            // A segment outside the progress window cannot contain a candidate.
+            // Include one neighbour at each bound for float endpoint rounding and
+            // preserve ascending order, including equal-score ties across a wrap.
+            if(!float.IsNaN(previous) && !float.IsNaN(window) && window>=0 && window<(IsClosed?Length*.5f:Length)) {
+                int Low(float at)=>Mathf.Max(0,FindSegment(Mathf.Max(0,at))-1);
+                int High(float at)=>Mathf.Min(lastIndex,FindSegment(Mathf.Min(Length,at))+1);
+                float lower=previous-window,upper=previous+window;
+                if(IsClosed && lower<0) {firstEnd=High(upper);secondStart=Mathf.Max(firstEnd+1,Low(lower+Length));}
+                else if(IsClosed && upper>=Length) {firstEnd=High(upper-Length);secondStart=Mathf.Max(firstEnd+1,Low(lower));}
+                else {firstStart=Low(lower);firstEnd=High(upper);}
+            }
+            for(int range=0;range<(secondStart<=lastIndex?2:1);range++) {
+                int startIndex=range==0?firstStart:secondStart,endIndex=range==0?firstEnd:lastIndex;
+                for (int i=startIndex;i<=endIndex;i++) {
                 TrackFrame a = Samples[i];
                 TrackFrame b = Samples[(i + 1) % Samples.Length];
                 float end = i == Samples.Length - 1 ? Length : b.distance;
@@ -161,7 +187,28 @@ namespace StarRacingPrototype {
                 float candidate = a.distance + segmentLength * t;
                 if (Mathf.Abs(WrappedDelta(candidate, previous)) > window) continue;
                 float score = (position - Vector3.Lerp(a.position, b.position, t)).sqrMagnitude;
-                if (score < bestScore) { bestScore = score; bestDistance = candidate; }
+                if (score < bestScore) { bestScore = score; bestDistance = candidate; bestSegment = i; }
+            }
+            }
+            if (derivatives != null) {
+                bestScore = float.PositiveInfinity;
+                for (int i = Mathf.Max(0, bestSegment - 1); i <= Mathf.Min(Samples.Length - 2, bestSegment + 1); i++) {
+                    var a = Samples[i]; var b = Samples[i + 1];
+                    float span = b.distance - a.distance;
+                    float t = Mathf.Clamp01(Vector3.Dot(position - a.position, b.position - a.position) /
+                        (b.position - a.position).sqrMagnitude);
+                    for (int iteration = 0; iteration < 5; iteration++) {
+                        Curve(i, t, out var point, out var first, out var second);
+                        float denominator = first.sqrMagnitude + Vector3.Dot(point - position, second);
+                        if (Mathf.Abs(denominator) < .00001f) break;
+                        t = Mathf.Clamp01(t - Vector3.Dot(point - position, first) / denominator);
+                    }
+                    float candidate = a.distance + span * t;
+                    if (Mathf.Abs(WrappedDelta(candidate, previous)) > window) continue;
+                    Curve(i, t, out var nearest, out _, out _);
+                    float score = (position - nearest).sqrMagnitude;
+                    if (score < bestScore) { bestScore = score; bestDistance = candidate; }
+                }
             }
             var frame = Evaluate(bestDistance);
             if (Definition != null) {
@@ -175,6 +222,29 @@ namespace StarRacingPrototype {
                 frame.gap = spans.Length == 0;
             }
             return frame;
+        }
+
+        public Vector3 EvaluateDerivative(float distance) {
+            float d = Wrap(distance);
+            if (derivatives == null) return Evaluate(d).tangent;
+            int index = Mathf.Min(FindSegment(d), Samples.Length - 2);
+            float span = Samples[index + 1].distance - Samples[index].distance;
+            float t = Mathf.InverseLerp(Samples[index].distance, Samples[index + 1].distance, d);
+            Curve(index, t, out _, out var first, out _);
+            return first / span;
+        }
+
+        // C1 Hermite interpolation preserves source distances/topology. Centered secants
+        // match the generated positions; authored tangents are outgoing Euler chords.
+        void Curve(int index, float t, out Vector3 position, out Vector3 first, out Vector3 second) {
+            var a = Samples[index]; var b = Samples[index + 1];
+            float span = b.distance - a.distance;
+            Vector3 m0 = derivatives[index] * span, m1 = derivatives[index + 1] * span;
+            float t2 = t * t, t3 = t2 * t;
+            Vector3 chord = b.position - a.position;
+            position = a.position + (-2*t3+3*t2)*chord + (t3-2*t2+t)*m0 + (t3-t2)*m1;
+            first = (-6*t2+6*t)*chord + (3*t2-4*t+1)*m0 + (3*t2-2*t)*m1;
+            second = (-12*t+6)*chord + (6*t-4)*m0 + (6*t-2)*m1;
         }
 
         public float WrappedDelta(float target, float from) {

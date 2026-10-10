@@ -1,0 +1,47 @@
+{
+  "seed": "deterministic geometry and noise W=1.8/3.4",
+  "paint_linear_rgb": {
+    "01-silver": [
+      0.39,
+      0.47,
+      0.57
+    ],
+    "02-graphite": [
+      0.03,
+      0.039,
+      0.05
+    ],
+    "03-pearl": [
+      0.82,
+      0.85,
+      0.89
+    ],
+    "04-crimson": [
+      0.4,
+      0.008,
+      0.016
+    ],
+    "05-cobalt": [
+      0.008,
+      0.055,
+      0.45
+    ],
+    "06-gold": [
+      0.72,
+      0.32,
+      0.015
+    ]
+  },
+  "exhaust": {
+    "gas": {
+      "length_m": 0.55,
+      "color": "warm orange with blue core"
+    },
+    "nitro": {
+      "length_m": 1.8,
+      "color": "blue/cyan with pale core"
+    }
+  },
+  "effects_exported": false,
+  "gameplay_integrated": false
+}

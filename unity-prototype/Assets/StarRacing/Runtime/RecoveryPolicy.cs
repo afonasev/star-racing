@@ -31,7 +31,7 @@ namespace StarRacingPrototype {
             if(unsupportedOffRoad && Math.Abs(speed)<.4f && gas==0 && brake==0)StuckSeconds+=dt;
             else StuckSeconds=0;
             // Lack of input is not a fall: a parked car must retain its road support.
-            // Only a physically unsupported off-road pose may disable the chassis.
+            // Only a physically unsupported off-road pose may enter fall recovery.
             if(!unsupportedOffRoad)return false;
             Falling=true;FallSeconds=0;StuckSeconds=0;Episode++;
             return true;

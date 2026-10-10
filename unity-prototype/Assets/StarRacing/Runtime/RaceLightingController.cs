@@ -28,7 +28,7 @@ namespace StarRacingPrototype {
             foreach (var chase in cameras) {
                 if (chase == null) continue;
                 var camera = chase.GetComponent<Camera>();
-                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.clearFlags = CameraClearFlags.Skybox;
                 camera.backgroundColor = profile.skyColor;
             }
         }

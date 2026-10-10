@@ -1,0 +1,19 @@
+{
+  "candidate": "Cloudline C01",
+  "source_reference": "/Users/eaafonasev/.codex/worktrees/281e/star-racing/unity-prototype/Assets/StarRacing/Resources/UI/CloudlineBackground.png",
+  "reference_sha256": "e2da4ec0cb2bd4e86d4a4d92439f6dc7dca82d72a6ea1cfdad907fa54a8a0fdb",
+  "files": {
+    "Cloudline_C01.blend": "bd1b7d4b544dd95f3ac6c1baaacb4d9213993aeb9a2205b3ec1973678ce5cfc5",
+    "Cloudline_C01.fbx": "75673acac894bb1dfbab468141d00e8bb18bc678a6004a028d2dfed3b6d99603",
+    "Cloudline_C01.glb": "f14a86236299fd51d961e1a6e90b382d1fdce88174ed3e4fe3887f037e32d602",
+    "README.md": "0ff9ceee58da60a4944dc06544ce5bd79fe8d4a1bc5750accb7fc5c262046ca6",
+    "create_model.py": "9ce066f37c3b8f01f1f04f4bb0804db37f60ddec9d980f8874ddf3765046f3a8",
+    "export-validation.json": "31c1bcced30cc5a4e04c3681b5b100d74ccd26c186ac94601aea4cbb0b8b3de1",
+    "front-three-quarter.png": "fcbd03efe9cb8d479721a7c29e8f4eec53aa3aa4fa25085bcfa7b8c265d72cc5",
+    "model-stats.json": "8bd0006329de41723c39d21b9fc3a31011a5a458db425a299b6fe62c33ea6486",
+    "rear-three-quarter.png": "e9db9d6033832cbd014cb7f5643705e21663861f9ebab9741e94a221fb99615f",
+    "rear.png": "778c10aa96f8cce4ccf3482d0b8d46d1ed7eb6e49a417b6e4cdddacd338921aa",
+    "side.png": "d89eea1e5e7e7c0c35544a69c511f666c3cf27872eca6a1196055989241e09b9",
+    "verify_exports.py": "dc334dd4ef147ee9d2d77f4956ad43ffd5f5e5e67e83df7553c2e2b5b6f15cc2"
+  }
+}

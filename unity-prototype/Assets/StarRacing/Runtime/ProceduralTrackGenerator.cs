@@ -7,6 +7,11 @@ namespace StarRacingPrototype.Procedural
 /// <summary>Runtime port of src/track/generator.ts version 8. No Unity or vehicle state.</summary>
 public static class Generator
 {
+    public const double NativeJumpStraightLength=480;
+    public const int NativeBallisticLandingSamples=68; //340m, then>=50m before a turn.
+    public static double AddedRunwayLength(Definition d) => d.version>=10 && d.jumpModeEnabled
+        ?Math.Min(880,Runs(d.samples,"jump-straight").Sum(run=>Math.Min(220,Math.Max(0,run.length*5-260)))):0;
+
     sealed class Plan
     {
         public string kind, pattern;
@@ -199,6 +204,8 @@ public static class Generator
     {
         var r = new SeedRandom(seed);
         var plan = MakePlan(r, jumps);
+        // Preserve plan selection/RNG; the approved runway is additional course.
+        if(native && jumps)foreach(var section in plan)if(section.kind=="jump-straight")section.length=NativeJumpStraightLength;
         var list = new List<Sample>();
         DVec p = new DVec(0, 120, 0), tangent = new DVec(0, 0, 1), normal = new DVec(0, 1, 0),
              right = new DVec(-1, 0, 0);
@@ -206,6 +213,7 @@ public static class Generator
         for (int segment = 0; segment < plan.Count; segment++)
         {
             var s = plan[segment];
+            var runwayRandom=new SeedRandom(seed ^ unchecked((uint)(segment+1)*0x9e3779b9u));
             int steps = Math.Max(2, (int)Math.Floor(s.length / 5 + .5));
             var weights = new double[steps];
             for (int i = 0; i < steps; i++)
@@ -274,14 +282,16 @@ public static class Generator
                 }
                 bool hazard = s.kind == "loop" || s.kind == "hairpin" || Math.Abs(rates.x) > .006 ||
                               Math.Abs(rates.y) > .02;
-                bool open = !hazard && r.Next() < .38;
+                // Added runway samples do not advance the legacy rail RNG.
+                var sampleRandom=native && s.kind=="jump-straight" && i>=52?runwayRandom:r;
+                bool open = !hazard && sampleRandom.Next() < .38;
                 list.Add(new Sample { index = list.Count, distance = distance, position = p, tangent = st,
                                       normal = sn, right = sr,
                                       halfWidth = s.pattern == "wide-open"
                                                       ? 7.5 * (1 + .7 * Math.Pow(Math.Sin(t * Math.PI), 2))
                                                   : s.kind == "straight" ? 8.5
                                                                          : 7.5,
-                                      railLeft = !open || r.Next() < .12, railRight = !open || r.Next() < .12,
+                                      railLeft = !open || sampleRandom.Next() < .12, railRight = !open || sampleRandom.Next() < .12,
                                       kind = s.kind, patternKind = s.pattern, segmentIndex = segment });
                 p += st * 5;
                 distance += 5;
@@ -395,7 +405,7 @@ public static class Generator
             result.Add(
                 new Jump { id = "jump-" + (result.Count + 1), kind = mandatory ? "mandatory" : "partial",
                            rampStartIndex = native ? start - 2 : start, launchIndex = launch,
-                           gapStartIndex = gap, gapEndIndex = end, landingEndIndex = landing,
+                           gapStartIndex = gap, gapEndIndex = end, landingEndIndex = landing, ballisticLandingEndIndex=native?launch+NativeBallisticLandingSamples:0,
                            lateralCenter = mandatory ? 0 : -s[launch].halfWidth * (2.0 / 3),
                            lateralHalfWidth = mandatory ? s[launch].halfWidth : s[launch].halfWidth / 3 });
         }
@@ -483,7 +493,7 @@ public static class Generator
         var samples = BuildSamples(seed, jumps, native);
         var patterns = Patterns(samples);
         var branches = Branches(samples, new SeedRandom(seed ^ 0xa5a5a5a5));
-        return new Definition { version = native ? 9 : 8,
+        return new Definition { version = native ? 10 : 8,
                                 seed = seed,
                                 guardrailMode = mode,
                                 theme = theme,
@@ -545,6 +555,7 @@ public static class Generator
         foreach (var j in d.jumps)
             values.AddRange(new[] { (double)j.rampStartIndex, j.launchIndex, j.gapStartIndex, j.gapEndIndex,
                                     j.lateralCenter, j.lateralHalfWidth });
+        if(d.version>=10)foreach(var jump in d.jumps)values.Add(jump.ballisticLandingEndIndex);
         foreach (var p in d.patterns)
             values.AddRange(
                 new[] { (double)p.startIndex, p.endIndex, p.turns, Array.IndexOf(PatternKinds, p.kind) });

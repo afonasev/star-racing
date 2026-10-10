@@ -1,0 +1,25 @@
+{
+  "candidate": "C03",
+  "reference": "reference-orbital.png",
+  "source": "user supplied image; F2 corrected reference",
+  "preserved_candidates": [
+    "../cloudline-c01",
+    "../cloudline-c02"
+  ],
+  "files": {
+    "Cloudline_C03.blend": "a8216f973dea7575db68f8a8bc833a1e9509681c0b168ddc795b560fe3cf5b57",
+    "Cloudline_C03.fbx": "9f64b7a9d3c03cf32a3988e8dc9bb8d04fbcb01ac28beb1b4d161fa2f206a3cd",
+    "Cloudline_C03.glb": "ff8324730299befaf799558e53f0d47335132fb69ccf0084842e69a07aeda003",
+    "README.md": "019e594af669435d5c6cb90649c8d1ea5c3191162607cc6ec7bfd22f5dd51d45",
+    "comparison.html": "7231034b0c953814c71463f2e8465614e46d392c62984a79d0a942607fd6f314",
+    "create_model.py": "9e83eb62e6e2be25d49718ee703beb1cabdf19d4a1d1c5ac17778bd2db530069",
+    "export-validation.json": "1e0f0bebee434a22e57755a9404be3cc0ee5e79fc613183e2c3fdec061674e77",
+    "front-three-quarter.png": "cde146116dd4ce92c203d0c597e103146f214fc4ecb6dc40280efd47a748b606",
+    "model-stats.json": "5e9e783352b4951d1ef6b903f0aa47232c4eb1468652915dfc208ce59df89a3b",
+    "rear-three-quarter.png": "6379058937735e464957ba2d95c67ec0ca8fa6c858e91c43d9dfb32db56c64c4",
+    "rear.png": "9dddbdeee794c5f4182a4b54205916fdb2fc39ee897faa69bd9fee123a13098d",
+    "reference-orbital.png": "bfe35925c5585a0f1aad0a8fb0a8dec0ace26b029953ca8e7d8931269b7a70b8",
+    "side.png": "51fc1f69e799f40b2d6aee83547024b74699f53ad5cd35b6a3910cfe653b488a",
+    "verify_exports.py": "a4c257af3c758ea91fc3363c5bea82004a65ffa5b5c58a67a5e42e29a3f9d003"
+  }
+}

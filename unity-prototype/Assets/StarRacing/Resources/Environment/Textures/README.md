@@ -8,4 +8,5 @@ Common prompt: "Use case: stylized-concept. Asset type: Unity game surface textu
 - Road: neutral medium gray anti-slip composite metal plates, broad mostly uninterrupted driving surface, restrained recessed panel joins, fine grain and subtle moderate edge wear. No lane lines or arrows.
 - Hull: neutral light gray brushed metal rectangular panel modules, restrained recessed dark seams, a few small fastener details and subtle moderate edge wear. No glowing elements.
 - Facade: neutral gray silver architectural frame with broad dark desaturated blue glass window modules in an even repeating rectangular grid, restrained seams and subtle moderate wear. No neon or reflections of identifiable scenery.
-- Planet: desaturated neutral pale gray and dark gray blue rocky terrain, broad irregular continent-like land masses, dusty ridges and crater patterns. No stars or planet sphere illustration. Tint with the existing planet colors.
+
+The former mesh planet texture was retired when planets moved to Environment/Sky.

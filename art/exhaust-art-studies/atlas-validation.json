@@ -1,0 +1,26 @@
+{
+  "1-natural.png": {
+    "size": [
+      1374,
+      1145
+    ],
+    "mode": "RGBA",
+    "alpha_range": [
+      0,
+      254
+    ],
+    "transparent_pixels": 856743
+  },
+  "2-plasma.png": {
+    "size": [
+      1312,
+      1199
+    ],
+    "mode": "RGBA",
+    "alpha_range": [
+      0,
+      253
+    ],
+    "transparent_pixels": 852266
+  }
+}

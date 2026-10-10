@@ -81,6 +81,8 @@ public sealed class Jump
 {
     public string id, kind;
     public int rampStartIndex, launchIndex, gapStartIndex, gapEndIndex, landingEndIndex;
+    // Native revision10 flight envelope; landingEndIndex remains the AI tactical boundary.
+    public int ballisticLandingEndIndex;
     public double lateralCenter, lateralHalfWidth;
 }
 [Serializable]

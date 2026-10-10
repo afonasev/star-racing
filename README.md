@@ -1,13 +1,25 @@
-# Star Racing
+# Star Racing — Unity prototype
 
-Магнитные аркадные гонки для Windows и macOS, 1–4 локальных игрока и AI, от 8 участников.
+Играбельная база магнитных гонок на Unity 6000.3.23f1 / URP.
 
-Меню Cloudline: редактируемые имена, добавление геймпадом на Y, выбор тем, случайный seed при входе и сохранение настроек. Иллюстрированные подсказки управления доступны в главном меню и на паузе.
+## Реализовано
 
-[Скачать игру](https://racing.afonasev.tech/) · [GitHub Releases](https://github.com/afonasev/star-racing/releases)
+1–4 локальных игрока (два набора клавиатуры и до четырёх геймпадов), 8/16/32/64 участника с Rookie/Racer/Ace AI, случайная стартовая решётка и опциональная фора. Процедурные трассы, Cloud City / Space Station, настройки seed/рельсов/прыжков. Магнитная езда, нитро, занос, прыжки, безопасный recovery и ghost-защита. Split-screen, countdown, позиции, финишное окно, результаты/DNF, повтор, пауза и возврат в меню. Модели машин, окружение, музыка, синтез двигателя и эффекты. Главное меню и подготовка гонки оформлены в стиле Cloudline. Последняя выбранная конфигурация (включая имена и устройства) сохраняется автоматически; Start использует текущий выбор без Apply. При каждом входе в подготовку выбирается новый seed; кубик в поле seed меняет его случайно. Темы и ограждения выбираются из выпадающих списков. Сеть пока недоступна.
 
-Откройте `unity-prototype` в Unity 6000.3.23f1 с модулями Windows/macOS. Игровая сцена: `Assets/StarRacing/Generated/Prototype.unity`. Desktop distribution и команды сборки описаны в [distribution/README.md](distribution/README.md). Правила выпуска: [docs/PUBLISHING.md](docs/PUBLISHING.md).
+Открой `unity-prototype` в Unity. Сцена: `Assets/StarRacing/Generated/Prototype.unity`.
 
-Это исходники тестового desktop-кандидата. Обновления требуют явного согласия в главном меню; скачанный пакет применяется кнопкой «Перезапустить» либо при следующем обычном запуске после выхода. Установщики пока без платформенных подписей. Физическая проверка установки/обновления Windows и человеческая приёмка ещё открыты.
+## Проверки и сборка
 
-Управление: игрок 1 WASD/Space/Left Shift, игрок 2 стрелки/Right Alt/Right Shift; геймпад RT/RB газ, A тормоз, LT/LB занос, B нитро. ESC пауза, Backspace меню.
+```sh
+./tools/unity.sh shared -batchmode -nographics -quit -executeMethod StarRacingPrototype.PrototypeChecks.Run -logFile /absolute/editor.log
+./tools/unity.sh shared -batchmode -quit -executeMethod StarRacingPrototype.PrototypeBuilder.BuildMac -logFile /absolute/build.log
+./tools/unity.sh player 'unity-prototype/Builds/macOS/Star Racing.app/Contents/MacOS/Star Racing' --muted
+```
+
+Геймпад: RT/RB — газ, A — тормоз/назад, LT/LB — занос, B — нитро. Игрок 1: WASD/Space/Left Shift; игрок 2: стрелки/Right Alt/Right Shift. ESC — пауза, F5 — повтор, Backspace — меню, F3 — FPS. Start на назначенном геймпаде — пауза. Y добавляет игрока с нажавшим геймпадом; имя сохраняется за ним в пределах сессии, включая переподключение. Карточки позволяют менять имя (до 10 символов и по ширине поля) и удалять игрока. Устройство каждого места выбирается в подготовке; отключение во время гонки ставит паузу. Для одного игрока используется весь экран, для двух — вертикальные половины, для трёх/четырёх — сетка 2×2.
+
+Канонические спеки: `/Users/eaafonasev/Projects/star-racing-planning/openspec/specs`. Они описывают текущие игровые возможности; совпадение с прежним browser runtime не требуется. Исторический план миграции хранится в planning `docs/history/migration-plan`; прежний код доступен в Git-истории.
+
+Физические геймпады, ощущения от езды и звук требуют человеческой приёмки. Windows build поддерживается builder при установленном модуле Unity; текущая локальная поставка — macOS. Производительность и другие платформы развиваются отдельными изменениями.
+
+Проверенный базовый заезд — 8 участников. Состав 64 создаётся и едет, но пока заметно проседает по FPS; оптимизация больших составов остаётся отдельной работой.

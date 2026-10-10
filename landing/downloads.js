@@ -10,14 +10,13 @@
   const github=await response.json();
   if(github.draft||github.prerelease!==(track==='test')||github.tag_name!=='channel-'+track)throw Error('wrong GitHub channel');
   const catalog=JSON.parse(github.body);
-  if(catalog.schema!==1||catalog.track!==track)throw Error('wrong catalog');
+  const unsigned=catalog.schema===2&&catalog.unsignedProductionCatalog===true;
+  if((!unsigned&&catalog.schema!==1)||catalog.track!==track||(unsigned&&track!=='production'))throw Error('wrong catalog');
   const entries=[];
   for(const [platform,id] of [['win-x64','windows'],['osx-universal','mac']]){
-   const envelope=catalog.platforms[platform];
-   if(envelope.keyId!=='star-racing-test-2026'||envelope.payloadBase64.length>180000)throw Error('wrong key');
-   const payload=decode(envelope.payloadBase64);
-   if(!await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,decode(envelope.signatureBase64),payload))throw Error('bad signature');
-   const release=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(payload));
+   const envelope=catalog.platforms[platform];let release;
+   if(unsigned){release=envelope;if(!release||typeof release!=='object')throw Error('invalid unsigned release');}
+   else {if(envelope.keyId!=='star-racing-test-2026'||envelope.payloadBase64.length>180000)throw Error('wrong key');const payload=decode(envelope.payloadBase64);if(!await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,decode(envelope.signatureBase64),payload))throw Error('bad signature');release=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(payload));}
    if(release.schema!==2||release.releaseTrack!==track||release.channel!==platform||release.appId!=='tech.afonasev.star-racing.'+platform||release.version!==catalog.version||!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(release.version)||(track==='test')!==release.version.includes('-'))throw Error('wrong release');
    const entry=release.installer;
    const name='Star-Racing-'+release.version+(id==='mac'?'-macOS-Setup.pkg':'-Windows-Setup.exe');
@@ -30,7 +29,7 @@
    const link=document.getElementById(id+'-download');link.href=entry.url;link.removeAttribute('aria-disabled');link.dataset.sha256=entry.sha256;
    document.getElementById(id+'-details').textContent=(id==='mac'?'Apple Silicon + Intel':'Windows 10/11 · x64')+' / '+release.version+' / '+Math.round(entry.size/1048576)+' МБ';
   }
-  note.textContent=(track==='test'?'Тестовый канал. Проверка на устройствах ещё идёт.':'Стабильный канал.')+' Подпись сведений о скачивании проверена.';
+  note.textContent=(track==='test'?'Тестовый канал. Проверка на устройствах ещё идёт.':unsigned?'Стабильный канал. Метаданные обновления не подписаны RSA; пакеты сверяются по размеру и SHA-256.':'Стабильный канал.')+(unsigned?'':' Подпись сведений о скачивании проверена.');
   const mac=/Mac|iPhone|iPad/.test(navigator.platform||'');document.getElementById((mac?'mac':'windows')+'-download').classList.add('recommended');
  }catch(error){note.textContent='Не удалось проверить выпуск. Попробуйте обновить страницу позже.';}
 })();

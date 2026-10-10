@@ -63,6 +63,7 @@ namespace StarRacingPrototype {
      before=menu.Selected.Seed;menu.Open(RaceMenuScreen.Settings);Check(menu.Selected.Seed==before,"settings changed seed");
     }finally{if(menuObject!=null)UnityEngine.Object.DestroyImmediate(menuObject);if(had)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,saved);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();}
    }finally{foreach(var pad in owned)if(pad!=null)InputSystem.RemoveDevice(pad);if(keyboard!=null)InputSystem.RemoveDevice(keyboard);}
+   RaceHudChecks.Run();
    Debug.Log("CLOUDLINE_CHECKS_OK assertions="+assertions);
   }
  }

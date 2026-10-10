@@ -7,36 +7,51 @@ namespace StarRacingPrototype {
   readonly int sampleRate,index;
   readonly double[] phase=new double[3];
   readonly double[] detune=new double[3];
-  volatile float targetFrequency=46,targetGain,targetCutoff=900,targetLfoFrequency=10,targetLfoDepth;
+  volatile float targetFrequency=46,targetGain,targetCutoff=900,targetLfoFrequency=10,targetLfoDepth,targetLoad,targetBoost;
   double frequency=46,gain,cutoff=900,lfoFrequency=10,lfoDepth,lfoPhase,x1,x2,y1,y2;
+  double load,boost,boostPhase,noiseLow,noiseBass;uint noiseState=0x6d2b79f5;int filterTick;
   double b0,b1,b2,a1,a2;
   public EngineAudioDsp(int sampleRate,int index){
    if(sampleRate<8000)throw new ArgumentOutOfRangeException(nameof(sampleRate));
-   this.sampleRate=sampleRate;this.index=index;
+   this.sampleRate=sampleRate;this.index=index;noiseState+=(uint)(index*7919);
    for(int i=0;i<3;i++)detune[i]=Math.Pow(2,(((index%3)-1)*4+i*2)/1200.0);
    lfoFrequency=10+index*.4;Coefficients();
   }
-  public void Set(float speed,float throttle,bool nitro,float volume){
-   float f=RaceAudioPolicy.EngineFrequency(speed,throttle)*(nitro?1.1f:1);
-   targetFrequency=f;targetGain=volume;
+  public void Set(float speed,float throttle,bool nitro,float volume)=>SetPresentation(speed,throttle,nitro?1:0,volume);
+  // Gas and boost already carry the same envelope used by the flame.
+  public void SetPresentation(float speed,float throttle,float boost,float volume){
+   boost=RaceAudioPolicy.Clamp(boost);bool nitro=boost>.001f;
+   throttle=RaceAudioPolicy.Clamp(throttle);speed=Math.Max(0,speed);
+   float f=RaceAudioPolicy.EngineFrequency(speed,throttle)*(nitro?1.04f:1);
+   targetLoad=throttle;targetBoost=boost;
+   targetFrequency=f;targetGain=RaceAudioPolicy.Clamp(volume,0,.34f);
    targetLfoFrequency=6+f*.095f;
-   targetLfoDepth=.012f+throttle*(.012f+Math.Min(.03f,speed*.0005f))+(nitro?.006f:0);
-   targetCutoff=520+throttle*(360+Math.Min(620,speed*10))+(nitro?260:0);
+   targetLfoDepth=.04f+throttle*.11f;
+   targetCutoff=420+throttle*(650+Math.Min(1000,speed*12));
   }
   public void Render(float[] data){
    double sf=1-Math.Exp(-1.0/(sampleRate*.045)),sg=1-Math.Exp(-1.0/(sampleRate*.035));
-   double sl=1-Math.Exp(-1.0/(sampleRate*.05)),sc=1-Math.Exp(-1.0/(sampleRate*.06));
+   double sl=1-Math.Exp(-1.0/(sampleRate*.005)),sc=1-Math.Exp(-1.0/(sampleRate*.06));
    // Capture the current control block. No allocations or Unity API on DSP thread.
-   float tf=targetFrequency,tg=targetGain,tl=targetLfoFrequency,td=targetLfoDepth,tc=targetCutoff;
+   float tf=targetFrequency,tg=targetGain,tl=targetLfoFrequency,td=targetLfoDepth,tc=targetCutoff,tload=targetLoad,tboost=targetBoost;
+   double boostAttack=1-Math.Exp(-1.0/(sampleRate*.005)),boostRelease=1-Math.Exp(-1.0/(sampleRate*.005));
+   double rushFast=1-Math.Exp(-2*Math.PI*1900/sampleRate),rushSlow=1-Math.Exp(-2*Math.PI*480/sampleRate);
    for(int n=0;n<data.Length;n++){
     frequency+=(tf-frequency)*sf;gain+=(tg-gain)*sg;
     cutoff+=(tc-cutoff)*sc;lfoFrequency+=(tl-lfoFrequency)*sl;lfoDepth+=(td-lfoDepth)*sc;
-    if((n&31)==0)Coefficients();
-    double signal=Triangle(phase[0])*.48+Saw(phase[1],frequency*detune[1]/sampleRate)*.24+Triangle(phase[2])*.12;
+    load+=(tload-load)*sl;
+    boost+=(tboost-boost)*(tboost>boost?boostAttack:boostRelease);
+    if((filterTick++&31)==0)Coefficients();
+    double signal=Triangle(phase[0])*(.6-load*.1)+Saw(phase[1],frequency*detune[1]/sampleRate)*(.1+load*.14)+Triangle(phase[2])*(.04+load*.16);
     double filtered=b0*signal+b1*x1+b2*x2-a1*y1-a2*y2;
     x2=x1;x1=signal;y2=y1;y1=filtered;
     // Fade AM together with the voice: a silent voice must remain silent.
-    double output=filtered*(gain+Math.Sin(lfoPhase*2*Math.PI)*lfoDepth*Math.Min(1,gain/.004));
+    noiseState^=noiseState<<13;noiseState^=noiseState>>17;noiseState^=noiseState<<5;
+    double noise=(noiseState/(double)uint.MaxValue)*2-1;
+    noiseLow+=(noise-noiseLow)*rushFast;noiseBass+=(noise-noiseBass)*rushSlow;
+    double rush=(noiseLow-noiseBass)*.75+Math.Sin(boostPhase*2*Math.PI)*.15;
+    double output=gain*(filtered*(1+Math.Sin(lfoPhase*2*Math.PI)*lfoDepth)+boost*rush);
+    boostPhase=Wrap(boostPhase+(1150+frequency*2.4)/sampleRate);
     data[n]=(float)Math.Max(-1,Math.Min(1,output));
     phase[0]=Wrap(phase[0]+frequency*.5*detune[0]/sampleRate);
     phase[1]=Wrap(phase[1]+frequency*detune[1]/sampleRate);

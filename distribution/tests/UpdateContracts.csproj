@@ -4,8 +4,8 @@
     <PackageReference Include="Velopack" Version="1.2.158" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <Compile Include="Program.cs" />
-    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/UpdateAttemptJournal.cs" />
     <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs" />
     <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs" />
+    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs" />
   </ItemGroup>
 </Project>

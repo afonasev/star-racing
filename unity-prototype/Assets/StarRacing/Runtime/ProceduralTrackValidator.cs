@@ -30,7 +30,14 @@ public static class Validator
                   (d.guardrailMode == "full" && d.openRatio != 0) ||
                   (d.guardrailMode == "none" && d.openRatio != 1),
               "open-ratio");
-        check(d.estimatedDuration < 150 || d.estimatedDuration > 210, "duration");
+        // Keep the150..210s composition contract. The explicitly added native
+        // landing straights have their own travel budget; no other segment shrinks.
+        if(d.version>=10 && d.jumpModeEnabled) {
+            var runways=Generator.Runs(s,"jump-straight");
+            check(runways.Count!=4 || runways.Any(run=>run.length*5!=Generator.NativeJumpStraightLength),"native-runway-length");
+        }
+        double compositionDuration=d.estimatedDuration-Generator.AddedRunwayLength(d)/32.5;
+        check(compositionDuration < 150 || compositionDuration > 210, "duration");
         check(d.checkpoints.Length < 10, "checkpoints");
         check(d.jumpModeEnabled && d.jumps.Length != 4, "jump-count");
         check(!d.jumpModeEnabled && d.jumps.Length != 0, "disabled-jumps");
@@ -39,6 +46,12 @@ public static class Validator
             var launch = s[j.launchIndex];
             var landing = s[j.landingEndIndex];
             var ramp = s[j.rampStartIndex];
+            if(d.version>=10) {
+                int end=j.ballisticLandingEndIndex;
+                var run=Generator.Runs(s,"jump-straight").Find(x=>j.launchIndex>=x.start && j.launchIndex<x.start+x.length);
+                check(end<j.landingEndIndex || end>=s.Length || end-j.launchIndex<Generator.NativeBallisticLandingSamples ||
+                    end>run.start+run.length-10 || end<0 || (end>=0 && end<s.Length && s[end].segmentIndex!=launch.segmentIndex),"native-ballistic-landing-"+j.id);
+            }
             double time = (j.gapEndIndex - j.launchIndex) * 5 / 42.0;
             check(j.rampStartIndex >= j.launchIndex || j.launchIndex >= j.gapStartIndex ||
                       j.gapStartIndex >= j.gapEndIndex || j.gapEndIndex >= j.landingEndIndex ||
@@ -48,7 +61,7 @@ public static class Validator
                       ramp.segmentIndex == s[0].segmentIndex ||
                       landing.segmentIndex == s[s.Length - 1].segmentIndex ||
                       !Generator.Stable(s, j.rampStartIndex - 7, j.landingEndIndex) ||
-                      9.5 * time - 18 * time * time / 2 < 0,
+                      9.5 * time - MagneticVehicle.GravityMagnitude * time * time / 2 < 0,
                   "invalid-" + j.id);
         }
         var straights = Generator.Runs(s, "straight");

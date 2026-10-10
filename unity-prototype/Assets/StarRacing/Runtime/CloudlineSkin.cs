@@ -25,7 +25,7 @@ namespace StarRacingPrototype {
   public bool Button(Rect r,string value,bool primary=false,bool focused=false,bool enabled=true,int size=23){
    bool hover=enabled&&r.Contains(Event.current.mousePosition);var color=primary?Blue:new Color(1,1,1,.88f);
    if(!enabled)color=new Color(.88f,.9f,.93f,.85f);else if(hover&&!primary)color=new Color(.9f,.94f,1);
-   if(focused&&enabled)Box(new Rect(r.x-3,r.y-3,r.width+6,r.height+6),Blue,14);
+   if(focused&&enabled)Box(new Rect(r.x-3,r.y-3,r.width+6,r.height+6),primary?Ink:Blue,14);
    Box(r,color);Text(r,value,size,true,!enabled?Muted:primary?Color.white:Ink,TextAnchor.MiddleCenter);
    bool old=GUI.enabled;GUI.enabled=old&&enabled;bool clicked=GUI.Button(r,GUIContent.none,GUIStyle.none);GUI.enabled=old;return clicked;
   }

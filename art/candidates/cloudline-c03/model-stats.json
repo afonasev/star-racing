@@ -1,0 +1,20 @@
+{
+  "candidate": "C03",
+  "seed": "deterministic authored geometry",
+  "units": "metres",
+  "source_axis": "+Y forward, +Z up",
+  "objects": 158,
+  "triangles": 120080,
+  "materials": [
+    "Liquid_Silver",
+    "Satin_Titanium",
+    "Graphite_Aero",
+    "Midnight_Glass",
+    "Tire_Rubber",
+    "Dark_Forged_Rim",
+    "Brake_Ceramic",
+    "Thin_Red_Taillight",
+    "Cyan_Energy",
+    "Titanium_Caliper"
+  ]
+}

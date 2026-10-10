@@ -1,0 +1,21 @@
+{
+  "source_commit": "c62eb884272b778433e7fdb28b0edf293a5fb339",
+  "source_sha256": "ac3a54e942f8fea1fdc14bd07a51e684543cc09112035b67d53b80e1c387ba0e",
+  "mesh_count": 10,
+  "triangles": 122312,
+  "material_names": [
+    "Brake_Ceramic",
+    "Cyan_Energy",
+    "Dark_Forged_Rim",
+    "Graphite_Aero",
+    "Liquid_Silver",
+    "Midnight_Glass",
+    "Satin_Titanium",
+    "Thin_Red_Taillight",
+    "Tire_Rubber",
+    "Titanium_Caliper"
+  ],
+  "fbx_sha256": "2c56365fd7e29b4997fd4bac8b4ed9e67e0876efc1e2db4523dce2c9a4b01c02",
+  "unity_import_triangles": 121644,
+  "zero_area_triangles_removed_by_unity": 668
+}

@@ -52,6 +52,7 @@ namespace StarRacingPrototype {
   public Color EntrantColor(int i)=>i<HumanCount?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f);
   public void ConsumeRecoveryEvents(List<RecoveryEvent> destination){destination.AddRange(pendingRecoveryEvents);pendingRecoveryEvents.Clear();}
   void Awake(){
+   if(GetComponent<RacePhysicsStepper>()==null)gameObject.AddComponent<RacePhysicsStepper>();
    try {Balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config")?.text);}catch(Exception e){BalanceError=e.Message;Debug.LogError("BALANCE_ERROR "+e.Message);}
    Application.targetFrameRate=120;QualitySettings.vSyncCount=0;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
    var initial=LocalRaceConfig.Load();initial.humans=Mathf.Max(1,initial.humans);ApplyValues(initial);
@@ -68,11 +69,11 @@ namespace StarRacingPrototype {
    var bloom=volume.profile.Add<Bloom>();bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);
    CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);gameObject.AddComponent<RaceAudioCoordinator>();
   }
-  void ApplyLighting(){if(sun!=null)RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);}
+  void ApplyLighting(){if(sun!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);}}
   void BuildTrack(){
    string theme=TrackThemePreference=="random"?(TrackSeed%2==0?"cloud-city":"space-station"):TrackThemePreference;
    var definition=Procedural.Generator.Generate(TrackSeed,TrackRailMode,theme,TrackJumps,true);
-   environment.Clear();Track.Build(new TrackRoute(definition));environment.Build(Track.Route,Track.transform);ApplyLighting();
+   environment.Clear();Track.Build(new TrackRoute(definition));environment.Build(Track.Route,Track.transform,TrackSeed);ApplyLighting();
    TrackSummary=$"SEED {TrackSeed} · {theme} · {definition.totalLength:0} м";
   }
   void CreateRoster(){
@@ -108,7 +109,7 @@ namespace StarRacingPrototype {
     // No frame/physics step occurs before the staging root is disabled and published.
     root=new GameObject("Prepared race");
     var trackObject=new GameObject("Track");trackObject.transform.SetParent(root.transform);var track=trackObject.AddComponent<TrackBuilder>();track.Build(route);
-    decor=new TrackEnvironmentBuilder();decor.Build(route,track.transform);decor.Root.SetParent(root.transform,true);root.SetActive(false);
+    decor=new TrackEnvironmentBuilder();decor.Build(route,track.transform,snapshot.Seed);decor.Root.SetParent(root.transform,true);root.SetActive(false);
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
     for(int i=0;i<count;i++){
      var entrant=roster.Entrants[i];var go=new GameObject(entrant.Name);go.transform.SetParent(root.transform);
@@ -139,6 +140,7 @@ namespace StarRacingPrototype {
   }
   public RaceObservation Observation(int entrant){var car=Cars[entrant];return new RaceObservation(car.Distance,car.PositionRevision,Vector3.Distance(car.Body.position,car.Frame.position)<car.Frame.halfWidth+3f);}
   public void Restart(bool start=true){
+   Track.TireMarks?.Clear();
    GetComponent<RaceMenu>()?.ResetPauseSettings();
    if(Balance==null)start=false;RaceGeneration++;pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();contactPolicy.Reset();
    Started=start;Paused=!start;Time.timeScale=start?1:0;Input=Input??new LocalInputRouter();Input.Block();
@@ -151,7 +153,7 @@ namespace StarRacingPrototype {
    Session.Reset(observations);for(int i=0;i<4;i++){cameras[i].GetComponent<Camera>().enabled=start&&i<HumanCount;if(i<HumanCount)cameras[i].Snap();}
    if(start){Session.Begin();Input.PrepareStart();}
   }
-  public void SetPaused(bool paused){if(!paused)GetComponent<RaceMenu>()?.ResetPauseSettings();Paused=paused;Time.timeScale=paused?0:1;Input.Block();Session.Paused=paused;}
+  public void SetPaused(bool paused){Track.TireMarks?.BreakAll();if(!paused)GetComponent<RaceMenu>()?.ResetPauseSettings();Paused=paused;Time.timeScale=paused?0:1;Input.Block();Session.Paused=paused;}
   public bool ExitToMenu(){if(!Started||(!Paused&&Session.Phase!=RacePhase.Results))return false;Restart(false);GetComponent<RaceMenu>()?.Open(RaceMenuScreen.LocalSetup);return true;}
   public void StartRace(){
    if(Balance==null)return;
@@ -161,7 +163,6 @@ namespace StarRacingPrototype {
   void OnApplicationFocus(bool focus){if(!focus&&Input!=null&&Started)SetPaused(true);}
   void OnApplicationPause(bool paused){if(paused&&Input!=null&&Started)SetPaused(true);}
   void Update(){
-   if(StarRacingPrototype.Distribution.DesktopUpdater.Instance?.StartupApplying==true)return;
    if(Input==null)return;Input.Refresh();var k=Keyboard.current;
    if(!Started)return;
    if(Input.MissingDevice&&!Paused)SetPaused(true);
@@ -170,7 +171,11 @@ namespace StarRacingPrototype {
    if(GetComponent<RaceMenu>().ConsumePauseSettingsBack(submenuBack))return;
    if(Input.PausePressed||(k!=null&&k.escapeKey.wasPressedThisFrame)){if(!Paused)SetPaused(true);else if(!Input.MissingDevice)SetPaused(false);}
    if(k!=null){if(k.f5Key.wasPressedThisFrame&&!Input.MissingDevice)Restart();if(k.backspaceKey.wasPressedThisFrame)ExitToMenu();}
-   for(int i=0;i<HumanCount;i++)Cars[i].SetInput(Session.CanDrive(i)&&!Paused?Input.Read(i):default);
+   for(int i=0;i<HumanCount;i++){
+    var command=Input.Read(i);bool driving=Session.CanDrive(i)&&!Paused;
+    Cars[i].SetInput(driving?command:default);
+    Cars[i].SetPresentationInput(command.throttle,!Paused&&(Session.Phase==RacePhase.Countdown||Session.CanDrive(i)));
+   }
   }
   void FixedUpdate(){
    if(Paused||Cars==null)return;
@@ -188,6 +193,7 @@ namespace StarRacingPrototype {
       }
       car.SetInput(botCommands[i]);
      }else car.SetInput(default);
+     car.SetPresentationInput(botCommands[i].throttle,Session.CanDrive(i)&&!Paused);
     }
     vehicleRecoveryEvents.Clear();car.DrainRecoveryEvents(vehicleRecoveryEvents);foreach(var e in vehicleRecoveryEvents)if(e.Generation==RaceGeneration&&!Session.Racers[i].Finished)pendingRecoveryEvents.Add(e);
    }

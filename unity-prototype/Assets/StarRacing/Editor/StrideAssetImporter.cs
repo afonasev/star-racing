@@ -5,7 +5,8 @@ namespace StarRacingPrototype
     {
         void OnPreprocessModel()
         {
-            if (assetPath != "Assets/StarRacing/Resources/Vehicle/Stride.fbx") return;
+            if (assetPath != "Assets/StarRacing/Resources/Vehicle/Stride.fbx" &&
+                assetPath != "Assets/StarRacing/Resources/Vehicle/Cloudline.fbx") return;
             var importer = (ModelImporter)assetImporter;
             importer.importAnimation = false;
             importer.addCollider = false;

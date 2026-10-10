@@ -5,17 +5,17 @@ using UnityEngine;
 namespace StarRacingPrototype {
     // Rendering data only. No Unity random state, clock, or mutable scene state is read here.
     public sealed class EnvironmentPlan {
-        public const int Version = 1;
+        public const int Version = 2;
         public const float CorridorMargin = 38f;
         public readonly uint seed;
         public readonly string theme;
         public readonly RaceLightingProfile lighting;
         public readonly List<CityTower> towers = new List<CityTower>();
         public readonly Vector3 station;
-        public readonly Vector3 planet;
-        public readonly float planetRadius;
-        public readonly bool planetRings;
-        public readonly Color planetColor;
+        public readonly Vector3 skyPlanetDirection;
+        public readonly int skyPlanetVariant;
+        public const int SkyPlanetVariantCount = 4;
+        public string SkyPlanetTexture => new[] { "PlanetSky", "PlanetGas", "PlanetRock", "PlanetIce" }[skyPlanetVariant];
         public readonly float cityBaseY;
         public readonly string hash;
 
@@ -25,7 +25,7 @@ namespace StarRacingPrototype {
             public bool amber;
         }
 
-        EnvironmentPlan(TrackRoute route) {
+        EnvironmentPlan(TrackRoute route, uint? skySeed) {
             seed = route.Definition.seed;
             theme = route.Definition.theme;
             lighting = RaceLightingProfile.Create(seed, theme);
@@ -77,29 +77,16 @@ namespace StarRacingPrototype {
                 foundStation = true;
             }
             station = anchor;
-            float bearing = (float)space.Range(-Math.PI, Math.PI);
-            planetRadius = (float)space.Range(95, 145);
-            Vector3 candidatePlanet = station + new Vector3(Mathf.Cos(bearing) * 780, (float)space.Range(110, 260), Mathf.Sin(bearing) * 780);
-            for (int i = 0; i < 6; i++) {
-                float side = i % 2 == 0 ? -stationSide : stationSide;
-                var visible = start.position + forward * (1350 + i / 2 * 160) +
-                              right * side * (410 + i / 2 * 90) + Vector3.up * 90;
-                if (!ClearOfRoute(route, visible, Vector3.one * (planetRadius * 1.9f), CorridorMargin)) continue;
-                candidatePlanet = visible;
-                break;
-            }
-            if (!ClearOfRoute(route, candidatePlanet, Vector3.one * (planetRadius * 1.9f), CorridorMargin))
-                candidatePlanet = new Vector3(maxX + 1050, lowest + 220, maxZ + 1050);
-            planet = candidatePlanet;
-            // Keep ring selection stable when the placement search changes its random draws.
-            planetRings = seed % 7 < 3;
-            planetColor = new Color((float)space.Range(.35, .7), (float)space.Range(.55, .8), (float)space.Range(.7, 1));
+            // Background direction only: no world-space planet, radius or route clearance search.
+            skyPlanetDirection = (forward * 1350 - right * stationSide * 410 + Vector3.up * 90).normalized;
+            // Preserve the approved ocean world for seed 77; consecutive seeds cycle all four worlds.
+            skyPlanetVariant = (int)(((skySeed ?? seed) % SkyPlanetVariantCount + 3) % SkyPlanetVariantCount);
             hash = ComputeHash();
         }
 
-        public static EnvironmentPlan Create(TrackRoute route) {
+        public static EnvironmentPlan Create(TrackRoute route, uint? skySeed = null) {
             if (route == null || route.Definition == null) throw new ArgumentException("Procedural route required");
-            return new EnvironmentPlan(route);
+            return new EnvironmentPlan(route, skySeed);
         }
 
         public int District(float distance) => Mathf.FloorToInt((distance + (seed % 3) * 73f) / 240f) % 3;
@@ -122,16 +109,15 @@ namespace StarRacingPrototype {
                 uint value = 2166136261;
                 Action<int> add = n => { value = (value ^ (uint)n) * 16777619; };
                 add(Version); add((int)seed); add(theme == "space-station" ? 2 : 1);
-                add(lighting.HashCode()); add(planetRings ? 1 : 0);
+                add(lighting.HashCode()); add(skyPlanetVariant);
                 foreach (var tower in towers) {
                     add(Mathf.RoundToInt(tower.position.x * 100)); add(Mathf.RoundToInt(tower.position.y * 100));
                     add(Mathf.RoundToInt(tower.position.z * 100)); add(Mathf.RoundToInt(tower.width * 100));
                     add(Mathf.RoundToInt(tower.height * 100)); add(tower.amber ? 1 : 0);
                 }
                 add(Mathf.RoundToInt(station.x * 100)); add(Mathf.RoundToInt(station.y * 100)); add(Mathf.RoundToInt(station.z * 100));
-                add(Mathf.RoundToInt(planet.x * 100)); add(Mathf.RoundToInt(planet.y * 100)); add(Mathf.RoundToInt(planet.z * 100));
-                add(Mathf.RoundToInt(planetRadius * 100));
-                add(Mathf.RoundToInt(planetColor.r * 1000)); add(Mathf.RoundToInt(planetColor.g * 1000)); add(Mathf.RoundToInt(planetColor.b * 1000));
+                add(Mathf.RoundToInt(skyPlanetDirection.x * 10000)); add(Mathf.RoundToInt(skyPlanetDirection.y * 10000));
+                add(Mathf.RoundToInt(skyPlanetDirection.z * 10000));
                 return value.ToString("x8");
             }
         }
@@ -156,11 +142,10 @@ namespace StarRacingPrototype {
                     sunColor = sun, sunIntensity = 2.3f,
                     ambientColor = Color.Lerp(sun, Color.white, .2f) * .48f, skyColor = sky, fogColor = sky, fogDensity = .00007f };
             }
-            double value = random.Next();
-            string kind = value < .1 ? "sunset" : value < .38 ? "golden-hour" : "day";
-            float elevation = kind == "sunset" ? (float)random.Range(9, 14) : kind == "golden-hour" ? (float)random.Range(21, 34) : (float)random.Range(42, 68);
-            Color sunColor = kind == "sunset" ? new Color(1, .61f, .46f) : kind == "golden-hour" ? new Color(1, .82f, .65f) : new Color(1, .95f, .84f);
-            Color skyColor = kind == "sunset" ? new Color(.94f, .62f, .62f) : kind == "golden-hour" ? new Color(.96f, .81f, .7f) : new Color(.8f, .94f, 1);
+            string kind = "day";
+            float elevation = (float)random.Range(42, 68);
+            Color sunColor = new Color(1, .95f, .88f);
+            Color skyColor = new Color(.70f, .81f, .91f);
             Quaternion cityRotation = Quaternion.Euler(elevation, azimuth, 0);
             return new RaceLightingProfile { kind = kind, sunRotation = cityRotation,
                 sunPosition = -(cityRotation * Vector3.forward) * 900, sunColor = sunColor,

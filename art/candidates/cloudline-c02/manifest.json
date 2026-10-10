@@ -1,0 +1,21 @@
+{
+  "candidate": "C02",
+  "feedback": "F1: fewer hard angles; thicker smoothly rounded front",
+  "reference_sha256": "e2da4ec0cb2bd4e86d4a4d92439f6dc7dca82d72a6ea1cfdad907fa54a8a0fdb",
+  "previous_candidate": "../cloudline-c01",
+  "files": {
+    "Cloudline_C02.blend": "8fdc800060521538cacf86eb508ff3e618d2a82a5f6a719d85f13e0a2b210ae9",
+    "Cloudline_C02.fbx": "e9797ecc67e500dbc15135222f1422f9cedfa5af1740c67229ed27fe05b1a8d5",
+    "Cloudline_C02.glb": "86cd98313c2bb84222a0079a7da47860444ee6f471b8fa63ef98c2fda5db4014",
+    "README.md": "683e3b17782c4dd0a852f2cd82a5c80dea2c0050ff024929c8e88339a88e92e3",
+    "comparison.html": "90c96c4d209afbcd3f10cfae6b0bc18796746b9866ef4869066e7e90c9e39bfd",
+    "create_model.py": "0f75b099ed271b85fc88c9ecc42dcff00a610e78667d3eeccbfb890b50a76f88",
+    "export-validation.json": "3ef7df3832648e0392ceddc1602252a983254bd63006ef32cd22e29b3e23c159",
+    "front-three-quarter.png": "77bf4051ad6a3f4ce9956d9494c88420a76831765784bdeb5aeb45b3e9342f02",
+    "model-stats.json": "41c0ce01ecc173c43ab511bd9de508c0477eed671058b045b123b20bf5dda973",
+    "rear-three-quarter.png": "ad075454003384f1978886b250101f580ca8017b71aafa4815f6f7ae126b5bb7",
+    "rear.png": "6c9b8c6839f640ff99cef63965439ce2d316e12a4dfecf8a3542856c84d220c0",
+    "side.png": "752a9b88126b0d95fc76ae34becd156ad4be4d6be08f4c073de6f494a464199c",
+    "verify_exports.py": "af72fdf45e8962df9b1fc2431cebe6c569223d405d67a9880b66ec9bd424cc8e"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "candidate": "C02",
+  "seed": "deterministic authored geometry",
+  "units": "metres",
+  "source_axis": "+Y forward, +Z up",
+  "objects": 178,
+  "triangles": 85560,
+  "materials": [
+    "Pearl_White",
+    "Satin_Titanium",
+    "Graphite_Aero",
+    "Midnight_Glass",
+    "Tire_Rubber",
+    "Forged_Aluminium",
+    "Brake_Ceramic",
+    "Amber_Taillight",
+    "Ice_Headlight",
+    "Copper_Caliper"
+  ]
+}

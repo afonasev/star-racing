@@ -1,0 +1,72 @@
+{
+  "success": true,
+  "path": "stride.glb",
+  "sha256": "d44cc1de6a7255bf4f4807f3177714518d65c2ec04924e65b234cd502c34bb62",
+  "bytes": 5254836,
+  "triangles": 74644,
+  "degenerate_triangles": 0,
+  "nodes": 313,
+  "meshes": 306,
+  "primitives": 308,
+  "materials": [
+    "MachinedMetal",
+    "GraphiteStructure",
+    "SmokedGlass",
+    "PlayerPaint",
+    "ExhaustInterior",
+    "HeadLight",
+    "TailLight",
+    "TireRubber"
+  ],
+  "bounds": {
+    "min": [-1.2669999650679529, 0.003000963944941759, -2.305000066757202],
+    "max": [1.2669999650679529, 1.3899999856948853, 2.610000029206276],
+    "dimensions_m": [2.5339999301359057, 1.3869990217499435, 4.915000095963478]
+  },
+  "painted_triangles": 11934,
+  "wheel_pivots": {
+    "Wheel_FL": [-0.9649999737739563, 0.48500001430511475, 1.4299999475479126],
+    "Wheel_FR": [0.9649999737739563, 0.48500001430511475, 1.4299999475479126],
+    "Wheel_RL": [-0.9649999737739563, 0.48500001430511475, -1.399999976158142],
+    "Wheel_RR": [0.9649999737739563, 0.48500001430511475, -1.399999976158142]
+  },
+  "nitro_sockets": {
+    "NitroSocket_L": {
+      "position": [-0.33000001311302185, 0.5299999713897705, -2.312999963760376],
+      "direction": [-8.742277657347586e-8, 0.0, -1.0]
+    },
+    "NitroSocket_R": {
+      "position": [0.33000001311302185, 0.5299999713897705, -2.312999963760376],
+      "direction": [-8.742277657347586e-8, 0.0, -1.0]
+    }
+  },
+  "hood_profile": {
+    "front_height_m": 0.5140371322631836,
+    "rear_height_m": 0.859335720539093,
+    "drop_m": 0.3452985882759094,
+    "run_m": 1.323232114315033,
+    "edge_envelope_angle_degrees": 14.625236185586413,
+    "downward_angle_degrees": 16.11342143470459,
+    "method": "Main panel plane angle from largest upward exported triangle; edge heights include bevel/thickness."
+  },
+  "detail_required": true,
+  "detail_meshes": {
+    "HoodPlanarPanel_": 2,
+    "SideArmorPanel_": 2,
+    "OuterFenderArmor_": 4,
+    "FenderVentWell_": 4,
+    "FenderVentSlat_": 16,
+    "BrakeDisc_Wheel_": 4,
+    "BrakeCaliper_Wheel_": 4,
+    "EngineVentSlat_": 8,
+    "NitroMountFlange_": 2,
+    "NitroFlangeBolt_": 12,
+    "NitroHeatShield_": 2
+  },
+  "panel_shading": {
+    "triangles": 1184,
+    "constant_normal_triangles": 1184
+  },
+  "external_dependencies": [],
+  "note": "Technical validity does not establish artistic acceptance or in-game performance."
+}

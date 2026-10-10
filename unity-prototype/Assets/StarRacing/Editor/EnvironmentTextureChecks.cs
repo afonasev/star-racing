@@ -12,7 +12,7 @@ namespace StarRacingPrototype {
         public static void BuildCheckedMac() { Run(); PrototypeBuilder.BuildMac(); }
 
         public static void Run() {
-            foreach (var name in new[] { "Road", "Hull", "Facade", "Planet" }) {
+            foreach (var name in new[] { "Road", "Hull", "Facade" }) {
                 var texture = Resources.Load<Texture2D>("Environment/Textures/" + name);
                 Check(texture != null, "missing " + name);
                 Check(texture.width <= 1024 && texture.height <= 1024 && texture.mipmapCount > 1,
@@ -56,6 +56,11 @@ namespace StarRacingPrototype {
                             }
                             foreach (var renderer in environment.Root.GetComponentsInChildren<MeshRenderer>()) {
                                 foreach (var material in renderer.sharedMaterials) {
+                                    if (renderer.name == "Cloud sea" || renderer.name == "Tower cloud mist") {
+                                        Check(material != null && material.shader.name == (renderer.name == "Cloud sea" ? "StarRacing/CloudDeck" : "StarRacing/CloudMist"), "bad cloud material");
+                                        Check(renderer.GetComponent<Collider>() == null, "cloud collider");
+                                        continue;
+                                    }
                                     Check(material != null && material.shader.name == "Universal Render Pipeline/Lit", "bad material");
                                     if (material.mainTexture == null) continue;
                                     var mesh = renderer.GetComponent<MeshFilter>().sharedMesh;

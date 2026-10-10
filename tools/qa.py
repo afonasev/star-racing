@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed QA plan and complete Editor suite receipt. Native acceptance stays explicit."""
+"""Fail-closed UI or complete Editor QA receipt. Native acceptance stays explicit."""
 import argparse
 import hashlib
 import json
@@ -16,12 +16,17 @@ EDITOR_CHECKS = {
     'unity-prototype/Assets/StarRacing/Editor/RecoveryGhostChecks.cs',
     'unity-prototype/Assets/StarRacing/Editor/RosterFixtureEquivalenceChecks.cs',
 }
-TOOLING = {'tools/test_qa.py', '.agents/references/qa-scope.md'}
+TOOLING = {'tools/test_qa.py', 'tools/test_local_workflow.py', '.agents/references/qa-scope.md'}
+# A candidate UI route still requires review of behavior and dependencies.
+UI_FILES = {f'unity-prototype/Assets/StarRacing/Runtime/{name}.cs'
+            for name in ('RaceHud', 'RaceHudLayout', 'RaceMenu', 'CloudlineSkin')}
+UI_FILES.add('unity-prototype/Assets/StarRacing/Editor/RaceHudChecks.cs')
 GATES = {
     'documentation': ['review-links', 'openspec-strict'],
     'tooling': ['tooling-regressions', 'openspec-strict'],
+    'local-ui': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-ui-checks', 'affected-editor-playmode'],
     'editor-checks': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence'],
-    'full': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence', 'native-build', 'affected-player-playtest'],
+    'full': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence'],
 }
 BROAD = ['menu-countdown-natural-AI-finish-Results-menu', 'repeat-pause', 'both-themes', 'recovery']
 
@@ -35,6 +40,10 @@ def scope_for(paths, profile_safe=False):
             scopes.append('tooling')
         elif path in TOOLING:
             scopes.append('tooling')
+        elif path.removesuffix('.meta') in UI_FILES:
+            scopes.append('local-ui')
+        elif path == 'AGENTS.md' or (path.startswith('.agents/references/') and path.endswith('.md')):
+            scopes.append('documentation')
         elif path in EDITOR_CHECKS or path.removesuffix('.meta') in EDITOR_CHECKS:
             scopes.append('editor-checks')
         elif path.startswith(('docs/', 'openspec/')) and path.endswith('.md'):
@@ -73,20 +82,23 @@ def local_profile_diff(before, after):
     return strip(before) == strip(after)
 
 
-def plan(base):
+def plan(base, requested_scope="auto", reason=None):
     baseline = git('rev-parse', '--verify', base + '^{commit}')
     # Rename detection disabled: old and new paths must BOTH satisfy the allowlist.
     paths = set(filter(None, git('diff', '--no-renames', '--name-only', baseline).splitlines()))
     paths.update(filter(None, git('ls-files', '--others', '--exclude-standard').splitlines()))
     profile = json.loads((REPO/'workflow/project.json').read_text())
-    # Public source snapshots omit private planning profiles. Missing historical
-    # policy cannot prove a local scope: select the complete gate.
-    historical = subprocess.run(['git','show',baseline+':workflow/project.json'],cwd=REPO,capture_output=True,text=True)
-    old_profile = json.loads(historical.stdout) if historical.returncode == 0 else None
-    scope = scope_for(sorted(paths), profile_safe=old_profile is not None and local_profile_diff(old_profile, profile)) if old_profile is not None else 'full'
+    old_profile = json.loads(git('show', baseline+':workflow/project.json'))
+    scope = scope_for(sorted(paths), profile_safe=local_profile_diff(old_profile, profile))
+    if requested_scope == 'local-ui' and scope not in {'documentation', 'tooling', 'local-ui'}:
+        raise ValueError('UI scope cannot hide shared runtime/build/check changes')
+    if requested_scope != 'auto':
+        scope = requested_scope
     return {'base': baseline, 'commit': git('rev-parse', 'HEAD'), 'paths': sorted(paths),
-            'scope': scope, 'required': GATES[scope], 'broad_integration_if_affected': BROAD,
-            'human_acceptance': 'pending', 'deploy_authorized': profile.get('deploy_authorized')}
+            'scope': scope, 'scope_reason': reason, 'required': GATES[scope], 'broad_integration_if_affected': BROAD if scope == 'full' else [],
+            'human_acceptance': 'pending', 'deploy_authorized': profile.get('deploy_authorized'),
+            'deferred_player_gates': ['native-build', 'affected-player-playtest'] if scope == 'full' else [],
+            'player_gate_policy': 'Explicit request or justified minimal QA build; no automatic build/deploy'}
 
 
 def validate_receipt(log, token, profile):
@@ -106,6 +118,18 @@ def validate_receipt(log, token, profile):
     return end
 
 
+def validate_ui_receipt(log, token):
+    markers = re.findall(r'^RACE_HUD_CHECKS_OK assertions=(\d+) token=(\S+)$', log, re.M)
+    if markers != [('221', token)] or re.search(r'error CS\d+|Exception:|HUD_CHECK\s', log):
+        raise ValueError('Missing/foreign/incomplete UI receipt or compilation failure')
+    return {'assertions': 221, 'token': token, 'scope': 'local-ui', 'match_simulations': False}
+
+
+def check_method(scope):
+    return ('StarRacingPrototype.RaceHudChecks.Run' if scope == 'local-ui' else
+            'StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence')
+
+
 def validate_equivalence(log, token):
     markers = re.findall(r'^ROSTER_FIXTURE_EQUIVALENCE_OK cases=(\d+) token=(\S+)$', log, re.M)
     if markers != [('6', token)]:
@@ -115,23 +139,44 @@ def validate_equivalence(log, token):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['plan', 'checks'])
+    parser.add_argument('--scope', choices=['auto', 'local-ui', 'full'], default='auto')
+    parser.add_argument('--reason', help='Reviewed behavior/dependency reason for the chosen scope')
     parser.add_argument('--base', required=True, help='Explicit reviewed baseline, including its full diff')
     parser.add_argument('--output', type=Path, help='New owned evidence directory (checks)')
     args = parser.parse_args()
-    selection = plan(args.base)
+    try:
+        selection = plan(args.base, args.scope, args.reason)
+    except ValueError as error:
+        parser.error(str(error))
     if args.action == 'plan':
         print(json.dumps(selection, indent=2)); return
+    if selection['scope'] in {'documentation', 'tooling'}:
+        parser.error('Selected scope uses diff/tooling checks; no Unity suite is required')
+    if not args.reason:
+        parser.error('checks requires --reason: record affected behavior; do not auto-escalate to full')
     if not args.output:
         parser.error('checks requires --output')
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     profile = hashlib.sha256((REPO/'unity-prototype/Assets/StarRacing/Resources/balance-config.json').read_bytes()).hexdigest()
     token = str(uuid.uuid4()); env = dict(os.environ, STAR_RACING_QA_TOKEN=token)
     log = out/'editor.log'
-    command = [str(REPO/'tools/unity.sh'), 'shared', '-batchmode', '-nographics', '-disableManagedDebugger', '-quit',
-               '-executeMethod', 'StarRacingPrototype.PrototypeChecks.RunWithFixtureEquivalence', '-logFile', str(log)]
+    command = [str(REPO/'tools/unity.sh'), 'shared', '-batchmode', '-nographics', '-quit',
+               '-executeMethod', check_method(selection['scope']), '-logFile', str(log)]
+    # Unity may serialize these generated/import settings during an otherwise
+    # read-only QA run. Keep their pre-run bytes so the receipt can reject real
+    # source drift while restoring only the known editor collateral.
+    restored_paths = [REPO/'unity-prototype/Assets/StarRacing/Generated/Prototype.unity',
+                      REPO/'unity-prototype/Assets/StarRacing/Resources/Vehicle/Cloudline.fbx.meta',
+                      REPO/'unity-prototype/ProjectSettings/ProjectSettings.asset']
+    original = {path: path.read_bytes() for path in restored_paths if path.is_file()}
     source = source_fingerprint()
     started = time.time()
-    result = subprocess.run(command, cwd=REPO, env=env)
+    try:
+        result = subprocess.run(command, cwd=REPO, env=env)
+    finally:
+        for path, content in original.items():
+            if path.exists() and path.read_bytes() != content:
+                path.write_bytes(content)
     receipt = {'plan': selection, 'command': command, 'exit': result.returncode,
                'wrapper_wall_seconds': time.time()-started, 'token': token, 'profile': profile,
                'source_fingerprint': source, 'success': False, 'remaining': selection['required'], 'human_acceptance': False}
@@ -140,16 +185,23 @@ def main():
             raise ValueError('Source changed during checks')
         if result.returncode:
             raise ValueError('Unity wrapper failed')
-        receipt['suite'] = validate_receipt(log.read_text(), token, profile)
-        validate_equivalence(log.read_text(), token)
-        receipt['editor_checks_success'] = True
-        receipt['remaining'] = [g for g in selection['required'] if g not in {'unity-compile-and-all-checks', 'fixture-equivalence'}]
+        if selection['scope'] == 'local-ui':
+            receipt['suite'] = validate_ui_receipt(log.read_text(), token)
+            receipt['ui_checks_success'] = True
+            completed = {'unity-compile-and-ui-checks'}
+        else:
+            receipt['suite'] = validate_receipt(log.read_text(), token, profile)
+            validate_equivalence(log.read_text(), token)
+            receipt['editor_checks_success'] = True
+            completed = {'unity-compile-and-all-checks', 'fixture-equivalence'}
+        receipt['checks_success'] = True
+        receipt['remaining'] = [g for g in selection['required'] if g not in completed]
     except (ValueError, KeyError, OSError) as error:
         receipt['error'] = str(error)
     (out/'receipt.json').write_text(json.dumps(receipt, indent=2)+'\n')
     print(json.dumps(receipt, indent=2))
-    # This command ONLY certifies the complete Editor suite; plan's remaining gates still apply.
-    if not receipt.get('editor_checks_success'):
+    # This command ONLY certifies the selected UI or complete Editor suite; plan's remaining gates still apply.
+    if not receipt.get('checks_success'):
         raise SystemExit(1)
 
 

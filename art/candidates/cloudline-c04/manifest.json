@@ -1,0 +1,28 @@
+{
+  "candidate": "C04",
+  "scope": "F3 cabin only",
+  "reference": "../cloudline-c03/reference-orbital.png",
+  "preserved_candidates": [
+    "C01",
+    "C02",
+    "C03"
+  ],
+  "files": {
+    "Cloudline_C04.blend": "2cf46555b8464137b24eac93210c518f2e0e32aff59cbd2b53815326c4439b5e",
+    "Cloudline_C04.fbx": "529f0289bf19352eb2adeb382afe322c9a7645dfb3b57e4cedaf44f75e5a1658",
+    "Cloudline_C04.glb": "3afe822459bee18f095d1e2fd81ac9128be3a8afc2222a3cf00f5f0f52148b14",
+    "README.md": "20befd29ccc54db6792d799872e4d342f7f16c8537d863bab5049e9b1a0c5b26",
+    "cabin-detail.png": "ed4ca7655ed1bea12a3dc800215e0dd1e270eb77f052ced66ada17e6be66b2cc",
+    "comparison.html": "22f3fc3aa5182ba83d3ea2f676a0572e3a2d4409bf53a2ce70dc0f99bbec0017",
+    "create_model.py": "6d074a0a5d37bed0bd3ab8444c6060f4c38d3dab161864a7384910f4417ead6f",
+    "export-validation.json": "abdee2557f97f8c204cec0706dfc61c5cf2cc1695516890aea6c35ff74e29628",
+    "front-three-quarter.png": "38e3167cea987723651ae934631854efd00c3b3e6db95a37e0b1d422d19bfa48",
+    "model-stats.json": "ad31c229211159490b1dc513ebcfd67d18cb87a0d18c58187204f37618569133",
+    "preservation-validation.json": "99e49750fa9f200f2eb144d6090e2df4514c10fa8e4d0531319b57ebdf21d06e",
+    "rear-three-quarter.png": "e7463480c88e970f44dbe319f32a947c1120424a042f82dbd6f482bde23c67ef",
+    "rear.png": "6e550c0b6e70b546a9660877d76357031288f54efdf87a14b29bf63f77525e2a",
+    "side.png": "54ce55647c7cca7e42d0b8232342c2d73b99a79879f8f286e989dec72cc2fcda",
+    "verify_exports.py": "94b0df6afbae9fb5a93859691e509b2f6254f2644ac10d84d867d3f2428ccbcb",
+    "verify_preservation.py": "7c9dcd2bf9b0468ae56ef9dbbcf60e47c85f5949481d58a40bb9f5ec22c7a7e2"
+  }
+}

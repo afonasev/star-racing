@@ -1,0 +1,68 @@
+{
+  "fbx": {
+    "mesh_count": 178,
+    "triangles": 85560,
+    "materials": [
+      "Amber_Taillight",
+      "Brake_Ceramic",
+      "Copper_Caliper",
+      "Forged_Aluminium",
+      "Graphite_Aero",
+      "Ice_Headlight",
+      "Midnight_Glass",
+      "Pearl_White",
+      "Satin_Titanium",
+      "Tire_Rubber"
+    ],
+    "bounds_min": [
+      -1.2070000171661377,
+      -2.4820001125335693,
+      0.0010000000474974513
+    ],
+    "bounds_max": [
+      1.2070000171661377,
+      2.62994122505188,
+      1.4771641492843628
+    ],
+    "dimensions_xyz_metres": [
+      2.4140000343322754,
+      5.111941337585449,
+      1.4761641492368653
+    ],
+    "wheels": 4,
+    "passed": true
+  },
+  "glb": {
+    "mesh_count": 178,
+    "triangles": 85560,
+    "materials": [
+      "Amber_Taillight",
+      "Brake_Ceramic",
+      "Copper_Caliper",
+      "Forged_Aluminium",
+      "Graphite_Aero",
+      "Ice_Headlight",
+      "Midnight_Glass",
+      "Pearl_White",
+      "Satin_Titanium",
+      "Tire_Rubber"
+    ],
+    "bounds_min": [
+      -1.2070000171661377,
+      -2.4820001125335693,
+      0.0010000000474974513
+    ],
+    "bounds_max": [
+      1.2070000171661377,
+      2.62994122505188,
+      1.4771642684936523
+    ],
+    "dimensions_xyz_metres": [
+      2.4140000343322754,
+      5.111941337585449,
+      1.476164268446155
+    ],
+    "wheels": 4,
+    "passed": true
+  }
+}

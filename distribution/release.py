@@ -67,7 +67,7 @@ def toolchain():
     if subprocess.check_output([dotnet,'--version'],env=env,text=True).strip()!=config['dotnet']['version']:raise ValueError('Unexpected .NET SDK')
     run(['python3',ROOT/'distribution/prepare.py'])
     return dotnet,vpk
-def build_players(version,track,evidence):
+def build_players(version,track,evidence,unsigned_production=False):
     # Build preparation and Unity import may serialize these owned files. Restore
     # them even on failure so an exact-source release stays clean after building.
     paths=[ROOT/'unity-prototype/ProjectSettings/ProjectSettings.asset']
@@ -75,6 +75,7 @@ def build_players(version,track,evidence):
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing').rglob('*.meta'))
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')
+    if unsigned_production:env['STAR_RACING_UNSIGNED_PRODUCTION']='1'
     try:
         for platform,method in [('mac','BuildMac'),('windows','BuildWindows')]:
             log=evidence/('build-'+platform+'.log')
@@ -115,15 +116,16 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
     p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
-    p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--notes',default='Desktop updater candidate; physical platform acceptance pending.')
+    p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--unsigned-production',action='store_true');p.add_argument('--notes',default='Desktop updater candidate; physical platform acceptance pending.')
     a=p.parse_args()
     if a.show_policy:
         print(json.dumps(publication_policy(),indent=2,ensure_ascii=False));return
     if a.track is None or a.version is None or a.sequence is None:p.error('--track, --version and --sequence are required for publication')
     validate_track(a.track,a.version)
-    if not a.key or not a.key.is_file():p.error('Set STAR_RACING_SIGNING_KEY to the private key outside the repository')
-    key=a.key.resolve()
-    if key.is_relative_to(ROOT):p.error('Private key must stay outside the repository')
+    if a.unsigned_production and a.track!='production':p.error('Unsigned metadata is production-only')
+    if not a.unsigned_production and (not a.key or not a.key.is_file()):p.error('Set STAR_RACING_SIGNING_KEY to the private key outside the repository')
+    key=a.key.resolve() if a.key else None
+    if key and key.is_relative_to(ROOT):p.error('Private key must stay outside the repository')
     if not 0<a.sequence<2147483648:p.error('Sequence must be a positive Int32')
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Commit and verify source before publication')
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
@@ -134,7 +136,7 @@ def main():
     if previous:
         catalog=json.loads(previous['body'])
         for envelope in catalog['platforms'].values():
-            old=verify(envelope)
+            old=envelope if catalog.get('unsignedProductionCatalog') else verify(envelope)
             if old['releaseTrack']!=a.track or old['sequence']>=a.sequence or version_key(old['version'])>=version_key(a.version):raise ValueError('Non-monotonic channel sequence')
     lock='git/refs/tags/_publishing-'+a.track
     # Atomic ref creation serializes publishers across release Macs/hosts.
@@ -145,23 +147,27 @@ def main():
 def publish_candidate(a,key,source,tag,previous):
     output=ROOT/'.local/releases'/a.version
     output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
-    dotnet,vpk=toolchain();build_players(a.version,a.track,evidence)
+    dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
     directories=[]
     for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
-        args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--key',key,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
+        args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
+        if a.unsigned_production:args+=['--unsigned-production']
+        else:args+=['--key',key]
         if channel=='win-x64':args+=['--defer-windows-installer']
         run(args);directories.append(output/channel/a.version)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
-    wizard(tag,source,directories[1],evidence);finalize(directories[1],a.track,key)
+    wizard(tag,source,directories[1],evidence)
+    if not a.unsigned_production:finalize(directories[1],a.track,key)
     remote={x['name']:x for x in api('releases/'+str(draft['id']))['assets']}
-    expected={};catalog=dict(schema=1,track=a.track,version=a.version,sourceRevision=source,platforms={})
+    expected={};catalog=dict(schema=2 if a.unsigned_production else 1,track=a.track,version=a.version,sourceRevision=source,platforms={})
+    if a.unsigned_production:catalog['unsignedProductionCatalog']=True
     for folder in directories:
-        identity=validate_identity(folder);channel=identity['channel'];catalog['platforms'][channel]=json.loads((folder/'signed.json').read_text())
+        identity=validate_identity(folder,allow_unsigned_production=a.unsigned_production);channel=identity['channel'];catalog['platforms'][channel]=json.loads((folder/('unsigned.json' if a.unsigned_production else 'signed.json')).read_text())
         for file in sorted(folder.iterdir()):
             if not file.is_file():continue
             name=file.name
-            if name in ('signed.json','legacy-signed.json','identity.json','notes.md','installer-policy.json'):
+            if name in ('signed.json','unsigned.json','legacy-signed.json','identity.json','notes.md','installer-policy.json'):
                 name=file.stem+'-'+channel+file.suffix
             expected[name]=dict(size=file.stat().st_size,sha256=sha(file),local=str(file))
             if name not in remote:upload(tag,file,name)

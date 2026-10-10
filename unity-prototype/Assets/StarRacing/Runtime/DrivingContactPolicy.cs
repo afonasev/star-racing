@@ -64,7 +64,7 @@ namespace StarRacingPrototype {
    result=default;if(!current.TryGetValue(entrant,out var a)||a.Suppressed||side==0||!(side<0?a.LeftRail:a.RightRail)||side*Vector3.Dot(a.Velocity,a.Right)<=0)return false;
    if(railSides.TryGetValue(entrant,out int previous)&&previous==side)return false;
    railSides[entrant]=side;var other=a;other.Id=-1;
-   result=new DrivingContactEvent(DrivingContactKind.Barrier,a,other,++sequence,.25f+Mathf.Abs(Mathf.Sin(a.Heading))*.55f);return true;
+   result=new DrivingContactEvent(DrivingContactKind.Barrier,a,other,++sequence,Mathf.Clamp01(.12f+Mathf.Max(0,side*Vector3.Dot(a.Velocity,a.Right))/14f));return true;
   }
  }
 }

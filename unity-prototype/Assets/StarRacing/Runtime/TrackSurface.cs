@@ -12,6 +12,7 @@ namespace StarRacingPrototype {
         public RoadFace[] triangleFaces;
         public TrackBuilder owner;
         public int buildRevision;
+        [System.NonSerialized] public Vector3[] sourceNormals;
         [System.NonSerialized] public Vector3[] sourceVertices;
         [System.NonSerialized] public int[] sourceTriangles;
     }

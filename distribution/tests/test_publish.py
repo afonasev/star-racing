@@ -11,7 +11,7 @@ class PublicationContracts(unittest.TestCase):
   subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:2048','-out',str(self.key)],check=True,capture_output=True)
   self.public.write_bytes(subprocess.check_output(['openssl','pkey','-in',str(self.key),'-pubout']))
   package=(self.root/'racing-full.nupkg').read_bytes()
-  payload=dict(schema=1,appId='tech.afonasev.star-racing.win-x64',version='0.2.1-test.1',channel='win-x64',sequence=1,fileName='racing-full.nupkg',size=len(package),sha256=hashlib.sha256(package).hexdigest(),url='https://racing.afonasev.tech/releases/win-x64/0.2.1-test.1/racing-full.nupkg')
+  payload=dict(schema=2,appId='tech.afonasev.star-racing.win-x64',releaseTrack='test',version='0.2.1-test.1',channel='win-x64',sequence=1,fileName='racing-full.nupkg',size=len(package),sha256=hashlib.sha256(package).hexdigest(),url='https://github.com/afonasev/star-racing/releases/download/v0.2.1-test.1/racing-full.nupkg')
   serialized=json.dumps(payload).encode();signature=subprocess.run(['openssl','dgst','-sha256','-sign',str(self.key)],input=serialized,capture_output=True,check=True).stdout
   (self.root/'signed.json').write_text(json.dumps(dict(keyId='star-racing-test-2026',payloadBase64=base64.b64encode(serialized).decode(),signatureBase64=base64.b64encode(signature).decode())))
   self.identity=dict(version='0.2.1-test.1',channel='win-x64',sequence=1,files=[dict(name=f.name,size=f.stat().st_size,sha256=hashlib.sha256(f.read_bytes()).hexdigest()) for f in self.root.iterdir() if f.suffix!='.pem'])

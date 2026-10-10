@@ -31,7 +31,7 @@ namespace StarRacingPrototype {
       var car=carObject.AddComponent<MagneticVehicle>();car.Initialize(track,0,Color.cyan,balance);car.ResetAt(80);
       Physics.SyncTransforms();int revision=car.PositionRevision;
       for(int i=0;i<12000;i++){
-       car.SetRaceContext(true,1,2,i*.01);car.PrepareProjection();tick.Invoke(car,null);Physics.Simulate(.01f);
+       car.SetRaceContext(true,1,2,i*.01);car.PrepareProjection();tick.Invoke(car,null);RacePhysicsStepper.Simulate(.01f);
        if(car.IsFalling || car.PositionRevision!=revision || !car.GetComponent<Collider>().enabled)throw new Exception("Parked car fell or reset: "+theme);
       }
       car.PrepareProjection();float height=Vector3.Dot(car.Body.position-car.Frame.position,car.Frame.normal);
@@ -39,7 +39,7 @@ namespace StarRacingPrototype {
       Debug.Log("IDLE_ROAD_PHYSICS_OK theme="+theme+" seconds=120 height="+height);
       car.SetInput(new DrivingInput{throttle=1});
       for(int i=0;i<200;i++){
-       car.SetRaceContext(true,1,2,120+i*.01);car.PrepareProjection();tick.Invoke(car,null);Physics.Simulate(.01f);
+       car.SetRaceContext(true,1,2,120+i*.01);car.PrepareProjection();tick.Invoke(car,null);RacePhysicsStepper.Simulate(.01f);
       }
       if(car.IsFalling || Vector3.Dot(car.Body.linearVelocity,car.Frame.tangent)<1f)throw new Exception("Cannot drive after idle: "+theme);
      }finally{UnityEngine.Object.DestroyImmediate(root);}
@@ -49,7 +49,7 @@ namespace StarRacingPrototype {
   }
   public static void RunWithFixtureEquivalence(){
    // All fixtures are local and destroyed by Run before pure geometry regressions start.
-   RunIdleRecovery();Run();RosterFixtureEquivalenceChecks.Run();CloudlineChecks.Run();
+   CheckpointAdmissionChecks.Run();AirSteeringChecks.Run();TrackProjectionParityChecks.Run();RoadVolumeChecks.Run();RoadSmoothnessChecks.Run();GravityChecks.Run();RunIdleRecovery();Run();RosterFixtureEquivalenceChecks.Run();CloudlineChecks.Run();CloudlineVehicleChecks.Run();Sn30ProChecks.Run();VehicleAudioChecks.Run();VehiclePresentationChecks.Run();NativeRunwayChecks.Run();
   }
   public static void Run(){
    assertions=0;int rosterCases=0;var watch=System.Diagnostics.Stopwatch.StartNew();

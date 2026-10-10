@@ -1,15 +1,30 @@
 import json
 import unittest
-from qa import scope_for, validate_receipt, validate_equivalence, local_profile_diff
+from qa import UI_FILES, check_method, validate_ui_receipt, GATES, scope_for, validate_receipt, validate_equivalence, local_profile_diff
 
 class ScopeTests(unittest.TestCase):
+    def test_full_test_gate_does_not_implicitly_build_or_deploy(self):
+        self.assertIn("unity-compile-and-all-checks", GATES["full"])
+        self.assertIn("fixture-equivalence", GATES["full"])
+        self.assertNotIn("native-build", GATES["full"])
+        self.assertNotIn("affected-player-playtest", GATES["full"])
+
+    def test_ui_candidate_and_shared_dependency_boundary(self):
+        for path in UI_FILES:
+            self.assertEqual(scope_for([path]), 'local-ui')
+            self.assertEqual(scope_for([path + '.meta']), 'local-ui')
+            self.assertEqual(scope_for([path, 'unity-prototype/Assets/StarRacing/Runtime/MagneticVehicle.cs']), 'full')
+        self.assertEqual(check_method('local-ui'), 'StarRacingPrototype.RaceHudChecks.Run')
+        self.assertNotIn('unity-compile-and-all-checks', GATES['local-ui'])
+        self.assertNotIn('fixture-equivalence', GATES['local-ui'])
+
     def test_local(self):
         self.assertEqual(scope_for(['docs/qa.md']), 'documentation')
         self.assertEqual(scope_for(['tools/qa.py', '.agents/references/qa-scope.md']), 'editor-checks')
         self.assertEqual(scope_for(['unity-prototype/Assets/StarRacing/Editor/PrototypeChecks.cs']), 'editor-checks')
 
     def test_full_dependency_boundary(self):
-        for path in ['unity-prototype/Assets/StarRacing/Runtime/RaceHud.cs',
+        for path in ['unity-prototype/Assets/StarRacing/Runtime/RaceDirector.cs',
                      'unity-prototype/Assets/StarRacing/Editor/PrototypeBuilder.cs',
                      'unity-prototype/Assets/StarRacing/Resources/balance-config.json',
                      'tools/unity.sh', 'unity-prototype/Packages/manifest.json', 'README.md', '../tools/qa.py']:
@@ -31,6 +46,20 @@ class ScopeTests(unittest.TestCase):
 
     def test_rename_both_paths(self):
         self.assertEqual(scope_for(['docs/qa.md', 'unity-prototype/Assets/StarRacing/Runtime/qa.md']), 'full')
+
+class UiReceiptTests(unittest.TestCase):
+    def test_complete_ui_receipt(self):
+        value = validate_ui_receipt('RACE_HUD_CHECKS_OK assertions=221 token=t\n', 't')
+        self.assertEqual(value['assertions'], 221)
+        self.assertFalse(value['match_simulations'])
+
+    def test_invalid_ui_receipts(self):
+        good = 'RACE_HUD_CHECKS_OK assertions=221 token=t\n'
+        for log in ['', good.replace('221', '0'), good.replace('221', '220'),
+                    good.replace('token=t', 'token=foreign'), good*2,
+                    good+'error CS1234', good+'Exception: failure', good+'HUD_CHECK failed']:
+            with self.subTest(log=log), self.assertRaises(ValueError):
+                validate_ui_receipt(log, 't')
 
 class ReceiptTests(unittest.TestCase):
     def log(self, **changes):

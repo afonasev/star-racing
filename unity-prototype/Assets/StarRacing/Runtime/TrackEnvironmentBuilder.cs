@@ -16,20 +16,23 @@ namespace StarRacingPrototype {
         public int LampCount { get; private set; }
         public struct LampPlacement { public float distance; public int side; public Vector3 basePoint; }
         public readonly List<LampPlacement> Lamps = new List<LampPlacement>();
+        public TrackSky Sky { get; private set; }
         public Transform Root => root == null ? null : root.transform;
 
-        public void Build(TrackRoute route, Transform roadRoot) {
+        public void Build(TrackRoute route, Transform roadRoot, uint? skySeed = null) {
             Clear();
-            Plan = EnvironmentPlan.Create(route);
+            Plan = EnvironmentPlan.Create(route, skySeed);
             root = new GameObject("Track environment " + Plan.theme);
             cube = CreateCube(); sphere = CreateSphere(12, 16);
             BuildRoadDistricts(route, roadRoot);
             if (Plan.theme == "cloud-city") BuildCity(route);
             else BuildSpace(route);
+            Sky = new TrackSky(Plan, route, root.transform);
 
         }
 
         public void Clear() {
+            Sky?.Clear(); Sky = null;
             if (roadRenderer != null) roadRenderer.enabled = roadRendererOriginalEnabled;
             roadRenderer = null;
             roadRendererOriginalEnabled = false;
@@ -163,15 +166,6 @@ namespace StarRacingPrototype {
             var dark = Lit(new Color(.6f, .73f, .84f), .35f, false, "Facade", .55f);
             var teal = Lit(new Color(.12f, .86f, .8f), .05f, true);
             var amber = Lit(new Color(1, .65f, .24f), .05f, true);
-            var cloud = Lit(new Color(.93f, .97f, 1), 0, false, null, 0);
-            var highCloud = Lit(new Color(.71f, .77f, .82f), 0, false, null, 0);
-            var sunDisk = Lit(Plan.lighting.sunColor, 0, true);
-            Vector3 center = route.Samples[route.Samples.Length / 2].position;
-            Vector3 sunPoint = center + Plan.lighting.sunPosition.normalized * 1200;
-            if (EnvironmentPlan.ClearOfRoute(route, sunPoint, Vector3.one * 29,
-                                             EnvironmentPlan.CorridorMargin))
-                Shape("Distant sun", sphere, sunDisk, sunPoint, Quaternion.identity,
-                      Vector3.one * 58, false);
             for (int i = 0; i < Plan.towers.Count; i++) {
                 var tower = Plan.towers[i];
                 var material = i % 3 == 0 ? facade : i % 3 == 1 ? blue : dark;
@@ -182,21 +176,6 @@ namespace StarRacingPrototype {
                 if (i % 3 == 0)
                     Shape("Navigation light", cube, tower.amber ? amber : teal, top + Vector3.up * 1.5f,
                           Quaternion.identity, new Vector3(2.2f, 3f, 2.2f), false);
-                Shape("Lower cloud", sphere, cloud,
-                      new Vector3(tower.position.x, Plan.cityBaseY + 9, tower.position.z), Quaternion.identity,
-                      new Vector3(tower.width * 3.6f, 24, tower.width * 3.4f), false);
-            }
-            // Tower-base clouds form the lower layer without a broad sheet under inverted loop cameras.
-            var weather = new Procedural.SeedRandom(Plan.seed ^ 0xc10d5u);
-            for (int i = 0; i < 8; i++) {
-                var frame = route.Samples[weather.Int(0, route.Samples.Length - 1)];
-                float side = weather.Next() < .5 ? -1 : 1;
-                Vector3 point = frame.position + frame.right * (side * (float)weather.Range(145, 225)) +
-                                Vector3.up * (float)weather.Range(85, 145);
-                var extents = new Vector3(24, 7, 15);
-                if (!EnvironmentPlan.ClearOfRoute(route, point, extents, EnvironmentPlan.CorridorMargin)) continue;
-                // Sparse high clouds cast URP soft shadows; the lower blanket only hides tower bases.
-                Shape("High cloud", sphere, highCloud, point, Quaternion.identity, extents * 2, true);
             }
         }
 
@@ -234,8 +213,6 @@ namespace StarRacingPrototype {
             var shadow = Lit(new Color(.22f, .31f, .44f), .63f);
             var cyan = Lit(new Color(.18f, .86f, 1), .1f, true);
             var gold = Lit(new Color(1, .74f, .3f), .1f, true);
-            var planetMaterial = Lit(Plan.planetColor, 0, false, "Planet", .1f);
-            var starMaterial = Lit(new Color(.82f, .92f, 1), 0, true);
             BuildEdgeRibbons(route, cyan);
             Shape("Station core", sphere, hull, Plan.station, Quaternion.identity, Vector3.one * 80);
             Shape("Station spindle", cube, shadow, Plan.station, Quaternion.Euler(0, 30, 0), new Vector3(130, 18, 30));
@@ -249,18 +226,6 @@ namespace StarRacingPrototype {
                 Vector3 link = node - Plan.station;
                 Shape("Communication link", cube, cyan, (node + Plan.station) * .5f,
                       Quaternion.FromToRotation(Vector3.up, link), new Vector3(.8f, link.magnitude, .8f), false);
-            }
-            Shape("Distant planet", sphere, planetMaterial, Plan.planet, Quaternion.identity, Vector3.one * Plan.planetRadius * 2);
-            if (Plan.planetRings) {
-                Mesh rings = CreateRing(Plan.planetRadius * 1.38f, Plan.planetRadius * 1.85f);
-                Shape("Planet rings", rings, planetMaterial, Plan.planet, Quaternion.Euler(22, (Plan.seed % 83), 28), Vector3.one, false);
-            }
-            Vector3 center = route.Samples[route.Samples.Length / 2].position;
-            for (int i = 0; i < 80; i++) {
-                var direction = RandomDirection(random);
-                var point = center + direction * (float)random.Range(700, 1100);
-                if (!EnvironmentPlan.ClearOfRoute(route, point, Vector3.one * 3.5f, EnvironmentPlan.CorridorMargin)) continue;
-                Shape("Star", sphere, starMaterial, point, Quaternion.identity, Vector3.one * (float)random.Range(1.3, 3.4), false);
             }
             for (float distance = 0; distance < route.Length; distance += 80f) {
                 var spans = route.PavedAt(distance);
@@ -339,13 +304,6 @@ namespace StarRacingPrototype {
             Shape("Emissive road edges", mesh, material, Vector3.zero, Quaternion.identity, Vector3.one, false);
         }
 
-        static Vector3 RandomDirection(Procedural.SeedRandom random) {
-            float y = (float)random.Range(-.8, .9);
-            float a = (float)random.Range(-Mathf.PI, Mathf.PI);
-            float r = Mathf.Sqrt(1 - y * y);
-            return new Vector3(Mathf.Cos(a) * r, y, Mathf.Sin(a) * r);
-        }
-
         Mesh CreateCube() {
             var vertices = new List<Vector3>(); var normals = new List<Vector3>(); var triangles = new List<int>();
             var uv = new List<Vector2>();
@@ -383,21 +341,6 @@ namespace StarRacingPrototype {
             var normals = new Vector3[vertices.Count];
             for (int i = 0; i < normals.Length; i++) normals[i] = vertices[i].normalized;
             mesh.normals = normals;
-            meshes.Add(mesh); return mesh;
-        }
-
-        Mesh CreateRing(float inner, float outer) {
-            var vertices = new List<Vector3>(); var triangles = new List<int>();
-            var uv = new List<Vector2>();
-            for (int i = 0; i <= 48; i++) {
-                float angle = i * Mathf.PI * 2 / 48;
-                var ray = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle));
-                vertices.Add(ray * inner); vertices.Add(ray * outer);
-                uv.Add(new Vector2((float)i / 48f * 12f, 0)); uv.Add(new Vector2((float)i / 48f * 12f, 1));
-                if (i < 48) { int a = i * 2; triangles.AddRange(new[] { a, a + 2, a + 1, a + 1, a + 2, a + 3,
-                                                                          a + 1, a + 2, a, a + 3, a + 2, a + 1 }); }
-            }
-            var mesh = new Mesh { name = "Planet ring" }; mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0); mesh.RecalculateNormals();
             meshes.Add(mesh); return mesh;
         }
 

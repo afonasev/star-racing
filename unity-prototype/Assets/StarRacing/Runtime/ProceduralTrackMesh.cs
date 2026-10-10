@@ -11,19 +11,26 @@ public static class ProceduralTrackMesh
     sealed class Geometry
     {
         public readonly List<Vector3> vertices = new List<Vector3>();
+        public readonly List<Vector3> smoothNormals = new List<Vector3>();
         public readonly List<Vector2> uv = new List<Vector2>();
         public readonly List<int> triangles = new List<int>(), samples = new List<int>();
         public readonly List<RoadFace> faces = new List<RoadFace>();
         public int quadCount;
         public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, int sample, Vector3 up,
-            RoadFace face = default, float uvStart = 0, float uvEnd = -1)
+            RoadFace face = default, float uvStart = 0, float uvEnd = -1, Vector3 endUp = default, Vector3 rightUp = default, Vector3 rightEndUp = default,
+            float uvSideStart = 0, float uvSideEnd = -1)
         {
             int i = vertices.Count;
             vertices.AddRange(new[] { a, b, c, d });
+            smoothNormals.AddRange(endUp.sqrMagnitude > 0
+                ? new[] { up, endUp, rightUp.sqrMagnitude > 0 ? rightUp : up,
+                    rightEndUp.sqrMagnitude > 0 ? rightEndUp : endUp } : new Vector3[4]);
             float length = Vector3.Distance(a, b) / 4f, width = Vector3.Distance(a, c) / 4f;
             if (uvEnd < 0) uvEnd = uvStart + length;
-            uv.AddRange(new[] { new Vector2(uvStart, 0), new Vector2(uvEnd, 0),
-                new Vector2(uvStart, width), new Vector2(uvEnd, width) });
+            if (uvSideEnd < 0) uvSideEnd = uvSideStart;
+            float endWidth = Vector3.Distance(b,d)/4f;
+            uv.AddRange(new[] { new Vector2(uvStart, uvSideStart), new Vector2(uvEnd, uvSideEnd),
+                new Vector2(uvStart, uvSideStart+width), new Vector2(uvEnd, uvSideEnd+endWidth) });
             if (Vector3.Dot(Vector3.Cross(b - a, c - a), up) > 0)
                 triangles.AddRange(new[] { i, i + 1, i + 2, i + 2, i + 1, i + 3 });
             else
@@ -42,22 +49,42 @@ public static class ProceduralTrackMesh
             mesh.SetUVs(0, uv);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
+            var normals = mesh.normals;
+            for (int i = 0; i < normals.Length; i++)
+                if (smoothNormals[i].sqrMagnitude > 0) normals[i] = smoothNormals[i].normalized;
+            mesh.normals = normals;
             mesh.RecalculateBounds();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = material;
-            go.AddComponent<MeshCollider>().sharedMesh = mesh;
+            var collider=go.AddComponent<MeshCollider>();
+            // Legacy midphase preserves this exact top while avoiding opposing
+            // internal-edge normals observed on the generated Space loop.
+            if(road)collider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+            collider.sharedMesh = mesh;
             if (road)
             {
                 var surface=go.AddComponent<TrackSurface>();
                 surface.triangleSamples=samples.ToArray();
                 surface.triangleFaces=faces.ToArray();
                 surface.sourceVertices=vertices.ToArray();
+                surface.sourceNormals=mesh.normals;
                 surface.sourceTriangles=triangles.ToArray();
             }
         }
     }
     static Vector3 Point(TrackFrame f, double lateral,
                          float height = 0) => f.position - f.right * (float)lateral + f.normal * height;
+    // A twisted ribbon has different support normals at its two edges. Shading
+    // and suspension both use the normal of the actual swept surface, not just
+    // the centerline frame (which would add tangential forces off-center).
+    static Vector3 SurfaceNormal(TrackRoute route, TrackFrame frame, float lateral)
+    {
+        var before = route.Evaluate(Mathf.Max(0, frame.distance - .25f));
+        var after = route.Evaluate(Mathf.Min(route.Length, frame.distance + .25f));
+        Vector3 along = route.EvaluateDerivative(frame.distance) -
+            (after.right-before.right) * (lateral/(after.distance-before.distance));
+        return Vector3.Cross(along, frame.right).normalized;
+    }
     static RoadFace Face(Geometry road, int sample, TrackFrame first, TrackFrame second,
         double left0, double right0, double left1, double right1, bool ramp = false) =>
         new RoadFace(sample, road.quadCount++, first.distance, second.distance,
@@ -75,7 +102,7 @@ public static class ProceduralTrackMesh
         // Full protection has a continuous bridge: same lip slope, then a smooth flat landing.
         return (2 * u * u * u - 3 * u * u + 1) * 2.8f + (u * u * u - 2 * u * u + u) * .12f * (end - launch);
     }
-    public static void Build(Transform parent, TrackRoute route, Material roadMaterial, Material railMaterial)
+    public static void Build(Transform parent, TrackRoute route, Material roadMaterial, Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null)
     {
         var road = new Geometry();
         var rails = new Geometry();
@@ -97,10 +124,10 @@ public static class ProceduralTrackMesh
             {
                 double left = ramp.lateralCenter - ramp.lateralHalfWidth,
                        right = ramp.lateralCenter + ramp.lateralHalfWidth;
-                for (float distance = a.distance; distance < b.distance; distance += 1)
+                for (float distance = a.distance; distance < b.distance; distance += .5f)
                 {
                     var first = route.Evaluate(distance);
-                    var second = route.Evaluate(Mathf.Min(b.distance, distance + 1));
+                    var second = route.Evaluate(Mathf.Min(b.distance, distance + .5f));
                     float h1 = RampHeight(ramp, first.distance), h2 = RampHeight(ramp, second.distance);
                     if (left > -a.halfWidth + .01)
                         road.Quad(Point(first, -a.halfWidth), Point(second, -b.halfWidth), Point(first, left),
@@ -116,10 +143,31 @@ public static class ProceduralTrackMesh
                 }
             }
             else
-                foreach (var pair in pairs)
-                    road.Quad(Point(a, pair.first.Left), Point(b, pair.second.Left),
-                              Point(a, pair.first.Right), Point(b, pair.second.Right), i, a.normal,
-                              Face(road,i,a,b,pair.first.Left,pair.first.Right,pair.second.Left,pair.second.Right));
+                for (float distance = a.distance; distance < b.distance; distance += .5f) {
+                    var first = route.Evaluate(distance);
+                    var second = route.Evaluate(Mathf.Min(b.distance, distance + .5f));
+                    float u = Mathf.InverseLerp(a.distance, b.distance, first.distance);
+                    float v = Mathf.InverseLerp(a.distance, b.distance, second.distance);
+                    foreach (var pair in pairs) {
+                        float left0 = Mathf.Lerp((float)pair.first.Left, (float)pair.second.Left, u);
+                        float left1 = Mathf.Lerp((float)pair.first.Left, (float)pair.second.Left, v);
+                        float right0 = Mathf.Lerp((float)pair.first.Right, (float)pair.second.Right, u);
+                        float right1 = Mathf.Lerp((float)pair.first.Right, (float)pair.second.Right, v);
+                        // Bound twisted cells across the width too: large diagonals
+                        // can become false CCD obstacles when the chassis grazes them.
+                        int lanes = Mathf.Max(2, Mathf.CeilToInt(Mathf.Max(right0-left0,right1-left1)));
+                        for (int lane = 0; lane < lanes; lane++) {
+                            float l0 = Mathf.Lerp(left0,right0,(float)lane/lanes), r0 = Mathf.Lerp(left0,right0,(float)(lane+1)/lanes);
+                            float l1 = Mathf.Lerp(left1,right1,(float)lane/lanes), r1 = Mathf.Lerp(left1,right1,(float)(lane+1)/lanes);
+                            road.Quad(Point(first,l0), Point(second,l1), Point(first,r0), Point(second,r1),
+                                i, SurfaceNormal(route,first,l0), Face(road,i,first,second,l0,r0,l1,r1),
+                                uvStart:first.distance/4f, uvEnd:second.distance/4f,
+                                endUp:SurfaceNormal(route,second,l1), rightUp:SurfaceNormal(route,first,r0),
+                                rightEndUp:SurfaceNormal(route,second,r1),
+                                uvSideStart:(l0-left0)/4f, uvSideEnd:(l1-left1)/4f);
+                        }
+                    }
+                }
             var sa = route.SourceAt(a.distance);
             var sb = route.SourceAt(b.distance);
             var la = runout ? (d.guardrailMode == "none" ? new double[0]
@@ -146,27 +194,29 @@ public static class ProceduralTrackMesh
                 if (d.guardrailMode != "full" &&
                     (Layout.Paved(d, sa).Length == 0 || Layout.Paved(d, sb).Length == 0))
                     continue;
-                Vector3 pa = Point(a, offset,
-                                   ramp != null && System.Math.Abs(offset - ramp.lateralCenter) <=
-                                                       ramp.lateralHalfWidth
-                                       ? RampHeight(ramp, a.distance)
-                                       : 0),
-                        pb = Point(b, other,
-                                   ramp != null && System.Math.Abs(other - ramp.lateralCenter) <=
-                                                       ramp.lateralHalfWidth
-                                       ? RampHeight(ramp, b.distance)
-                                       : 0),
-                        side = a.right * .15f;
-                rails.Quad(pa - side, pb - side, pa - side + a.normal * 1.3f, pb - side + b.normal * 1.3f, i,
-                           -a.right, uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
-                rails.Quad(pa + side, pb + side, pa + side + a.normal * 1.3f, pb + side + b.normal * 1.3f, i,
-                           a.right, uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
-                rails.Quad(pa - side + a.normal * 1.3f, pb - side + b.normal * 1.3f,
-                           pa + side + a.normal * 1.3f, pb + side + b.normal * 1.3f, i, a.normal,
-                           uvStart: a.distance / 4f, uvEnd: b.distance / 4f);
+                for (float distance = a.distance; distance < b.distance; distance += .5f) {
+                    var first = route.Evaluate(distance);
+                    var second = route.Evaluate(Mathf.Min(b.distance, distance + .5f));
+                    float u = Mathf.InverseLerp(a.distance, b.distance, first.distance);
+                    float v = Mathf.InverseLerp(a.distance, b.distance, second.distance);
+                    float lateral0 = Mathf.Lerp((float)offset, (float)other, u);
+                    float lateral1 = Mathf.Lerp((float)offset, (float)other, v);
+                    bool raised = ramp != null && System.Math.Abs(offset-ramp.lateralCenter) <= ramp.lateralHalfWidth;
+                    Vector3 pa = Point(first, lateral0, raised ? RampHeight(ramp, first.distance) : 0);
+                    Vector3 pb = Point(second, lateral1, raised ? RampHeight(ramp, second.distance) : 0);
+                    Vector3 side0 = first.right * .15f, side1 = second.right * .15f;
+                    rails.Quad(pa-side0, pb-side1, pa-side0+first.normal*1.3f, pb-side1+second.normal*1.3f,
+                        i, -first.right, uvStart:first.distance/4f, uvEnd:second.distance/4f, endUp:-second.right);
+                    rails.Quad(pa+side0, pb+side1, pa+side0+first.normal*1.3f, pb+side1+second.normal*1.3f,
+                        i, first.right, uvStart:first.distance/4f, uvEnd:second.distance/4f, endUp:second.right);
+                    rails.Quad(pa-side0+first.normal*1.3f, pb-side1+second.normal*1.3f,
+                        pa+side0+first.normal*1.3f, pb+side1+second.normal*1.3f,
+                        i, first.normal, uvStart:first.distance/4f, uvEnd:second.distance/4f, endUp:second.normal);
+                }
             }
         }
         road.Create(parent, "Procedural road", roadMaterial, true);
+        RoadVolumeMesh.Build(parent, route, road.vertices, road.faces,road.triangles, roadMaterial,observer);
         rails.Create(parent, "Procedural guard rails", railMaterial, false);
     }
 }

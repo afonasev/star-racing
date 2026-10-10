@@ -7,12 +7,15 @@ namespace StarRacingPrototype {
   public static readonly Vector3 BaselineInertia=new Vector3(1548.108154296875f,2104.799560546875f,712.9083862304688f);
   public static readonly Quaternion BaselineInertiaRotation=Quaternion.identity;
   public const float SourceMinY=.008150219917297364f, SourceMaxY=1.4560149908065797f;
-  // Frozen suspension law: four normalized-compression springs support mass*g.
-  public const float NeutralBodyHeight=.78f+.34f-.2f-.78f*1000f*9.81f/(4f*62000f);
-  // Preserve the previously available stroke: baseline box center .05 / height .55.
-  // The nominal .78 travel already lost its final .085 to the old chassis.
+  // Four normalized-compression springs support the body. Raise the mounting
+  // points instead of offsetting the art away from its physical chassis.
+  public const float SuspensionMountHeight=.76f;
+  public const float NeutralBodyHeight=.78f+.34f-SuspensionMountHeight-.78f*1000f*MagneticVehicle.GravityMagnitude/(4f*62000f);
+  public const float AdheredBodyHeight=NeutralBodyHeight-.78f*1000f*14f/(4f*62000f);
+  // Retain the chassis collision envelope. The lower rest height intentionally
+  // reduces working stroke above the physical chassis stop.
   public const float BaselineChassisMinY=.05f-.55f*.5f;
-  public const float UnloadedBodyHeight=.78f+.34f-.2f;
+  public const float UnloadedBodyHeight=.78f+.34f-SuspensionMountHeight;
   public const float BaselineStopHeight=-BaselineChassisMinY;
   public const float AvailableWorkingStroke=UnloadedBodyHeight-BaselineStopHeight;
   public const float NeutralWorkingClearance=NeutralBodyHeight-BaselineStopHeight;
