@@ -72,6 +72,7 @@ Reject(()=>Unsigned(production),"unsigned rejected without compiled opt-in");
 #endif
 await DownloadChecks.Run(data,Envelope,modulus,Require);
 await PublicationChecks.Run(Require);
+ApplyPathChecks.Run(Require);
 Console.WriteLine("UPDATE_CONTRACTS_OK "+assertions);
 
 if(args.Length==2&&args[0]=="--live-production"){

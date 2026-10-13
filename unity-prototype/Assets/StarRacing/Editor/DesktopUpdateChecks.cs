@@ -13,6 +13,9 @@ namespace StarRacingPrototype {
    Check(CloudlineSkin.FormatFooter("0.3.3","2026-10-11")=="v0.3.3 · Published 2026-10-11 · "+CloudlineSkin.CopyrightText,"short English published footer");
    Check(CloudlineSkin.FormatFooter("0.3.3",null)=="v0.3.3 · "+CloudlineSkin.CopyrightText,"unknown publication date is omitted");
    Check(!CloudlineSkin.FormatFooter("0.3.3","2026-02-30").Contains("Published"),"invalid publication date is omitted");
+   Set("CanUpdate",true);Check(updater.ShowUpdateBlock,"startup check block visible");
+   Set("CurrentVersionConfirmed",true);Check(!updater.ShowUpdateBlock,"current release hides entire block");
+   Set("Busy",true);Check(updater.ShowUpdateBlock,"new check reveals block");Set("Busy",false);Set("CurrentVersionConfirmed",false);
    var flags=BindingFlags.Instance|BindingFlags.NonPublic;
    using(var cancellation=new CancellationTokenSource())try{
     Check(updater.ButtonLabel=="Проверить обновления","idle action");

@@ -24,6 +24,8 @@ namespace StarRacingPrototype.Distribution {
   public bool Available {get;private set;}
   public bool Staged {get;private set;}
   public bool CanUpdate {get;private set;}
+  public bool CurrentVersionConfirmed {get;private set;}
+  public bool ShowUpdateBlock=>CanUpdate&&(!CurrentVersionConfirmed||Busy||Staged||StartupApplying);
   public bool StartupApplying {get;private set;}
   string journal;
   readonly string track=DesktopReleaseChannel.Track;
@@ -76,11 +78,11 @@ namespace StarRacingPrototype.Distribution {
   }
   string PackagePath(DesktopRelease release)=>Path.Combine(VelopackLocator.Current.PackagesDir,release.fileName);
   public async Task Check(){
-   if(!CanUpdate||Busy||Staged)return;Busy=true;Status="Проверка обновлений…";
+   if(!CanUpdate||Busy||Staged)return;CurrentVersionConfirmed=false;Busy=true;Status="Проверка обновлений…";
    try{
     source.MinimumSequence=minimumSequence;
     update=await manager.CheckForUpdatesAsync();
-    Available=update!=null;
+    Available=update!=null;CurrentVersionConfirmed=!Available;
     if(Available){Status="Доступна версия "+NewVersion+". Нажмите «Обновить», чтобы скачать изменения.";minimumSequence=Math.Max(minimumSequence,source.Release.sequence);PlayerPrefs.SetInt("StarRacing.UpdateSequence."+track,checked((int)minimumSequence));PlayerPrefs.Save();}
     else Status="Установлена актуальная версия";
    }catch(Exception e){Available=false;Status="Не удалось проверить обновление. Можно играть офлайн.";Debug.LogWarning("DESKTOP_UPDATE_CHECK "+e);}

@@ -189,26 +189,27 @@ namespace StarRacingPrototype {
    bool applying=updater!=null&&updater.StartupApplying;
    bool busy=updater!=null&&updater.Busy;
    Skin.Brand(new Rect(68,78,800,112),76);
-   Skin.Panel(new Rect(56,217,690,638),.88f);
+   bool showUpdate=updater!=null&&updater.ShowUpdateBlock;
+   Skin.Panel(new Rect(56,217,690,showUpdate?638:398),.88f);
    Button("local",new Rect(80,237,642,70),"Игра на одном экране   →",()=>Open(RaceMenuScreen.LocalSetup,activatingPad),true,!busy&&!applying,28);
    DisabledMenuButton("network",new Rect(80,319,642,68),"Сетевая игра");
    Button("settings",new Rect(80,399,642,58),"Настройки",()=>Open(RaceMenuScreen.Settings),false,!applying,26);
    DisabledMenuButton("lab",new Rect(80,469,642,58),"Лаборатория геймдизайна");
-   Button("updates",new Rect(80,539,642,58),"Обновить",()=>{_=updater.Download();},false,updater!=null&&updater.CanUpdate&&updater.Available&&!updater.Staged&&!busy&&!applying,22);
-   Button("quit",new Rect(80,609,642,54),"Выход",()=>{Selected.Save();Application.Quit();},false,!applying,26);
-   CloudlineSkin.Box(new Rect(80,675,642,1),new Color(.74f,.8f,.89f),0);
-   string version=string.IsNullOrEmpty(updater?.InstalledVersion)?Application.version:updater.InstalledVersion;
-   Skin.Text(new Rect(80,685,642,28),"Версия "+version,16,false,CloudlineSkin.Muted);
-   Skin.Text(new Rect(80,715,642,64),updater==null?"Проверка обновлений доступна в установленной игре.":updater.VisibleStatus,15,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
-   if(updater!=null){
+   Button("quit",new Rect(80,539,642,54),"Выход",()=>{Selected.Save();Application.Quit();},false,!applying,26);
+   if(showUpdate){
+    CloudlineSkin.Box(new Rect(80,615,642,1),new Color(.74f,.8f,.89f),0);
+    Skin.Text(new Rect(80,629,642,32),"Обновление игры",19,true);
+    Skin.Text(new Rect(80,666,642,78),updater.VisibleStatus,15,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
     if(updater.Downloading){
-     CloudlineSkin.Box(new Rect(80,784,642,5),new Color(.74f,.8f,.89f,.25f),2);
-     CloudlineSkin.Box(new Rect(80,784,642*updater.Progress/100f,5),CloudlineSkin.Blue,2);
-     Button("cancel-update",new Rect(80,797,200,38),"Отменить",updater.Cancel,false,updater.Progress<100,17);
+     CloudlineSkin.Box(new Rect(80,757,642,5),new Color(.74f,.8f,.89f,.25f),2);
+     CloudlineSkin.Box(new Rect(80,757,642*updater.Progress/100f,5),CloudlineSkin.Blue,2);
+     Button("cancel-update",new Rect(80,779,200,52),"Отменить",updater.Cancel,false,updater.Progress<100,19);
     }else if(updater.Staged){
-     Button("restart-update",new Rect(80,797,260,38),"Перезапустить",updater.InstallAndRestart,false,!busy&&!applying&&updater.CanUpdate,17);
-    }else if(updater.CanUpdate){
-     Button("check-updates",new Rect(80,797,200,38),"Проверить",()=>{_=updater.Check();},false,!busy&&!applying,17);
+     Button("restart-update",new Rect(80,779,642,52),"Перезапустить",updater.InstallAndRestart,false,!busy&&!applying,22);
+    }else if(updater.Available&&!busy&&!applying){
+     Button("updates",new Rect(80,779,642,52),"Обновить",()=>{_=updater.Download();},true,true,22);
+    }else if(!busy&&!applying){
+     Button("check-updates",new Rect(80,779,260,52),"Повторить проверку",()=>{_=updater.Check();},false,true,19);
     }
    }
   }
