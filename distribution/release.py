@@ -72,6 +72,7 @@ def build_players(version,track,evidence,unsigned_production=False):
     # them even on failure so an exact-source release stays clean after building.
     paths=list((ROOT/'unity-prototype/ProjectSettings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing/Generated').rglob('*'))
+    paths+=list((ROOT/'unity-prototype/Assets/Settings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets').rglob('*.meta'))
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')

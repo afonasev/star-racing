@@ -61,8 +61,11 @@ class ReleaseSourcePreservation(unittest.TestCase):
    meta=assets/'Resources/Track.png.meta';meta.parent.mkdir();meta.write_text('texture:\n  userData:\n')
    plugin=root/'unity-prototype/Assets/Plugins.meta';plugin.write_text('plugin')
    quality=project.parent/'QualitySettings.asset';quality.write_text('quality')
+   settings=root/'unity-prototype/Assets/Settings/UniversalRenderPipelineGlobalSettings.asset';settings.parent.mkdir();settings.write_text('URP settings')
    evidence=root/'evidence';evidence.mkdir()
    def fake_run(args,**kwargs):
+    self.assertIn('-noaudio',args)
+    settings.write_text('serialized URP settings')
     meta.write_text('texture:\n  userData: \n')
     plugin.write_text('imported plugin');quality.write_text('build quality')
     Path(args[args.index('-logFile')+1]).write_text('PROTOTYPE_BUILD_OK')
@@ -72,4 +75,5 @@ class ReleaseSourcePreservation(unittest.TestCase):
    self.assertEqual(project.read_text(),'project')
    self.assertEqual(plugin.read_text(),'plugin');self.assertEqual(quality.read_text(),'quality')
    self.assertEqual(generated.read_text(),'scene')
+   self.assertEqual(settings.read_text(),'URP settings')
    self.assertEqual(build.call_count,2)

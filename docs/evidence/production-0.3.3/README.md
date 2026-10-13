@@ -13,3 +13,5 @@ Production follows the existing explicit unsigned-production catalog route, vers
 Durable release evidence/artifacts will be preserved under `/Users/eaafonasev/Projects/star-racing-planning/evidence/production-0.3.3/`.
 
 Affected Editor gate: exit 0. Broadphase PlayMode: exit 0, 83374 live-clock assertions; recovery fixture 1148 assertions; road 115 impacts / 6315 probes. Import-only metadata serialization restored to committed game snapshot before release.
+
+First native builds both exited 0; release stopped before draft because URP global settings auto-serialization was outside the restoration list. Restored the committed settings and added Assets/Settings to the existing preservation contract with a regression assertion. No production/draft/channel mutation occurred. Repeat builds use the corrected publishing revision.
