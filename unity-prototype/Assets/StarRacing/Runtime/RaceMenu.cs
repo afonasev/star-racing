@@ -185,25 +185,32 @@ namespace StarRacingPrototype {
   }
   public void DrawFps(){if(showFps)Skin.Text(new Rect(1450,870,110,24),fps+" FPS",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);}
   void DrawMain(){
-   Skin.Brand(new Rect(68,78,800,112),76);
-   Skin.Panel(new Rect(56,245,690,610),.88f);
-   Button("local",new Rect(80,269,642,86),"Игра на одном экране   →",()=>Open(RaceMenuScreen.LocalSetup,activatingPad),true, true,28);
-   DisabledMenuButton("network",new Rect(80,371,642,90),"Сетевая игра");
-   Button("settings",new Rect(80,477,642,80),"Настройки",()=>Open(RaceMenuScreen.Settings),false,true,26);
    var updater=Distribution.DesktopUpdater.Instance;
-   string updateLabel=updater==null?"Обновления доступны в установленной игре":updater.ButtonLabel;
-   Button("updates",new Rect(80,573,642,60),updateLabel,()=>{if(updater==null)return;if(updater.Staged)updater.InstallAndRestart();else if(updater.Available)_=updater.Download();else _=updater.Check();},false,updater!=null&&!updater.Busy&&!updater.StartupApplying&&updater.CanUpdate,22);
+   bool applying=updater!=null&&updater.StartupApplying;
+   bool busy=updater!=null&&updater.Busy;
+   Skin.Brand(new Rect(68,78,800,112),76);
+   Skin.Panel(new Rect(56,217,690,638),.88f);
+   Button("local",new Rect(80,237,642,70),"Игра на одном экране   →",()=>Open(RaceMenuScreen.LocalSetup,activatingPad),true,!busy&&!applying,28);
+   DisabledMenuButton("network",new Rect(80,319,642,68),"Сетевая игра");
+   Button("settings",new Rect(80,399,642,58),"Настройки",()=>Open(RaceMenuScreen.Settings),false,!applying,26);
+   DisabledMenuButton("lab",new Rect(80,469,642,58),"Лаборатория геймдизайна");
+   Button("updates",new Rect(80,539,642,58),"Обновить",()=>{_=updater.Download();},false,updater!=null&&updater.CanUpdate&&updater.Available&&!updater.Staged&&!busy&&!applying,22);
+   Button("quit",new Rect(80,609,642,54),"Выход",()=>{Selected.Save();Application.Quit();},false,!applying,26);
+   CloudlineSkin.Box(new Rect(80,675,642,1),new Color(.74f,.8f,.89f),0);
+   string version=string.IsNullOrEmpty(updater?.InstalledVersion)?Application.version:updater.InstalledVersion;
+   Skin.Text(new Rect(80,685,642,28),"Версия "+version,16,false,CloudlineSkin.Muted);
+   Skin.Text(new Rect(80,715,642,64),updater==null?"Проверка обновлений доступна в установленной игре.":updater.VisibleStatus,15,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
    if(updater!=null){
-    Skin.Text(new Rect(80,637,updater.Downloading?490:642,40),updater.VisibleStatus,15,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
     if(updater.Downloading){
-     Button("cancel-update",new Rect(590,641,132,34),"Отменить",updater.Cancel,false,updater.Progress<100,16);
-     CloudlineSkin.Box(new Rect(80,681,642,5),new Color(.74f,.8f,.89f,.25f),2);
-     CloudlineSkin.Box(new Rect(80,681,642*updater.Progress/100f,5),CloudlineSkin.Blue,2);
+     CloudlineSkin.Box(new Rect(80,784,642,5),new Color(.74f,.8f,.89f,.25f),2);
+     CloudlineSkin.Box(new Rect(80,784,642*updater.Progress/100f,5),CloudlineSkin.Blue,2);
+     Button("cancel-update",new Rect(80,797,200,38),"Отменить",updater.Cancel,false,updater.Progress<100,17);
+    }else if(updater.Staged){
+     Button("restart-update",new Rect(80,797,260,38),"Перезапустить",updater.InstallAndRestart,false,!busy&&!applying&&updater.CanUpdate,17);
+    }else if(updater.CanUpdate){
+     Button("check-updates",new Rect(80,797,200,38),"Проверить",()=>{_=updater.Check();},false,!busy&&!applying,17);
     }
    }
-   DisabledMenuButton("lab",new Rect(80,695,642,58),"Лаборатория геймдизайна");
-   CloudlineSkin.Box(new Rect(80,763,642,1),new Color(.74f,.8f,.89f),0);
-   Button("quit",new Rect(80,779,642,56),"Выход",()=>{Selected.Save();Application.Quit();},false,true,26);
   }
   void DisabledMenuButton(string id,Rect rect,string title){
    Button(id,rect,"",()=>{},false,false);

@@ -11,6 +11,7 @@ using Velopack.NuGet;
 
 namespace StarRacingPrototype.Distribution {
  public sealed class DesktopUpdater:MonoBehaviour {
+  public const string PreparedStatus="Обновление готово. Можно продолжить играть; новая версия установится при следующем запуске. Или нажмите «Перезапустить».";
   public static DesktopUpdater Instance {get;private set;}
   public string InstalledVersion {get;private set;}
   public string Status {get;private set;}="Проверка обновлений…";
@@ -57,7 +58,7 @@ namespace StarRacingPrototype.Distribution {
      source.Restore(File.ReadAllText(receipt));
      if(SemanticVersion.Parse(source.Release.version)>manager.CurrentVersion){
       ReleaseAuthentication.VerifyFile(source.Release,PackagePath(source.Release));
-      update=new UpdateInfo(source.Release.Asset,false);Staged=true;Available=true;Status="Обновление готово к установке";
+      update=new UpdateInfo(source.Release.Asset,false);Staged=true;Available=true;Status=PreparedStatus;
       TryApplyAtStartup();return;
      }
      File.Delete(receipt);if(File.Exists(journal))File.Delete(journal);
@@ -72,7 +73,7 @@ namespace StarRacingPrototype.Distribution {
     source.MinimumSequence=minimumSequence;
     update=await manager.CheckForUpdatesAsync();
     Available=update!=null;
-    if(Available){Status="Доступна версия "+NewVersion;minimumSequence=Math.Max(minimumSequence,source.Release.sequence);PlayerPrefs.SetInt("StarRacing.UpdateSequence."+track,checked((int)minimumSequence));PlayerPrefs.Save();}
+    if(Available){Status="Доступна версия "+NewVersion+". Нажмите «Обновить», чтобы скачать изменения.";minimumSequence=Math.Max(minimumSequence,source.Release.sequence);PlayerPrefs.SetInt("StarRacing.UpdateSequence."+track,checked((int)minimumSequence));PlayerPrefs.Save();}
     else Status="Установлена актуальная версия";
    }catch(Exception e){Available=false;Status="Не удалось проверить обновление. Можно играть офлайн.";Debug.LogWarning("DESKTOP_UPDATE_CHECK "+e);}
    finally{Busy=false;}
@@ -97,7 +98,7 @@ namespace StarRacingPrototype.Distribution {
     UpdateAttemptJournal.Save(receipt,source.Envelope);
     if(File.Exists(journal))File.Delete(journal);
     Debug.Log("DESKTOP_UPDATE_STAGED version="+NewVersion);
-    Staged=true;Status="Готово. Перезапустите игру или установите при следующем запуске.";
+    Staged=true;Status=PreparedStatus;
    }catch(OperationCanceledException){Status="Загрузка отменена. Текущая версия доступна.";}
    catch(Exception e){Status="Не удалось загрузить обновление: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_DOWNLOAD "+e);}
    finally{source.DownloadConsent=false;Busy=false;cancellation.Dispose();download=null;}

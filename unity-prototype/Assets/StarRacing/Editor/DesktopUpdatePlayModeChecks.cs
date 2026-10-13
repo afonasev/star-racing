@@ -57,9 +57,15 @@ namespace StarRacingPrototype {
      Set("Busy",false);Set("Status","Не удалось загрузить обновление: пакет повреждён. Повторите загрузку.");
     }
     if(ticks==55){if(!HasControl("updates")||HasControl("cancel-update"))throw new Exception("Retry controls incorrect");ScreenCapture.CaptureScreenshot(Path.Combine(Output,"error.png"));}
-    if(ticks==70){Set("Staged",true);Set("Status","Готово. Перезапустите игру или установите при следующем запуске.");}
-    if(ticks==85){if(!HasControl("updates")||updater.ButtonLabel!="Установить и перезапустить")throw new Exception("Staged install action missing");ScreenCapture.CaptureScreenshot(Path.Combine(Output,"staged.png"));}
-    if(ticks==100){File.WriteAllText(Path.Combine(Output,"result.txt"),"DESKTOP_UPDATE_PLAYMODE_OK states=download,cancel,error,retry,staged\n");Debug.Log("DESKTOP_UPDATE_PLAYMODE_OK");Finish(false);}
+    if(ticks==70){Set("Staged",true);Set("Status",DesktopUpdater.PreparedStatus);}
+    if(ticks==85){if(HasControl("updates")||!HasControl("restart-update")||HasControl("check-updates")||!HasControl("local"))throw new Exception("Staged install action missing");ScreenCapture.CaptureScreenshot(Path.Combine(Output,"staged.png"));}
+    if(ticks==100){Set("StartupApplying",true);}
+    if(ticks==115){if(HasControl("local")||HasControl("updates")||HasControl("restart-update")||HasControl("quit"))throw new Exception("Applying actions must be disabled");Set("StartupApplying",false);Set("Staged",false);Set("Available",false);Set("Status","Установлена актуальная версия.");}
+    if(ticks==130){if(HasControl("updates")||!HasControl("check-updates")||!HasControl("local"))throw new Exception("Current version controls incorrect");ScreenCapture.CaptureScreenshot(Path.Combine(Output,"current.png"));}
+    if(ticks==140){Set("Busy",true);}
+    if(ticks==145){if(HasControl("check-updates")||HasControl("local"))throw new Exception("Checking actions must be disabled");Set("Busy",false);Set("Available",true);Set("Status","Доступна версия 1.2.3. Нажмите «Обновить», чтобы скачать изменения.");}
+    if(ticks==160){if(!HasControl("updates")||!HasControl("check-updates"))throw new Exception("Available update controls incorrect");ScreenCapture.CaptureScreenshot(Path.Combine(Output,"available.png"));}
+    if(ticks==175){File.WriteAllText(Path.Combine(Output,"result.txt"),"DESKTOP_UPDATE_PLAYMODE_OK states=download,cancel,error,retry,staged,applying,current,checking,available\n");Debug.Log("DESKTOP_UPDATE_PLAYMODE_OK");Finish(false);}
    }catch(Exception e){Debug.LogException(e);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Finish(true);}
   }
   static void Finish(bool failed){
