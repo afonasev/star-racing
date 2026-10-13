@@ -96,6 +96,16 @@ def smoke_macos(folder,evidence):
         if result.get('success') is not True or result.get('natural_ai_finish') is not True:raise ValueError('Packaged macOS smoke failed')
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
 
+def smoke_menu_macos(folder,evidence):
+    portable=next(folder.glob('*Portable.zip'));proof=evidence/'macos-menu-smoke';proof.mkdir()
+    with tempfile.TemporaryDirectory(prefix='star-racing-menu-smoke-') as tmp:
+        run(['ditto','-x','-k',portable,tmp]);app=Path(tmp)/'Star Racing.app'
+        env=dict(os.environ,UNITY_RUN_MODE='shared')
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
+        result=json.loads((proof/'success.json').read_text())
+        if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True:raise ValueError('Packaged menu smoke failed')
+        (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
+
 def upload(tag,file,name=None):
     name=name or file.name
     # gh supports an asset label after #, not a renamed filename: use a temporary alias.
@@ -127,6 +137,7 @@ def wizard(tag,source,folder,evidence):
     policy.rename(folder/'installer-policy.json')
 def main():
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--smoke-scope',choices=['menu','race'],default='menu',help='Choose affected native smoke; race preserves the existing natural-match contract')
     p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
     p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
     p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--unsigned-production',action='store_true');p.add_argument('--notes',default='Desktop updater candidate; physical platform acceptance pending.')
@@ -169,7 +180,7 @@ def publish_candidate(a,key,source,tag,previous):
         else:args+=['--key',key]
         if channel=='win-x64':args+=['--defer-windows-installer']
         run(args);directories.append(output/channel/a.version)
-    smoke_macos(directories[0],evidence)
+    (smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
     for folder in directories:finalize(folder,a.track,key,unsigned_production=a.unsigned_production)

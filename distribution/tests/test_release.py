@@ -77,3 +77,27 @@ class ReleaseSourcePreservation(unittest.TestCase):
    self.assertEqual(generated.read_text(),'scene')
    self.assertEqual(settings.read_text(),'URP settings')
    self.assertEqual(build.call_count,2)
+
+class MenuSmokeContract(unittest.TestCase):
+ def test_menu_smoke_is_silent_and_requires_its_own_receipt(self):
+  import tempfile,json
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);folder=root/'release';folder.mkdir();(folder/'candidate-Portable.zip').write_bytes(b'zip');evidence=root/'evidence';evidence.mkdir()
+   commands=[]
+   def fake_run(args,**kw):
+    commands.append([str(a) for a in args])
+    if '--menu-release-smoke-dir' in commands[-1]:
+     proof=Path(commands[-1][commands[-1].index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'menu','installed_queue_untouched':True}))
+   with patch.object(release,'run',side_effect=fake_run):release.smoke_menu_macos(folder,evidence)
+   args=commands[-1];self.assertIn('-noaudio',args);self.assertIn('--menu-release-smoke-dir',args);self.assertNotIn('--cloudline-proof-dir',args)
+   self.assertEqual((evidence/'macos-menu-smoke/candidate.json').exists(),True)
+
+ def test_menu_smoke_rejects_a_different_scope_receipt(self):
+  import tempfile,json
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);folder=root/'release';folder.mkdir();(folder/'candidate-Portable.zip').write_bytes(b'zip');evidence=root/'evidence';evidence.mkdir()
+   def fake_run(args,**kw):
+    args=[str(a) for a in args]
+    if '--menu-release-smoke-dir' in args:
+     proof=Path(args[args.index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'race','natural_ai_finish':True}))
+   with patch.object(release,'run',side_effect=fake_run),self.assertRaises(ValueError):release.smoke_menu_macos(folder,evidence)

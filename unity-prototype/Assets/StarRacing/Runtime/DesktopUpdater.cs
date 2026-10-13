@@ -43,7 +43,7 @@ namespace StarRacingPrototype.Distribution {
   }
   void Initialize(){
    InstalledVersion=Application.version;
-   if(Application.isEditor){Status="Обновления доступны в установленной игре";return;}
+   if(Application.isEditor||MenuReleaseSmoke.Enabled){Status="Обновления доступны в установленной игре";return;}
    try{
     VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
     channel=Application.platform==RuntimePlatform.WindowsPlayer?"win-x64":"osx-universal";
