@@ -14,6 +14,7 @@ namespace StarRacingPrototype.Distribution {
   public const string PreparedStatus="Обновление готово. Можно продолжить играть; новая версия установится при следующем запуске. Или нажмите «Перезапустить».";
   public static DesktopUpdater Instance {get;private set;}
   public string InstalledVersion {get;private set;}
+  public string PublishedDate {get;private set;}
   public string Status {get;private set;}="Проверка обновлений…";
   public string NewVersion=>source?.Release?.version;
   public string Notes=>source?.Release?.notes??"";
@@ -53,6 +54,8 @@ namespace StarRacingPrototype.Distribution {
     CanUpdate=manager.IsInstalled;
     if(!CanUpdate){Status="Обновления доступны после установки игры";return;}
     InstalledVersion=manager.CurrentVersion.ToNormalizedString();
+    PublishedDate=PlayerPrefs.GetString("StarRacing.Published."+InstalledVersion,"");
+    _=ReadPublicationDate();
     Debug.Log("DESKTOP_UPDATE_READY version="+InstalledVersion+" track="+track+" installed="+CanUpdate);
     if(File.Exists(receipt)){
      source.Restore(File.ReadAllText(receipt));
@@ -65,6 +68,11 @@ namespace StarRacingPrototype.Distribution {
     }
     _=Check();
    }catch(Exception e){Status="Обновление недоступно: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_INIT "+e);}
+  }
+  async Task ReadPublicationDate(){
+   if(!string.IsNullOrEmpty(PublishedDate))return;
+   try{var version=InstalledVersion;var date=await source.PublicationDate(version);if(this==null||InstalledVersion!=version)return;PublishedDate=date;PlayerPrefs.SetString("StarRacing.Published."+version,date);PlayerPrefs.Save();}
+   catch(Exception e){Debug.LogWarning("DESKTOP_PUBLICATION_DATE unavailable: "+SafeError(e));}
   }
   string PackagePath(DesktopRelease release)=>Path.Combine(VelopackLocator.Current.PackagesDir,release.fileName);
   public async Task Check(){

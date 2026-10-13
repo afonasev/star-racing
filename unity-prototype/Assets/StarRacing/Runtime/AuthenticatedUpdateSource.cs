@@ -83,6 +83,23 @@ namespace StarRacingPrototype.Distribution {
    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version","2022-11-28");
   }
+  // Presentation metadata only: never participates in update authorization.
+  public async Task<string> PublicationDate(string installedVersion){
+   var version=SemanticVersion.Parse(installedVersion);
+   if(version.ToNormalizedString()!=installedVersion)throw new InvalidDataException("Invalid installed version");
+   using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+   using(var response=await client.GetAsync("https://api.github.com/repos/afonasev/star-racing/releases/tags/v"+installedVersion,HttpCompletionOption.ResponseHeadersRead,timeout.Token).ConfigureAwait(false)){
+    response.EnsureSuccessStatusCode();
+    using(var input=await response.Content.ReadAsStreamAsync().ConfigureAwait(false))using(var output=new MemoryStream()){
+     await CopyBounded(input,output,1048576,timeout.Token,null).ConfigureAwait(false);
+     var release=JObject.Parse(new UTF8Encoding(false,true).GetString(output.ToArray()),new JsonLoadSettings{DuplicatePropertyNameHandling=DuplicatePropertyNameHandling.Error});
+     if(release["draft"]?.Type!=JTokenType.Boolean||(bool)release["draft"]||(string)release["tag_name"]!="v"+installedVersion)throw new InvalidDataException("Wrong publication identity");
+     if(release["published_at"]?.Type!=JTokenType.String&&release["published_at"]?.Type!=JTokenType.Date)throw new InvalidDataException("Missing publication date");
+     if(!DateTimeOffset.TryParse((string)release["published_at"],System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.AssumeUniversal,out var date))throw new InvalidDataException("Invalid publication date");
+     return date.UtcDateTime.ToString("yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture);
+    }
+   }
+  }
   public void Restore(string envelope){var release=VerifyStored(envelope);Release=release;Envelope=envelope;}
   public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger,string requestedAppId,string requestedChannel,Guid? stagingId=null,VelopackAsset latestLocalRelease=null){
    if(requestedAppId!=appId||requestedChannel!=channel)throw new InvalidDataException("Неподходящий канал обновлений");

@@ -10,6 +10,9 @@ namespace StarRacingPrototype {
    int assertions=0;var root=new GameObject("desktop update checks");var updater=root.AddComponent<DesktopUpdater>();
    void Check(bool ok,string message){assertions++;if(!ok)throw new Exception(message);}
    void Set(string name,object value)=>typeof(DesktopUpdater).GetProperty(name).SetValue(updater,value);
+   Check(CloudlineSkin.FormatFooter("0.3.3","2026-10-11")=="v0.3.3 · Published 2026-10-11 · "+CloudlineSkin.CopyrightText,"short English published footer");
+   Check(CloudlineSkin.FormatFooter("0.3.3",null)=="v0.3.3 · "+CloudlineSkin.CopyrightText,"unknown publication date is omitted");
+   Check(!CloudlineSkin.FormatFooter("0.3.3","2026-02-30").Contains("Published"),"invalid publication date is omitted");
    var flags=BindingFlags.Instance|BindingFlags.NonPublic;
    using(var cancellation=new CancellationTokenSource())try{
     Check(updater.ButtonLabel=="Проверить обновления","idle action");

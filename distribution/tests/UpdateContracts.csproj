@@ -6,6 +6,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <Compile Include="Program.cs" />
     <Compile Include="DownloadChecks.cs" />
+    <Compile Include="PublicationChecks.cs" />
     <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/AuthenticatedUpdateSource.cs" />
     <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopUpdateKey.cs" />
     <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseChannel.cs" />

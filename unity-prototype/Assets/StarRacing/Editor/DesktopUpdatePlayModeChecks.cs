@@ -44,7 +44,7 @@ namespace StarRacingPrototype {
      var source=new AuthenticatedUpdateSource("tech.afonasev.star-racing.win-x64","win-x64",1);
      typeof(AuthenticatedUpdateSource).GetProperty("Release").SetValue(source,new DesktopRelease{version="1.2.3",size=104857600});
      typeof(DesktopUpdater).GetField("source",Private).SetValue(updater,source);
-     Set("CanUpdate",true);Set("Available",true);Set("Busy",true);Set("Status","Скачивание обновления");
+     Set("InstalledVersion","0.3.3");Set("PublishedDate","2026-10-11");Set("CanUpdate",true);Set("Available",true);Set("Busy",true);Set("Status","Скачивание обновления");
      cancellation=new CancellationTokenSource();typeof(DesktopUpdater).GetField("download",Private).SetValue(updater,cancellation);typeof(DesktopUpdater).GetField("progress",Private).SetValue(updater,42);
     }
     if(ticks==25){

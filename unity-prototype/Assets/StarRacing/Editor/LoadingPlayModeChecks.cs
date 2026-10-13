@@ -50,7 +50,7 @@ namespace StarRacingPrototype {
     if(state==9){if(menu.Loading)return;Check(director.ExitToMenu(),"return menu");menu.Selected.devices[0]=int.MaxValue;menu.StartSelected(); // invalid binding returns through overlay
      state++;next=now+.8;return;}
     if(state==10){if(menu.Loading)return;Check(!director.Started&&!string.IsNullOrEmpty(menu.Error),"failure returns with error");Shot("09-error-menu");
-     Check(CloudlineSkin.FooterText=="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex","exact footer");
+     Check(CloudlineSkin.CopyrightText=="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex","exact footer");
      File.WriteAllText(Path.Combine(Output,"success.txt"),"LOADING_PLAYMODE_OK assertions="+assertions);Debug.Log("LOADING_PLAYMODE_OK assertions="+assertions);Finish(false);}
    }catch(Exception e){Debug.LogException(e);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());Finish(true);}
   }

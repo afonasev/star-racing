@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -96,7 +97,13 @@ namespace StarRacingPrototype {
    float scale=Mathf.Min(Screen.width/1600f,Screen.height/900f);var old=GUI.matrix;
    GUI.matrix=Matrix4x4.TRS(new Vector3((Screen.width-1600*scale)/2,(Screen.height-900*scale)/2,0),Quaternion.identity,Vector3.one*scale);return old;
   }
-  public const string FooterText="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex";
+  public const string CopyrightText="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex";
+  public static string FormatFooter(string version,string published){
+   string text="v"+version;
+   if(DateTime.TryParseExact(published,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out var date))text+=" · Published "+date.ToString("yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture);
+   return text+" · "+CopyrightText;
+  }
+  public static string FooterText {get{var updater=Distribution.DesktopUpdater.Instance;return FormatFooter(string.IsNullOrEmpty(updater?.InstalledVersion)?Application.version:updater.InstalledVersion,updater?.PublishedDate);}}
   public void Footer(bool dark=false){Text(new Rect(56,864,1330,28),FooterText,15,false,dark?new Color(.9f,.94f,1):Muted,TextAnchor.MiddleLeft);}
   public void Backdrop(){if(Background!=null)GUI.DrawTexture(new Rect(0,0,Screen.width,Screen.height),Background,ScaleMode.ScaleAndCrop);else Box(new Rect(0,0,Screen.width,Screen.height),new Color(.88f,.93f,1),0);}
  }
