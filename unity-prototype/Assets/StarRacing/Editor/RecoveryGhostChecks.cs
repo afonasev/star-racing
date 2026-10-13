@@ -37,6 +37,8 @@ namespace StarRacingPrototype {
                 var vehicle = gameObject.AddComponent<MagneticVehicle>();
                 typeof(MagneticVehicle).GetField("chassis", InstancePrivate).SetValue(vehicle,
                     gameObject.GetComponent<BoxCollider>());
+                // Use the production registration path, including compound CCD faces.
+                Invoke(vehicle, "EnsurePhysics");
                 return vehicle;
             }
 
@@ -99,7 +101,43 @@ namespace StarRacingPrototype {
                 Invoke(f.A, "RestoreCarCollisions");
                 Require(!f.Ignored(f.A, f.B), "finish owner cleanup releases final pair");
             }
+            using (var f = new PairFixture()) {
+                f.C.gameObject.SetActive(false);
+                Ghost(f.A);Invoke(f.A,"BeginGhosting");
+                Require(f.Ignored(f.A,f.B),"active registered peer is protected");
+                Require(!f.Ignored(f.A,f.C),"inactive registered peer is excluded");
+                f.C.gameObject.SetActive(true);Invoke(f.A,"BeginGhosting");
+                Require(f.Ignored(f.A,f.C),"newly active peer joins protection");
+            }
+            MassRecovery();
             Debug.Log("RECOVERY_GHOST_CHECKS_OK assertions=" + assertions);
+        }
+
+        static int IgnoredCount(MagneticVehicle car)=>(typeof(MagneticVehicle).GetField("ignoredCars",InstancePrivate).GetValue(car) as List<Collider>).Count;
+        static void MassRecovery() {
+            var objects=new List<GameObject>();var cars=new List<MagneticVehicle>();
+            try {
+                for(int i=0;i<32;i++) {
+                    var obj=new GameObject("mass recovery "+i);objects.Add(obj);
+                    var car=obj.AddComponent<MagneticVehicle>();Invoke(car,"EnsurePhysics");cars.Add(car);
+                }
+                foreach(var car in cars) {
+                    Require(car.Recovery.Observe(.01f,true,0,false,false,true,0,0,0),"mass fall starts");
+                    Invoke(car,"BeginGhosting");
+                    Require(IgnoredCount(car)==31,"fall owns exactly one entry per peer");
+                    car.Recovery.Respawn();Invoke(car,"BeginGhosting");Invoke(car,"BeginGhosting");
+                    Require(IgnoredCount(car)==31,"respawn and repeated protection retain unique pairs");
+                }
+                for(int i=0;i<cars.Count;i++) {
+                    cars[i].Recovery.Reset();Invoke(cars[i],"RestoreCarCollisions");
+                    Require(IgnoredCount(cars[i])==0,"expired owner releases its inventory");
+                    for(int j=i+1;j<cars.Count;j++)Require(Physics.GetIgnoreCollision(cars[i].GetComponent<Collider>(),cars[j].GetComponent<Collider>()),"unexpired peer retains protection");
+                }
+                for(int i=0;i<cars.Count;i++)for(int j=i+1;j<cars.Count;j++)
+                    Require(!Physics.GetIgnoreCollision(cars[i].GetComponent<Collider>(),cars[j].GetComponent<Collider>()),"last expiry restores mass recovery pairs");
+            } finally {
+                foreach(var obj in objects)if(obj!=null)UnityEngine.Object.DestroyImmediate(obj);
+            }
         }
 
     }

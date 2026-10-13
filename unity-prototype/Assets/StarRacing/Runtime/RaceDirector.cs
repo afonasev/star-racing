@@ -54,7 +54,7 @@ namespace StarRacingPrototype {
   void Awake(){
    if(GetComponent<RacePhysicsStepper>()==null)gameObject.AddComponent<RacePhysicsStepper>();
    try {Balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config")?.text);}catch(Exception e){BalanceError=e.Message;Debug.LogError("BALANCE_ERROR "+e.Message);}
-   Application.targetFrameRate=120;QualitySettings.vSyncCount=0;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
+   Application.targetFrameRate=120;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
    var initial=LocalRaceConfig.Load();initial.humans=Mathf.Max(1,initial.humans);ApplyValues(initial);
    Track=new GameObject("Track").AddComponent<TrackBuilder>();BuildTrack();
    for(int i=0;i<4;i++){
@@ -65,7 +65,7 @@ namespace StarRacingPrototype {
    }
    sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.shadows=LightShadows.Soft;
    spaceFill=new GameObject("Space fill").AddComponent<Light>();spaceFill.type=LightType.Directional;spaceFill.shadows=LightShadows.None;
-   RenderSettings.ambientMode=AmbientMode.Flat;ApplyLighting();
+   ApplyLighting();
    var volume=new GameObject("Color and bloom").AddComponent<Volume>();volume.isGlobal=true;volume.profile=ScriptableObject.CreateInstance<VolumeProfile>();
    var bloom=volume.profile.Add<Bloom>();bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);
    CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);gameObject.AddComponent<RaceAudioCoordinator>();
@@ -91,7 +91,7 @@ namespace StarRacingPrototype {
    for(int i=0;i<4;i++){cameras[i].target=i<HumanCount?Cars[i]:null;cameras[i].enabled=i<HumanCount;cameras[i].GetComponent<Camera>().enabled=Started&&i<HumanCount;if(i<HumanCount)cameras[i].GetComponent<Camera>().rect=RaceViewports.For(HumanCount,i);}
   }
   void ApplyValues(LocalRaceConfig config){
-   AppliedConfig=config.Copy();EntrantCount=config.entrants;HumanCount=config.humans;Handicap=config.handicap;
+   AppliedConfig=config.Copy();EntrantCount=config.entrants;HumanCount=config.humans;Handicap=false;
    TrackSeed=config.Seed;TrackThemePreference=config.theme;TrackRailMode=config.rails;TrackJumps=config.jumps;
   }
   public bool TryStartSelected(LocalRaceConfig config,out string error){
@@ -100,7 +100,7 @@ namespace StarRacingPrototype {
    var input=new LocalInputRouter();if(!input.TryBind(config,out error))return false;
    GameObject root=null;TrackEnvironmentBuilder decor=null;
    try{
-    var snapshot=config.Copy();int count=snapshot.entrants,humans=snapshot.humans,generation=RaceGeneration+1;
+    var snapshot=config.Copy();snapshot.handicap=false;int count=snapshot.entrants,humans=snapshot.humans,generation=RaceGeneration+1;
     string theme=snapshot.theme=="random"?(snapshot.Seed%2==0?"cloud-city":"space-station"):snapshot.theme;
     var route=new TrackRoute(Procedural.Generator.Generate(snapshot.Seed,snapshot.rails,theme,snapshot.jumps,true));
     var roster=new RaceRoster(count,humans,snapshot.Seed);roster.Shuffle(unchecked(snapshot.Seed+(uint)generation*7919));

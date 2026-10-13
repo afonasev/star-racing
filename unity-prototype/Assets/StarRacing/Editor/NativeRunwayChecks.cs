@@ -6,7 +6,7 @@ namespace StarRacingPrototype {
   public static void Run(){int cases=0;
    foreach(uint seed in new uint[]{77,2273265884})foreach(string theme in new[]{"cloud-city","space-station"})foreach(string mode in new[]{"normal","full","none"}) {
     var definition=Procedural.Generator.Generate(seed,mode,theme,true,true);
-    Check(definition.version==10&&definition.jumps.Length==4,"revision/jump count");
+    Check(definition.version==Procedural.Generator.NativeRevision&&definition.jumps.Length==4,"revision/jump count");
     Check(Procedural.Generator.AddedRunwayLength(definition)==880,"approved additional course length");
     Check(Procedural.Validator.Validate(definition).Length==0,"generated course invalid");
     Check(definition.hash==Procedural.Generator.Generate(seed,mode,theme,true,true).hash,"nondeterministic generation");

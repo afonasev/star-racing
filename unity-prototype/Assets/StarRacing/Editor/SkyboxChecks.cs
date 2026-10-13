@@ -22,6 +22,10 @@ namespace StarRacingPrototype {
      var plan=EnvironmentPlan.Create(route,seed);var repeat=EnvironmentPlan.Create(route,seed);
      Check(plan.hash==repeat.hash&&plan.SkyPlanetTexture==repeat.SkyPlanetTexture,"repeat seed changed planet");
      variants.Add(plan.SkyPlanetTexture);
+     Check(EnvironmentPlan.ClearOfRoute(route,plan.station,Vector3.one*170,EnvironmentPlan.CorridorMargin),"whole station cluster corridor clearance");
+     float nearest=float.PositiveInfinity;foreach(var frame in route.Samples)nearest=Mathf.Min(nearest,Vector3.Distance(plan.station,frame.position));
+     Check(nearest<=400,"station must be nearby scenery, seed="+seed+" distance="+nearest);
+     Debug.Log("STATION_PLACEMENT seed="+seed+" nearest="+nearest+" start="+Vector3.Distance(plan.station,route.Samples[0].position));
      CheckPlanetTexture(plan,route);
     }
     Check(variants.Count==EnvironmentPlan.SkyPlanetVariantCount,"consecutive seeds must show distinct planets");

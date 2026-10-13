@@ -14,7 +14,8 @@ public static class Generator
 
     sealed class Plan
     {
-        public string kind, pattern;
+        public string kind, pattern, role;
+        public int compositionIndex;
         public double length, intensity;
         public Plan(string k, double l, double n)
         {
@@ -34,6 +35,7 @@ public static class Generator
     }
     static readonly string[] PatternKinds = { "spiral-horizontal", "spiral-vertical", "chicane",  "cascade",
                                               "false-apex",        "wave-crest",      "wide-open" };
+    static readonly string[] CompositionPatterns = { "long-arc", "tightening-radius", "opening-radius", "connected-two", "connected-three" };
     static Plan Drift(SeedRandom r) => new Plan("sweeper", 220, r.Pick(-1, 1) * .75);
     static Plan Hairpin(SeedRandom r) => new Plan("hairpin", 120, r.Pick(-1, 1) * (150.0 / 180));
     static Plan DeterministicDrift(int i) => new Plan("sweeper", 220, (i % 2 == 0 ? 1 : -1) * .75);
@@ -169,8 +171,87 @@ public static class Generator
         p.Add(new Plan("straight", 150, 0));
         return p;
     }
+    public const int NativeRevision = 11;
+    public static readonly string[] DrivingFamilies = { "speed", "technical", "vertical" };
+    public static string FamilyFor(uint requested, string theme) => DrivingFamilies[
+        new SeedRandom(requested ^ (theme == "space-station" ? 0x5a710a1eu : 0u)).Int(0, 2)];
+
+    // A section is a driving phrase, not an isolated trick. Recovery separates
+    // phrases while the entry/exit widths meet exactly at every segment boundary.
+    static List<Plan> Compose(SeedRandom r, bool jumps, string family)
+    {
+        if (!DrivingFamilies.Contains(family)) throw new ArgumentException("Unsupported driving family");
+        double sign = r.Pick(-1, 1);
+        var main = new List<Plan>();
+        if (family == "speed") {
+            main.Add(new Plan("sweeper", 900, sign * .38) { pattern = "long-arc" });
+            main.Add(new Plan("sweeper", 350, -sign * .18) { pattern = "opening-radius" });
+        } else if (family == "technical") {
+            main.Add(new Plan("esses", 660, sign * .9) { pattern = "connected-three" });
+            main.Add(new Plan("sweeper", 350, -sign * .55) { pattern = "tightening-radius" });
+        } else {
+            main.Add(new Plan("loop", 420, sign));
+            main.Add(new Plan("corkscrew", 410, -sign));
+            main.Add(new Plan("hill", 300, .5));
+        }
+        var supporting = family == "technical"
+            ? new List<Plan> { new Plan("esses", 480, -sign * .8) { pattern = "connected-two" },
+                              new Plan("sweeper", 350, sign * .4) { pattern = "opening-radius" } }
+            : new List<Plan> { new Plan("esses", 480, -sign * .65) { pattern = "connected-two" },
+                              new Plan("sweeper", 350, sign * .4) { pattern = "tightening-radius" } };
+        var overtaking = new List<Plan> { new Plan("sweeper", 800, -sign * .25) { pattern = "long-arc" } };
+        var blocks = new List<List<Plan>> { main, supporting, overtaking };
+        for (int i = blocks.Count - 1; i > 0; i--) {
+            int at = r.Int(0, i); var tmp = blocks[i]; blocks[i] = blocks[at]; blocks[at] = tmp;
+        }
+        var result = new List<Plan>();
+        int section = 0;
+        void Add(List<Plan> phrase, string role) {
+            foreach (var part in phrase) { part.role = role; part.compositionIndex = section; result.Add(part); }
+            section++;
+        }
+        Add(new List<Plan> { new Plan("straight", 150, 0) }, "recovery");
+        for (int i = 0; i < blocks.Count; i++) {
+            Add(new List<Plan> { new Plan("sweeper", 300, sign * .08) }, "recovery");
+            if (jumps) Add(new List<Plan> { new Plan("jump-straight", NativeJumpStraightLength, 0) }, "recovery");
+            Add(blocks[i], ReferenceEquals(blocks[i], main) ? "main" : "supporting");
+        }
+        // Two gentle branch windows stay available irrespective of main phrase.
+        Add(new List<Plan> { new Plan("sweeper", 300, -sign * .08) }, "recovery");
+        if (jumps) Add(new List<Plan> { new Plan("jump-straight", NativeJumpStraightLength, 0) }, "recovery");
+        double target = 5600 + (jumps ? 1920 : 0);
+        while (result.Sum(x => x.length) < target - 450) {
+            Add(new List<Plan> { new Plan("sweeper", 300, r.Pick(-1, 1) * .12) }, "recovery");
+        }
+        double remaining = target - 150 - result.Sum(x => x.length);
+        if (remaining < 250) result[result.Count - 1].length += remaining;
+        else Add(new List<Plan> { new Plan("sweeper", remaining, sign * .1) }, "recovery");
+        Add(new List<Plan> { new Plan("straight", 150, 0) }, "recovery");
+        return result;
+    }
+    static double CompositionWidth(Plan s, double t)
+    {
+        // All phrases begin/end at 8.5m. No width change inside a flight envelope.
+        double extra = s.role == "recovery" ? 0 : s.pattern == "long-arc" ? 3 : 2;
+        return 8.5 + extra * Math.Pow(Math.Sin(Math.PI * t), 2);
+    }
+    static CompositionSection[] Composition(Sample[] samples) => samples
+        .GroupBy(s => s.compositionIndex).Select(group => new CompositionSection {
+            index = group.Key, role = group.First().compositionRole,
+            startIndex = group.First().index, endIndex = group.Last().index
+        }).ToArray();
     static DVec Rates(Plan s, double t, double e, bool native = false)
     {
+        if (s.pattern == "tightening-radius" || s.pattern == "opening-radius") {
+            double profile = s.pattern == "tightening-radius" ? .45 + 1.1 * t : 1.55 - 1.1 * t;
+            return new DVec(s.intensity * Math.PI * 5 * e * profile / s.length, 0, 0);
+        }
+        if (s.pattern == "connected-two" || s.pattern == "connected-three") {
+            int corners = s.pattern == "connected-two" ? 2 : 3;
+            // Zero curvature at each apex transition; alternating turns share a
+            // continuous width phrase so entry preparation carries to the exit.
+            return new DVec(Math.Sin(t * Math.PI * corners) * s.intensity * .045 * e, 0, 0);
+        }
         double soft = Math.Pow(Math.Sin(t * Math.PI), 2) * 2, pi = Math.PI;
         if (native && s.pattern == "chicane")
             return new DVec(Math.Sin(t * pi * 6) * e * .04, 0, 0);
@@ -200,10 +281,10 @@ public static class Generator
             return default;
         }
     }
-    static Sample[] BuildSamples(uint seed, bool jumps, bool native = false)
+    static Sample[] BuildSamples(uint seed, bool jumps, bool native = false, int revision = NativeRevision, string family = null)
     {
         var r = new SeedRandom(seed);
-        var plan = MakePlan(r, jumps);
+        var plan = native && revision >= 11 ? Compose(r, jumps, family ?? FamilyFor(seed, "cloud-city")) : MakePlan(r, jumps);
         // Preserve plan selection/RNG; the approved runway is additional course.
         if(native && jumps)foreach(var section in plan)if(section.kind=="jump-straight")section.length=NativeJumpStraightLength;
         var list = new List<Sample>();
@@ -287,7 +368,8 @@ public static class Generator
                 bool open = !hazard && sampleRandom.Next() < .38;
                 list.Add(new Sample { index = list.Count, distance = distance, position = p, tangent = st,
                                       normal = sn, right = sr,
-                                      halfWidth = s.pattern == "wide-open"
+                                      compositionRole = s.role, compositionIndex = s.compositionIndex,
+                                      halfWidth = native && revision >= 11 ? CompositionWidth(s, t) : s.pattern == "wide-open"
                                                       ? 7.5 * (1 + .7 * Math.Pow(Math.Sin(t * Math.PI), 2))
                                                   : s.kind == "straight" ? 8.5
                                                                          : 7.5,
@@ -488,12 +570,14 @@ public static class Generator
         index = c.Count, sampleIndex = s.index, distance = s.distance, position = s.position,
         tangent = s.tangent, normal = s.normal, right = s.right
     });
-    public static Definition Candidate(uint seed, string mode, string theme, bool jumps, bool native = false)
+    public static Definition Candidate(uint seed, string mode, string theme, bool jumps, bool native = false, int revision = NativeRevision, string family = null)
     {
-        var samples = BuildSamples(seed, jumps, native);
+        var samples = BuildSamples(seed, jumps, native, revision, family);
         var patterns = Patterns(samples);
         var branches = Branches(samples, new SeedRandom(seed ^ 0xa5a5a5a5));
-        return new Definition { version = native ? 10 : 8,
+        return new Definition { version = native ? revision : 8,
+                                family = native && revision >= 11 ? family ?? FamilyFor(seed, "cloud-city") : null,
+                                composition = native && revision >= 11 ? Composition(samples) : Array.Empty<CompositionSection>(),
                                 seed = seed,
                                 guardrailMode = mode,
                                 theme = theme,
@@ -508,23 +592,25 @@ public static class Generator
                                 estimatedDuration = samples[samples.Length - 1].distance / 32.5 };
     }
     public static Definition Generate(uint requested, string mode = "normal", string theme = "cloud-city",
-                                      bool jumps = false, bool native = false)
+                                      bool jumps = false, bool native = false, int revision = NativeRevision)
     {
         if (!new[] { "normal", "full", "none" }.Contains(mode) ||
             !new[] { "cloud-city", "space-station" }.Contains(theme))
             throw new ArgumentException("Unsupported track settings");
         uint themed = theme == "space-station" ? requested ^ 0x5a710a1eu : requested;
-        return GenerateCandidates(requested, mode, theme, jumps, native, themed, 0);
+        return GenerateCandidates(requested, mode, theme, jumps, native, themed, 0, revision);
     }
     // The fallback path is also independently callable by the acceptance suite.
     public static Definition GenerateFallback(uint requested, string mode, string theme, bool jumps,
-                                              bool native = false)
+                                              bool native = false, int revision = NativeRevision)
     {
-        return GenerateCandidates(requested, mode, theme, jumps, native, 0, 1);
+        return GenerateCandidates(requested, mode, theme, jumps, native, 0, 1, revision);
     }
     static Definition GenerateCandidates(uint requested, string mode, string theme, bool jumps, bool native,
-                                         uint themed, int firstPhase)
+                                         uint themed, int firstPhase, int revision)
     {
+        if (native && revision != 10 && revision != NativeRevision) throw new ArgumentException("Unsupported native revision");
+        string family = native && revision >= 11 ? FamilyFor(requested, theme) : null;
         string[] reasons = Array.Empty<string>();
         for (int phase = firstPhase; phase < 2; phase++)
         {
@@ -534,11 +620,11 @@ public static class Generator
             for (int attempt = 0; attempt < (phase == 0 ? 32 : 384); attempt++)
             {
                 uint seed = unchecked(basis + (uint)attempt * 0x9e3779b9);
-                var normal = Candidate(seed, "normal", theme, jumps, native);
+                var normal = Candidate(seed, "normal", theme, jumps, native, revision, family);
                 reasons = Validator.Validate(normal, true);
                 if (reasons.Length > 0)
                     continue;
-                var d = mode == "normal" ? normal : Candidate(seed, mode, theme, jumps, native);
+                var d = mode == "normal" ? normal : Candidate(seed, mode, theme, jumps, native, revision, family);
                 d.requestedSeed = requested;
                 d.usedFallback = phase == 1;
                 d.hash = Hash(d);
@@ -558,7 +644,14 @@ public static class Generator
         if(d.version>=10)foreach(var jump in d.jumps)values.Add(jump.ballisticLandingEndIndex);
         foreach (var p in d.patterns)
             values.AddRange(
-                new[] { (double)p.startIndex, p.endIndex, p.turns, Array.IndexOf(PatternKinds, p.kind) });
+                new[] { (double)p.startIndex, p.endIndex, p.turns, Array.IndexOf(PatternKinds, p.kind) >= 0 ? Array.IndexOf(PatternKinds, p.kind) : PatternKinds.Length + Array.IndexOf(CompositionPatterns, p.kind) });
+        if (d.version >= 11) {
+            values.Add(Array.IndexOf(DrivingFamilies, d.family));
+            foreach (var section in d.composition) values.AddRange(new[] {
+                (double)section.index, section.startIndex, section.endIndex,
+                section.role == "main" ? 1 : section.role == "supporting" ? 2 : 0
+            });
+        }
         if (d.theme == "space-station")
             values.Add(1);
         if (d.jumpModeEnabled)

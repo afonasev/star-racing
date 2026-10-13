@@ -113,7 +113,7 @@ namespace StarRacingPrototype {
      cameras[i].GetUniversalAdditionalCameraData().renderPostProcessing=true;follows[i]=cameras[i].GetComponent<ChaseCamera>();
     }
     RaceLightingController.Apply(decor.Plan.lighting,sun,fill,follows);
-    foreach(int humans in new[]{1,2,4}){
+    foreach(float speed in new[]{350f,450f})foreach(int humans in new[]{1,2,4}){
      var rt=new RenderTexture(1600,900,24,RenderTextureFormat.ARGB32);rt.Create();
      try{
       for(int i=0;i<humans;i++){
@@ -121,12 +121,12 @@ namespace StarRacingPrototype {
        typeof(ChaseCamera).GetMethod("UpdateCamera",Private).Invoke(follows[i],new object[]{1f/60});
        effects[i].enabled=false;
       }
-      var normal=Capture(cameras,humans,rt);try{File.WriteAllBytes(Path.Combine(Output,$"scene-{humans}-baseline.png"),normal.EncodeToPNG());}finally{UnityEngine.Object.DestroyImmediate(normal);}
-      effects[0].enabled=true;Advance(effects[0],2);
-      var nitro=Capture(cameras,humans,rt);try{File.WriteAllBytes(Path.Combine(Output,$"scene-{humans}-nitro.png"),nitro.EncodeToPNG());}finally{UnityEngine.Object.DestroyImmediate(nitro);}
+      var normal=Capture(cameras,humans,rt);try{File.WriteAllBytes(Path.Combine(Output,$"scene-{humans}-{speed}-baseline.png"),normal.EncodeToPNG());}finally{UnityEngine.Object.DestroyImmediate(normal);}
+      cars[0].Telemetry.speedKmh=speed;effects[0].enabled=true;Advance(effects[0],2);
+      var nitro=Capture(cameras,humans,rt);try{File.WriteAllBytes(Path.Combine(Output,$"scene-{humans}-{speed}-nitro.png"),nitro.EncodeToPNG());}finally{UnityEngine.Object.DestroyImmediate(nitro);}
      }finally{foreach(var c in cameras)c.targetTexture=null;rt.Release();UnityEngine.Object.DestroyImmediate(rt);}
     }
-    Debug.Log("NITRO_SCENE_PREVIEW_OK actualShader=true fixtureSpeed=450 layouts=1,2,4 HUD=notCaptured");
+    Debug.Log("NITRO_SCENE_PREVIEW_OK actualShader=true fixtureSpeeds=350,450 layouts=1,2,4 HUD=notCaptured");
    }finally{decor.Clear();}
   }
   static void RenderChecks(GameObject root,MagneticVehicle[] cars,Camera[] cameras,NitroEdgeBlur[] effects){
@@ -148,14 +148,14 @@ namespace StarRacingPrototype {
      cameras[i].GetUniversalAdditionalCameraData().requiresColorTexture=true;
      cars[i].Telemetry.speedKmh=450;Pulse(cars[i],true);Advance(effects[i],2);
     }
-    foreach(var size in new[]{new Vector2Int(960,540),new Vector2Int(800,600)})foreach(int humans in new[]{1,2,3,4}){
+    foreach(float speed in new[]{350f,450f})foreach(var size in new[]{new Vector2Int(960,540),new Vector2Int(800,600)})foreach(int humans in new[]{1,2,3,4}){
      var rt=new RenderTexture(size.x,size.y,24,RenderTextureFormat.ARGB32);rt.Create();
      try{
       foreach(var effect in effects)effect.enabled=false;
       var baseline=Capture(cameras,humans,rt);
       try{
        for(int boosting=0;boosting<humans;boosting++){
-        foreach(var effect in effects)effect.enabled=false;effects[boosting].enabled=true;Advance(effects[boosting],2);
+        foreach(var effect in effects)effect.enabled=false;cars[boosting].Telemetry.speedKmh=speed;effects[boosting].enabled=true;Advance(effects[boosting],2);
         var blurred=Capture(cameras,humans,rt);
         try{
          var before=baseline.GetPixels32();var after=blurred.GetPixels32();var rect=RaceViewports.For(humans,boosting);int edgeChanged=0,centerChanged=0,outsideChanged=0,carChanged=0;
@@ -168,8 +168,8 @@ namespace StarRacingPrototype {
           else edgeChanged++;
          }
          Check(outsideChanged==0,$"isolated {size}/{humans}/{boosting} outside={outsideChanged}");Check(centerChanged==0,$"clear center {size}/{humans}/{boosting} center={centerChanged}");Check(carChanged==0,$"clear chase car {size}/{humans}/{boosting} car={carChanged}");Check(edgeChanged>100,$"visible peripheral blur {size}/{humans}/{boosting} changed={edgeChanged}");
-         Debug.Log($"NITRO_RENDER_PIXELS size={size} humans={humans} boosting={boosting} outside={outsideChanged} center={centerChanged} edge={edgeChanged}");
-         if(size.x==960&&boosting==0){File.WriteAllBytes(Path.Combine(Output,$"render-{humans}-baseline.png"),baseline.EncodeToPNG());File.WriteAllBytes(Path.Combine(Output,$"render-{humans}-nitro.png"),blurred.EncodeToPNG());}
+         Debug.Log($"NITRO_RENDER_PIXELS speed={speed} size={size} humans={humans} boosting={boosting} outside={outsideChanged} center={centerChanged} edge={edgeChanged}");
+         if(size.x==960&&boosting==0){File.WriteAllBytes(Path.Combine(Output,$"render-{humans}-{speed}-baseline.png"),baseline.EncodeToPNG());File.WriteAllBytes(Path.Combine(Output,$"render-{humans}-{speed}-nitro.png"),blurred.EncodeToPNG());}
         }finally{UnityEngine.Object.DestroyImmediate(blurred);}
        }
       }finally{UnityEngine.Object.DestroyImmediate(baseline);}

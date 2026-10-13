@@ -1,0 +1,9 @@
+using UnityEngine;
+namespace StarRacingPrototype { public static class ProductionAffectedQA {
+ public static void Run() {
+  CloudlineVehicleChecks.Run(); DaylightVisualChecks.Run(); VehicleContactShadowsChecks.Run();
+  EnvironmentTextureChecks.Run(); DisplaySettingsChecks.Run(); DesktopUpdateChecks.Run();
+  FairAiChecks.RunContracts("/Users/eaafonasev/.codex/worktrees/star-racing-production-033/.local/production-qa"); RecoveryGhostChecks.Run(); System.Environment.SetEnvironmentVariable("STAR_RACING_COMPOSITION_QA_DIR",System.IO.Path.GetFullPath("../../.local/production-qa/composition")); TrackCompositionChecks.Run();
+  Debug.Log("PRODUCTION_AFFECTED_QA_OK");
+ }
+}}

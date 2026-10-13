@@ -28,6 +28,7 @@ namespace StarRacingPrototype
             AirSteeringChecks.Run();RecoveryGhostChecks.Run();GravityChecks.Run();RoadSmoothnessChecks.Run();RoadVolumeChecks.Run();
             Debug.Log("ROAD_STABILITY_ADJACENT_OK air steering recovery gravity smoothness");
         }
+        public static void RunOpenEdges(){SessionState.SetBool(Key+"OpenEdges",true);Run();}
         public static void RunVisual(){SessionState.SetBool(Key+"Visual",true);Run();}
         public static void Run(){
             if(string.IsNullOrEmpty(Output))throw new Exception("STAR_RACING_STABILITY_QA_DIR required");
@@ -47,7 +48,14 @@ namespace StarRacingPrototype
             try{
                 AudioListener.volume=0;Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;
                 fixtureRoot=new GameObject("shared stability geometry");fixtureTrack=Road(fixtureRoot,true);
-                if(Visual){Case(true,83.3333f,1,"graze");Case(false,138.8889f,-1,"direct");}
+                if(SessionState.GetBool(Key+"OpenEdges",false)) {
+                    UnityEngine.Object.DestroyImmediate(fixtureRoot);fixtureRoot=new GameObject("open edge geometry");fixtureTrack=Road(fixtureRoot,false);
+                    foreach(bool human in new[]{true,false})foreach(float speed in new[]{42f,83.3333f,138.8889f})foreach(float side in new[]{-1f,1f})Case(human,speed,side,"edge");
+                    UnityEngine.Object.DestroyImmediate(fixtureRoot);fixtureRoot=new GameObject("visible rail geometry");fixtureTrack=Road(fixtureRoot,true);
+                    foreach(bool human in new[]{true,false})foreach(float side in new[]{-1f,1f}){Case(human,83.3333f,side,"graze");Case(human,83.3333f,side,"direct");}
+                    Lifecycle();MissedJump();
+                }
+                else if(Visual){Case(true,83.3333f,1,"graze");Case(false,138.8889f,-1,"direct");}
                 else foreach(bool human in (Trace?new[]{true}:new[]{true,false}))foreach(float speed in (Trace?new[]{42f}:new[]{42f,83.3333f,138.8889f}))foreach(float side in (Trace?new[]{-1f}:new[]{-1f,1f})) {
                     Case(human,speed,side,"graze");if(Trace)continue;Case(human,speed,side,"direct");Case(human,speed,side,"maneuver");Case(human,speed,side,"edge");Case(human,speed,side,"pinch");
                 }
@@ -58,7 +66,7 @@ namespace StarRacingPrototype
                 }
                 File.WriteAllText(Path.Combine(Output,"result.txt"),$"ROAD_STABILITY_{(Measure?"MEASURED":failures==0?"OK":"FAILED")} cases={cases} failures={failures}\n");
             }catch(Exception e){failures++;Debug.LogException(e);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());}
-            finally{if(fixtureRoot!=null)UnityEngine.Object.DestroyImmediate(fixtureRoot);fixtureTrack=null;Physics.simulationMode=mode;Time.fixedDeltaTime=dt;AudioListener.volume=volume;SessionState.SetBool(Key+"Failed",!Measure&&failures>0);EditorApplication.isPlaying=false;}
+            finally{SessionState.SetBool(Key+"OpenEdges",false);if(fixtureRoot!=null)UnityEngine.Object.DestroyImmediate(fixtureRoot);fixtureTrack=null;Physics.simulationMode=mode;Time.fixedDeltaTime=dt;AudioListener.volume=volume;SessionState.SetBool(Key+"Failed",!Measure&&failures>0);EditorApplication.isPlaying=false;}
         }
         static TrackBuilder Road(GameObject root,bool rails,float bank=0){
             var d=RoadVolumeChecks.FlatRoad();var samples=new Procedural.Sample[241];
@@ -124,7 +132,7 @@ namespace StarRacingPrototype
             }finally{UnityEngine.Object.DestroyImmediate(root);}
         }
         static float[] Case(bool human,float speed,float side,string kind,bool reference=false){
-            float[] commandReference=!reference&&(kind=="maneuver"||kind=="edge")?Case(human,speed,side,kind,true):null;
+            float[] commandReference=!reference&&kind=="maneuver"?Case(human,speed,side,kind,true):null;
             var yawTrace=new float[250*RacePhysicsStepper.Substeps];int sample=0;float peakExcessYaw=0;
             if(!reference)cases++;var root=new GameObject("stability "+kind);
             try{
@@ -134,7 +142,8 @@ namespace StarRacingPrototype
                 Check(lane+extent<7.85f,"invalid overlapping rail setup");
                 var car=Car(root,track,0,human,side*lane,speed,side*angle);
                 var cars=kind=="pinch"?new[]{car,Car(root,track,1,human,side*2.1f,speed,side*20)}:new[]{car};
-                int hits=0;float impulse=0,peakYaw=0,peakStep=0,peakHeight=0,peakLane=0,minSpeed=speed,peakTilt=0;bool fallen=false;string peakDetail="";int protectedTicks=0;
+                int hits=0;float impulse=0,peakYaw=0,peakStep=0,peakHeight=0,peakLane=0,minSpeed=speed,peakTilt=0;bool fallen=false,recovered=false;string peakDetail="";int protectedTicks=0;
+                int initialRevision=car.PositionRevision;
                 car.ContactObserved+=c=>{if(c.collider.name.Contains("guard")||c.rigidbody!=null){hits++;impulse=Mathf.Max(impulse,c.impulse.magnitude);}};
                 if(reference)foreach(var own in car.GetComponentsInChildren<Collider>())foreach(var mesh in track.GetComponentsInChildren<MeshCollider>())if(mesh.sharedMesh.name=="Procedural guard rails")Physics.IgnoreCollision(own,mesh,true);
                 Physics.SyncTransforms();var previous=car.Body.rotation;var previousVelocity=car.Body.linearVelocity;int traceRows=0;
@@ -166,12 +175,19 @@ namespace StarRacingPrototype
                         peakTilt=Mathf.Max(peakTilt,Vector3.Angle(car.Body.rotation*Vector3.up,f.normal));
                         fallen|=car.IsFalling;
                     });
+                    recovered|=fallen&&car.PositionRevision!=initialRevision;
                     minSpeed=Mathf.Min(minSpeed,car.Body.linearVelocity.magnitude);
+                    if(SessionState.GetBool(Key+"OpenEdges",false)&&kind=="edge"&&human&&side==1&&speed<50&&tick==80)Capture(root,car,"open-edge-fall.png");
                     if(Visual&&!reference&&tick==30)Capture(root,car,kind+"-"+human+".png");
                 }
                 string id=$"reference={reference} kind={kind} human={human} speed={speed:F3} side={side}";
-                File.AppendAllText(Path.Combine(Output,"metrics.txt"),$"{id} hits={hits} impulse={impulse:F1} yaw={peakYaw:F3} stepAngle={peakStep:F3} height={peakHeight:F3} lane={peakLane:F3} tilt={peakTilt:F2} minSpeed={minSpeed:F3} fallen={fallen} protectedSubsteps={protectedTicks} peakDetail={peakDetail} excessYaw={peakExcessYaw:F3}\n");
+                File.AppendAllText(Path.Combine(Output,"metrics.txt"),$"{id} hits={hits} impulse={impulse:F1} yaw={peakYaw:F3} stepAngle={peakStep:F3} height={peakHeight:F3} lane={peakLane:F3} tilt={peakTilt:F2} minSpeed={minSpeed:F3} fallen={fallen} recovered={recovered} protectedSubsteps={protectedTicks} peakDetail={peakDetail} excessYaw={peakExcessYaw:F3}\n");
                 if(reference)return yawTrace;
+                if(kind=="edge") {
+                    Check(peakLane>8.1f&&fallen&&recovered,id+" open edge did not allow departure, fall and recovery");
+                    Check(hits==0,id+" invisible barrier contact");
+                    return yawTrace;
+                }
                 Check(!fallen&&peakLane<=8.1f,id+" left road");Check(peakHeight<1.8f&&peakTilt<35,id+" lifted/rolled");Check(peakStep<1,id+" violent spin");
                 if(kind!="maneuver" && kind!="edge")Check(peakYaw<2.5f,id+" uncommanded spin");
                 else {Check(peakExcessYaw<2.5f,id+" excess contact spin over same-input reference");Check(Mathf.Abs(Vector3.Dot(car.Body.angularVelocity,car.Frame.normal))<.3f,id+" commanded spin did not settle after release");}

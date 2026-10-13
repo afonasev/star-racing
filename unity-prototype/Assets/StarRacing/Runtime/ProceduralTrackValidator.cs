@@ -15,8 +15,10 @@ public static class Validator
                 reasons.Add(why);
         };
         check(s.Length < 900, "track-too-short");
+        if (d.version < 11) {
         check(d.patterns.Length < 2 || d.patterns.Length > 4, "pattern-count");
         check(d.patterns.Select(p => p.kind).Distinct().Count() != d.patterns.Length, "pattern-repeat");
+        } else ValidateComposition(d, check);
         var wides = d.patterns.Where(p => p.kind == "wide-open").ToArray();
         check(wides.Length > 1, "wide-pattern-count");
         foreach (var p in wides)
@@ -70,6 +72,7 @@ public static class Validator
                                  !d.jumps.Any(j => j.rampStartIndex >= r.start &&
                                                    j.landingEndIndex < r.start + r.length)),
               "internal-straight");
+        if (d.version < 11) {
         var loops = Generator.Runs(s, "loop");
         check(loops.Count < 3, "loop-count");
         check(!loops.Any(a => loops.Any(b => b.start > a.start &&
@@ -95,6 +98,7 @@ public static class Validator
                   (rhythm.Length == 0 || rhythm[0] > 900 || d.totalLength - rhythm[rhythm.Length - 1] > 900 ||
                    rhythm.Where((x, i) => i > 0 && x - rhythm[i - 1] > 900).Any()),
               "demanding-turn-window");
+        }
         if (d.version >= 9)
             foreach (var pattern in d.patterns)
             {
@@ -163,6 +167,50 @@ public static class Validator
         }
         check(Intersects(d), "clearance");
         return reasons.Distinct().ToArray();
+    }
+    static void ValidateComposition(Definition d, Action<bool, string> check)
+    {
+        var s = d.samples;
+        check(!Generator.DrivingFamilies.Contains(d.family), "composition-family");
+        check(d.composition.Count(x => x.role == "main") != 1 ||
+              d.composition.Count(x => x.role == "supporting") < 1 ||
+              d.composition.Count(x => x.role == "supporting") > 2, "composition-roles");
+        int end = -1;
+        foreach (var section in d.composition) {
+            bool bounds = section.startIndex == end + 1 && section.endIndex >= section.startIndex && section.endIndex < s.Length;
+            check(!bounds, "composition-bounds");
+            if (!bounds) continue;
+            check(!new[] { "main", "supporting", "recovery" }.Contains(section.role), "composition-role-kind");
+            var phrase = s.Skip(section.startIndex).Take(section.endIndex - section.startIndex + 1).ToArray();
+            check(phrase.Any(x => x.compositionIndex != section.index || x.compositionRole != section.role), "composition-metadata");
+            if (section.role == "main") {
+                check(d.family == "speed" && !phrase.Any(x => x.patternKind == "long-arc"), "speed-main");
+                check(d.family == "technical" && !phrase.Any(x => x.patternKind == "connected-three"), "technical-main");
+                check(d.family == "vertical" && !phrase.Any(x => x.kind == "loop"), "vertical-main");
+            }
+            if (section.role != "recovery") {
+                check(section.startIndex == 0 || s[section.startIndex - 1].compositionRole != "recovery", "composition-entry-recovery");
+                check(section.endIndex == s.Length - 1 || s[section.endIndex + 1].compositionRole != "recovery", "composition-exit-recovery");
+                check(phrase.Max(x => x.halfWidth) - phrase.First().halfWidth < 1.5 ||
+                      Math.Abs(phrase.First().halfWidth - phrase.Last().halfWidth) > .001, "composition-width-phrase");
+            }
+            end = section.endIndex;
+        }
+        check(end != s.Length - 1, "composition-coverage");
+        for (int i = 0; i < s.Length; i++) {
+            var a = s[i];
+            check(double.IsNaN(a.position.Squared) || double.IsInfinity(a.position.Squared) ||
+                  double.IsNaN(a.halfWidth) || a.halfWidth < 7.5 || a.halfWidth > 12, "composition-finite-width");
+            if (i == 0) continue;
+            var b = s[i - 1];
+            check(Math.Abs(a.halfWidth - b.halfWidth) > .2, "composition-width-slope");
+            check(DVec.Dot(a.tangent, b.tangent) < Math.Cos(.12) ||
+                  DVec.Dot(a.normal, b.normal) < Math.Cos(.14), "composition-curvature-step");
+            check(a.distance <= b.distance || a.progress <= b.progress, "composition-progress");
+        }
+        for (int i = 1; i < d.checkpoints.Length; i++)
+            check(d.checkpoints[i].sampleIndex <= d.checkpoints[i - 1].sampleIndex ||
+                  d.checkpoints[i].distance <= d.checkpoints[i - 1].distance, "composition-checkpoints");
     }
     static bool Support(Definition d)
     {

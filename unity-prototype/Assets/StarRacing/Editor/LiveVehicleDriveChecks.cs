@@ -10,9 +10,11 @@ namespace StarRacingPrototype {
  [InitializeOnLoad] public static class LiveVehicleDriveChecks {
   const string Key="StarRacing.LiveDrive";static int startup;static double began;
   public static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_LIVE_DRIVE_DIR");
+  public static bool RampParity=>SessionState.GetBool(Key+"RampParity",false);
+  public static void RunAiParityRamps(){Run();SessionState.SetBool(Key+"RampParity",true);}
   public static bool Motion=>Environment.GetEnvironmentVariable("STAR_RACING_LIVE_MODE")=="motion";
   static LiveVehicleDriveChecks(){EditorApplication.playModeStateChanged+=Changed;}
-  public static void Run(){if(string.IsNullOrEmpty(Output))throw new Exception("Output required");Directory.CreateDirectory(Output);SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);startup=0;EditorApplication.update+=Enter;}
+  public static void Run(){SessionState.SetBool(Key+"RampParity",false);if(string.IsNullOrEmpty(Output))throw new Exception("Output required");Directory.CreateDirectory(Output);SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);startup=0;EditorApplication.update+=Enter;}
   static void Enter(){if(++startup<15)return;EditorApplication.update-=Enter;EditorApplication.isPlaying=true;}
   static void Guard(){if(EditorApplication.timeSinceStartup-began>900)Fail(new Exception("Live PlayerLoop timeout"));}
   static void Changed(PlayModeStateChange state){if(!SessionState.GetBool(Key,false))return;
@@ -27,7 +29,7 @@ namespace StarRacingPrototype {
   public MagneticVehicle car;public LiveRampResult current;TrackBuilder track;GameObject trackRoot;Procedural.Jump jump;
   int scenario,tick,stable,flightTicks,revision;bool launched,boostSeen;float initialDistance,landing=-1,capImpulse;LiveRampReport report=new LiveRampReport();StringBuilder frames=new StringBuilder();float previousZ;double previousTime;int warmFrames,zeroFrames;float maxMotionError;
   public static void Check(bool ok,string why){if(!ok)throw new Exception("Live vehicle: "+why);}
-  void Start(){try{gameObject.AddComponent<RacePhysicsStepper>();gameObject.AddComponent<LiveVehicleProbe>().driver=this;Setup();}catch(Exception e){LiveVehicleDriveChecks.Fail(e);}}
+  void Start(){try{gameObject.AddComponent<RacePhysicsStepper>();gameObject.AddComponent<LiveVehicleProbe>().driver=this;if(LiveVehicleDriveChecks.RampParity)scenario=8;Setup();}catch(Exception e){LiveVehicleDriveChecks.Fail(e);}}
   void Setup(){
    int themeIndex=scenario/24,jumpIndex=scenario%4,speedIndex=(scenario/4)%3;bool human=(scenario/12)%2==0;
    string theme=themeIndex==0?"cloud-city":"space-station";
@@ -63,7 +65,7 @@ namespace StarRacingPrototype {
    current.flightSeconds=flightTicks*.01f;current.landingDistance=landing;current.turnMargin=30+(run.start+run.length)*5-car.Distance;current.capImpulse=capImpulse;
    Check(landing<=30+jump.ballisticLandingEndIndex*5,"landing exceeded certified envelope");Check(current.turnMargin>=50,"landing too close to turn");Check(capImpulse<5000,"hard exterior cap impact");Check(car.Body.linearVelocity.magnitude>=current.initialSpeed*.8f,"ramp lost tempo");
    report.cases.Add(current);File.WriteAllText(Path.Combine(LiveVehicleDriveChecks.Output,"ramps.json"),JsonUtility.ToJson(report,true));Debug.Log($"LIVE_RAMP_OK case={scenario+1} theme={current.theme} jump={current.jump} human={current.human} nitro={current.nitro} takeoff={current.takeoffSpeed:F2} flight={current.flightSeconds:F2} peak={current.peak:F2} margin={current.turnMargin:F1} cap={capImpulse:F1}");
-   DestroyImmediate(car.gameObject);car=null;if(++scenario<48)Setup();else{File.WriteAllText(Path.Combine(LiveVehicleDriveChecks.Output,"result.txt"),"LIVE_RAMPS_OK cases=48\n");EditorApplication.isPlaying=false;}
+   DestroyImmediate(car.gameObject);car=null;scenario++;if(LiveVehicleDriveChecks.RampParity&&scenario%12==0)scenario+=8;if(scenario<48)Setup();else{File.WriteAllText(Path.Combine(LiveVehicleDriveChecks.Output,"result.txt"),$"LIVE_RAMPS_OK cases={report.cases.Count}\n");EditorApplication.isPlaying=false;}
   }
   void LateUpdate(){if(car==null||!LiveVehicleDriveChecks.Motion)return;var pose=car.RenderPose;float z=pose.position.z;double now=Time.timeAsDouble;frames.AppendLine($"{now:F6},{Time.fixedTimeAsDouble:F6},{Time.deltaTime:F6},{car.Body.position.z:F6},{z:F6},{car.Body.linearVelocity.magnitude:F4}");
    if(tick>20&&previousTime>0){float expected=car.Body.linearVelocity.z*(float)(now-previousTime),actual=z-previousZ;if(Mathf.Abs(actual)<.001f)zeroFrames++;maxMotionError=Mathf.Max(maxMotionError,Mathf.Abs(actual-expected));warmFrames++;}previousZ=z;previousTime=now;

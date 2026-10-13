@@ -16,9 +16,15 @@ namespace StarRacingPrototype {
   static bool Baseline=>SessionState.GetBool(Key+"Baseline",false);
   static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_AI_QA_DIR");
   static AiRacingChecks(){EditorApplication.playModeStateChanged+=Changed;}
-  public static void RunBaseline(){SessionState.SetBool(Key+"Baseline",true);Begin();}
-  public static void Run(){SessionState.SetBool(Key+"QueueOnly",false);SessionState.SetBool(Key+"Baseline",false);Begin();}
+  public static void RunStationaryBaseline(){SessionState.SetBool(Key+"StartOnly",true);SessionState.SetBool(Key+"Baseline",true);Begin();}
+  public static void RunBaseline(){SessionState.SetBool(Key+"StartOnly",false);SessionState.SetBool(Key+"Baseline",true);Begin();}
+  public static void Run(){SessionState.SetBool(Key+"FairOnly",false);SessionState.SetBool(Key+"StartOnly",false);SessionState.SetBool(Key+"QueueOnly",false);SessionState.SetBool(Key+"Baseline",false);Begin();}
+  public static void RunQueueChecks(){SessionState.SetBool(Key+"StartOnly",false);SessionState.SetBool(Key+"QueueOnly",true);SessionState.SetBool(Key+"Baseline",false);Begin();}
   public static void RunQueueDiagnostic(){SessionState.SetBool(Key+"QueueOnly",true);SessionState.SetBool(Key+"Baseline",true);Begin();}
+  public static void RunMovingPackBaseline(){SessionState.SetBool(Key+"MovingPackOnly",true);Begin();}
+  public static void RunMovingConvoyBaseline(){SessionState.SetBool(Key+"Convoy",true);SessionState.SetBool(Key+"Baseline",true);Begin();}
+  public static void RunMovingConvoys(){SessionState.SetBool(Key+"Convoy",true);SessionState.SetBool(Key+"Baseline",false);Begin();}
+  public static void RunFairRaces(){SessionState.SetBool(Key+"FairOnly",true);SessionState.SetBool(Key+"Baseline",false);Begin();}
   static void Begin(){if(string.IsNullOrEmpty(Output))throw new Exception("STAR_RACING_AI_QA_DIR required");Directory.CreateDirectory(Output);SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);startup=0;EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);EditorApplication.update+=Enter;}
   static void Enter(){if(++startup<10)return;EditorApplication.update-=Enter;EditorApplication.isPlaying=true;}
   static void Changed(PlayModeStateChange state){if(!SessionState.GetBool(Key,false))return;if(state==PlayModeStateChange.EnteredPlayMode)EditorApplication.delayCall+=Execute;if(state==PlayModeStateChange.EnteredEditMode){SessionState.SetBool(Key,false);EditorApplication.Exit(SessionState.GetBool(Key+"Failed",false)?1:0);}}
@@ -26,40 +32,49 @@ namespace StarRacingPrototype {
   static ReleaseBalance Balance()=>ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config").text);
   static Procedural.Definition LongRoad(){var d=RoadVolumeChecks.FlatRoad();var s=new Procedural.Sample[601];for(int i=0;i<s.Length;i++)s[i]=new Procedural.Sample{index=i,distance=i*5,progress=i/600.0,halfWidth=8,position=new Procedural.DVec(1000,120,i*5),tangent=new Procedural.DVec(0,0,1),normal=new Procedural.DVec(0,1,0),right=new Procedural.DVec(-1,0,0),kind="straight"};d.samples=s;d.totalLength=3000;return d;}
   static void Execute(){var mode=Physics.simulationMode;float dt=Time.fixedDeltaTime,volume=AudioListener.volume;assertions=0;var report=new Report();try{Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;AudioListener.volume=0;
-   if(!Baseline)Decisions();
+   if(SessionState.GetBool(Key+"MovingPackOnly",false)){SessionState.SetBool(Key+"MovingPackOnly",false);FairAiChecks.RunMovingPackRaces(Output);File.WriteAllText(Path.Combine(Output,"result.txt"),"MOVING_PACK_BASELINE_OK\n");return;}
+   if(SessionState.GetBool(Key+"Convoy",false)){SessionState.SetBool(Key+"Convoy",false);MovingConvoyChecks.Run(Output,Baseline);if(!Baseline){FairAiChecks.RunMovingPackRaces(Output);}File.WriteAllText(Path.Combine(Output,"result.txt"),Baseline?"CONVOY_BASELINE_OK\n":"CONVOY_AFFECTED_OK\n");return;}
+   if(SessionState.GetBool(Key+"FairOnly",false)){FairAiChecks.RunContracts(Output);FairAiChecks.RunRaces(Output);File.WriteAllText(Path.Combine(Output,"result.txt"),"FAIR_AI_OK\n");return;}
+   if(!Baseline){FairAiChecks.RunContracts(Output);Decisions();}
    var failures=new List<string>();
-   void RunCase(string label,int count,bool generated,bool stopped){try{report.cases.Add(Race(label,count,generated,stopped));}catch(Exception e){failures.Add(e.Message);Debug.LogError(e.Message);File.WriteAllText(Path.Combine(Output,label+"-failure.txt"),e.ToString());}}
+   void RunCase(string label,int count,bool generated,bool stopped,bool actualStart=false,bool denseStart=false){try{report.cases.Add(Race(label,count,generated,stopped,actualStart,denseStart));}catch(Exception e){failures.Add(e.Message);Debug.LogError(e.Message);File.WriteAllText(Path.Combine(Output,label+"-failure.txt"),e.ToString());}}
+   if(!SessionState.GetBool(Key+"StartOnly",false)){
    RunCase("stopped-queue",4,false,true);
    if(!SessionState.GetBool(Key+"QueueOnly",false))RunCase("slow-leader",2,false,false);
    if(!SessionState.GetBool(Key+"QueueOnly",false))foreach(int count in new[]{8,32,64})RunCase("pack-"+count,count,true,false);
+   }
+   if(!SessionState.GetBool(Key+"QueueOnly",false))foreach(int count in new[]{8,32,64})RunCase("stationary-grid-"+count,count,false,false,true);
+   if(!SessionState.GetBool(Key+"QueueOnly",false))RunCase("stationary-dense-64",64,false,false,false,true);
    File.WriteAllText(Path.Combine(Output,"races.json"),JsonUtility.ToJson(report,true));
+   if(!Baseline&&!SessionState.GetBool(Key+"QueueOnly",false))FairAiChecks.RunRaces(Output);
    if(failures.Count>0)throw new Exception(string.Join("; ",failures));
    File.WriteAllText(Path.Combine(Output,"result.txt"),$"AI_{(Baseline?"BASELINE":"AFFECTED_OK")} cases={report.cases.Count} assertions={assertions}\n");
   }catch(Exception e){SessionState.SetBool(Key+"Failed",true);Debug.LogException(e);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());File.WriteAllText(Path.Combine(Output,"races.json"),JsonUtility.ToJson(report,true));}finally{Physics.simulationMode=mode;Time.fixedDeltaTime=dt;AudioListener.volume=volume;EditorApplication.isPlaying=false;}}
-  [Serializable] public sealed class Result {public string label;public int count,hits,respawns,passes;public float medianProgress,firstPass=-1;public float stoppedCarSeconds;}
+  [Serializable] public sealed class Result {public string label;public int count,hits,respawns,passes;public float medianProgress,firstPass=-1;public float stoppedCarSeconds,minProgress,maxStallSeconds;public float[] progress;}
   [Serializable] public sealed class Report {public List<Result> cases=new List<Result>();}
-  static Result Race(string label,int count,bool generated,bool stopped){var root=new GameObject(label);try{
+  static Result Race(string label,int count,bool generated,bool stopped,bool actualStart=false,bool denseStart=false){var root=new GameObject(label);try{
    var obj=new GameObject("road");obj.transform.SetParent(root.transform);var track=obj.AddComponent<TrackBuilder>();track.Build(new TrackRoute(generated?Procedural.Generator.Generate(77,"full","cloud-city",true,true):LongRoad()));
-   var balance=Balance();var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var world=new AiWorldSnapshot(count);var commands=new DrivingInput[count];var initial=new float[count];var revisions=new int[count];var seenPass=new bool[count,count];var result=new Result{label=label,count=count};var trace=new System.Text.StringBuilder("time,id,distance,lateral,speed,grounded,heading,steer,desired,lane,maneuver,blocked,reverse,progress,limit,escaping\n");
-   for(int i=0;i<count;i++){var go=new GameObject("AI "+i);go.transform.SetParent(root.transform);var c=go.AddComponent<MagneticVehicle>();c.Initialize(track,i,Color.cyan,balance,false);c.enabled=false;c.ResetAt(generated?80+(i/4)*5:100-i*4.7f,generated?(i%4-1.5f)*2.65f:0);c.Body.linearVelocity=c.Frame.tangent*(generated?7:stopped?0:i==0?7:10);initial[i]=c.Distance;revisions[i]=c.PositionRevision;cars[i]=c;drivers[i]=new AiDriver(i,DriverProfile.Racer,(uint)(77+i*31),balance);c.ContactObserved+=hit=>{if(hit.rigidbody!=null)result.hits++;};}
+   var balance=Balance();var roster=new RaceRoster(count,1,77);var stalls=new float[count];var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var world=new AiWorldSnapshot(count);var commands=new DrivingInput[count];var initial=new float[count];var revisions=new int[count];var seenPass=new bool[count,count];var result=new Result{label=label,count=count};var trace=new System.Text.StringBuilder("time,id,distance,lateral,speed,grounded,heading,steer,desired,lane,maneuver,blocked,reverse,progress,limit,escaping\n");
+   for(int i=0;i<count;i++){var go=new GameObject("AI "+i);go.transform.SetParent(root.transform);var c=go.AddComponent<MagneticVehicle>();c.Initialize(track,i,Color.cyan,balance,false);c.enabled=false;var entrant=roster.Entrants[i];var profile=entrant.Profile==DriverProfile.Human?DriverProfile.Racer:entrant.Profile;
+    c.ResetAt(actualStart?RaceRoster.GridDistance(track.Route,entrant.GridSlot):denseStart?80+(i/4)*5:generated?80+(i/4)*5:100-i*4.7f,actualStart?RaceRoster.GridLateral(track.Route,entrant.GridSlot):denseStart?(i%4-1.5f)*2.65f:generated?(i%4-1.5f)*2.65f:0);c.Body.linearVelocity=c.Frame.tangent*(actualStart||denseStart?0:generated?7:stopped?0:i==0?7:10);if(actualStart)c.Drive.ConfigureHandicap(profile,false);initial[i]=c.Distance;revisions[i]=c.PositionRevision;cars[i]=c;drivers[i]=new AiDriver(i,actualStart?profile:DriverProfile.Racer,actualStart?entrant.Seed:(uint)(77+i*31),balance);c.ContactObserved+=hit=>{if(hit.rigidbody!=null)result.hits++;};}
    if(stopped){cars[0].enabled=false;}
    Physics.SyncTransforms();
    for(int tick=0;tick<1200;tick++){
     double now=10+tick*.01;
     for(int i=0;i<count;i++){cars[i].Hold(false);cars[i].SetRaceContext(true,1,count,now);cars[i].PrepareProjection();}
-    if(tick%10==0){world.Capture(cars,track.Route,now);for(int i=0;i<count;i++)if(!(stopped&&i==0))commands[i]=!generated&&i==0?new DrivingInput{throttle=1,brake=cars[i].Body.linearVelocity.magnitude>7?1:0}:drivers[i].Step(world,track.Route,.1f,false);}
+    if(tick%10==0){world.Capture(cars,track.Route,now);for(int i=0;i<count;i++)if(!(stopped&&i==0))commands[i]=!actualStart&&!denseStart&&!generated&&i==0?new DrivingInput{throttle=1,brake=cars[i].Body.linearVelocity.magnitude>7?1:0}:drivers[i].Step(world,track.Route,.1f,false);}
     for(int i=0;i<count;i++)if(!(stopped&&i==0)){cars[i].SetInput(commands[i]);VehicleTick.Invoke(cars[i],null);}
     RacePhysicsStepper.Simulate(.01f);
-    if(!generated&&tick%20==0){world.Capture(cars,track.Route,now);for(int i=1;i<count;i++){var o=world[i];var driver=drivers[i];trace.AppendLine($"{tick*.01f:F2},{i},{o.Distance:F3},{o.Lateral:F3},{o.Speed:F3},{o.Grounded},{driver.HeadingError:F2},{commands[i].steer:F3},{driver.DesiredSpeed:F3},{driver.Lane:F3},{driver.Maneuver},{driver.TrafficBlocked},{driver.ReverseActive},{driver.NoProgressSeconds:F3},{driver.SpeedLimitSource},{driver.Escaping}");}}
+    if(!actualStart&&!denseStart&&!generated&&tick%20==0){world.Capture(cars,track.Route,now);for(int i=1;i<count;i++){var o=world[i];var driver=drivers[i];trace.AppendLine($"{tick*.01f:F2},{i},{o.Distance:F3},{o.Lateral:F3},{o.Speed:F3},{o.Grounded},{driver.HeadingError:F2},{commands[i].steer:F3},{driver.DesiredSpeed:F3},{driver.Lane:F3},{driver.Maneuver},{driver.TrafficBlocked},{driver.ReverseActive},{driver.NoProgressSeconds:F3},{driver.SpeedLimitSource},{driver.Escaping}");}}
 
-    for(int i=0;i<count;i++){if(stopped&&i==0)continue;if(cars[i].PositionRevision!=revisions[i]){result.respawns++;revisions[i]=cars[i].PositionRevision;}if(tick>200&&cars[i].Body.linearVelocity.magnitude<3)result.stoppedCarSeconds+=.01f;for(int j=0;j<count;j++)if(initial[i]<initial[j]-4&&!seenPass[i,j]&&cars[i].Distance>cars[j].Distance+4){seenPass[i,j]=true;result.passes++;if(result.firstPass<0)result.firstPass=tick*.01f;}}
+    for(int i=0;i<count;i++){if(stopped&&i==0)continue;if(cars[i].PositionRevision!=revisions[i]){result.respawns++;revisions[i]=cars[i].PositionRevision;}if(tick>200&&cars[i].Body.linearVelocity.magnitude<3){result.stoppedCarSeconds+=.01f;stalls[i]+=.01f;result.maxStallSeconds=Mathf.Max(result.maxStallSeconds,stalls[i]);}else stalls[i]=0;for(int j=0;j<count;j++)if(initial[i]<initial[j]-4&&!seenPass[i,j]&&cars[i].Distance>cars[j].Distance+4){seenPass[i,j]=true;result.passes++;if(result.firstPass<0)result.firstPass=tick*.01f;}}
    }
-   var progress=new float[count-(stopped?1:0)];for(int i=stopped?1:0;i<count;i++)progress[i-(stopped?1:0)]=cars[i].Distance-initial[i];Array.Sort(progress);result.medianProgress=progress[progress.Length/2];
+   var progress=new float[count-(stopped?1:0)];for(int i=stopped?1:0;i<count;i++)progress[i-(stopped?1:0)]=cars[i].Distance-initial[i];result.progress=(float[])progress.Clone();Array.Sort(progress);result.minProgress=progress[0];result.medianProgress=progress[progress.Length/2];
    Debug.Log($"AI_RACE {label} median={result.medianProgress:F1} passes={result.passes} first={result.firstPass:F2} stopped={result.stoppedCarSeconds:F2} hits={result.hits} respawns={result.respawns}");
-   if(!generated)File.WriteAllText(Path.Combine(Output,label+"-trace.csv"),trace.ToString());
+   if(!actualStart&&!denseStart&&!generated)File.WriteAllText(Path.Combine(Output,label+"-trace.csv"),trace.ToString());
    // Persist before assertions so failed behavioral gates remain reviewable.
    File.WriteAllText(Path.Combine(Output,label+".json"),JsonUtility.ToJson(result,true));
-   if(!Baseline){Check(result.medianProgress>=30,label+" no useful progress");if(!generated)Check(result.passes>0,label+" did not complete an open-side pass");Check(result.respawns==0,label+" unexpected recovery");}
+   if(!Baseline){Check(result.medianProgress>=30,label+" no useful progress");Check(result.minProgress>=30,label+" individual bot remained stuck");if(actualStart||denseStart)Check(result.maxStallSeconds<3,label+" sustained individual jam");if(!actualStart&&!denseStart&&!generated)Check(result.passes>0,label+" did not complete an open-side pass");Check(result.respawns==0,label+" unexpected recovery");}
    return result;
   }finally{UnityEngine.Object.DestroyImmediate(root);}}
   static AiWorldSnapshot Snapshot(TrackRoute route,params AiObservation[] observations){var world=new AiWorldSnapshot(observations.Length);var target=(AiObservation[])Observations.GetValue(world);for(int i=0;i<target.Length;i++){var value=observations[i];var f=route.Evaluate(value.Distance);value.Id=i;value.Position=f.position+f.right*value.Lateral;value.Forward=f.tangent;value.Up=f.normal;value.Grounded=true;target[i]=value;}SnapshotTime.SetValue(world,10d);return world;}
@@ -67,6 +82,26 @@ namespace StarRacingPrototype {
   static void Advance(AiWorldSnapshot world,double time){SnapshotTime.SetValue(world,time);}
   static void Decisions(){
    var balance=Balance();var route=new TrackRoute(LongRoad());
+   var separating=new AiObservation{Forward=Vector3.forward,Speed=6.6f};var stoppedLeader=new AiObservation{Forward=Vector3.forward};
+   Check(AiDriver.SeparatingManeuverEligible(separating,stoppedLeader),"low-speed separating escape rejected");
+   separating.Speed=11;stoppedLeader.Speed=-11;Check(!AiDriver.SeparatingManeuverEligible(separating,stoppedLeader),"opposing travel accepted as low-speed separation");
+   stoppedLeader.Speed=0;stoppedLeader.Forward=Vector3.back;Check(!AiDriver.SeparatingManeuverEligible(separating,stoppedLeader),"head-on accepted as separating traffic");
+   separating.Speed=20;stoppedLeader.Forward=Vector3.forward;Check(!AiDriver.SeparatingManeuverEligible(separating,stoppedLeader),"fast closing traffic treated as low-speed separation");
+   // Rear pressure cannot slow an unobstructed leader. Preserve rear occupancy
+   // for crossing maneuvers, and keep actual forward-obstacle braking intact.
+   for(uint seed=0;seed<6;seed++){
+    var leader=new AiDriver(0,DriverProfile.Racer,seed,balance);
+    float lane=((float)typeof(AiDriver).GetField("personality",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(leader)-.5f)*6;
+    var rear=Snapshot(route,new AiObservation{Distance=80,Speed=20,Lateral=lane},new AiObservation{Distance=75.8f,Speed=22,Lateral=lane});
+    var input=leader.Step(rear,route,.1f,false);
+    Check(input.brake==0&&leader.DesiredSpeed>=20&&leader.LimitingEntrant!=1,"rear follower slowed free leader");
+    var crossed=new AiDriver(0,DriverProfile.Racer,seed,balance);float start=lane>0?-1.5f:1.5f;
+    var crossing=Snapshot(route,new AiObservation{Distance=80,Speed=20,Lateral=start},new AiObservation{Distance=77,Speed=25,Lateral=0});
+    crossed.Step(crossing,route,.1f,false);Check(Mathf.Abs(crossed.Lane-start)<.01f,"cut across faster rear traffic");
+    var blocked=new AiDriver(0,DriverProfile.Racer,seed,balance);
+    var front=Snapshot(route,new AiObservation{Distance=80,Speed=20,Lateral=lane},new AiObservation{Distance=75.8f,Speed=22,Lateral=lane},new AiObservation{Distance=84.2f,Lateral=lane});
+    var stop=blocked.Step(front,route,.1f,false);Check(stop.brake>0&&blocked.DesiredSpeed<20,"rear exception erased forward braking");
+   }
    // A neighboring car closes one side; the other side must be chosen and held.
    foreach(float blockedSide in new[]{-1f,1f}){
     var world=Snapshot(route,new AiObservation{Distance=80,Speed=7},new AiObservation{Distance=85,Speed=7},new AiObservation{Distance=80,Speed=7,Lateral=blockedSide*2.7f});
@@ -97,6 +132,24 @@ namespace StarRacingPrototype {
    // A distant retained target must not prevent an overtake of a new blocker.
    var retargetWorld=Snapshot(route,new AiObservation{Distance=80,Speed=7},new AiObservation{Distance=90,Speed=6},new AiObservation{Distance=85,Speed=0,Finished=true});var retarget=new AiDriver(0,DriverProfile.Racer,91,balance);
    retarget.Step(retargetWorld,route,.1f,false);var retargetObs=(AiObservation[])Observations.GetValue(retargetWorld);retargetObs[1].Distance=400;retargetObs[2].Finished=false;Advance(retargetWorld,10.1);retarget.Step(retargetWorld,route,.1f,false);Check(retarget.Target==2,"remote target locked out a nearer blocker");
+   // A just-overtaken target within the completion margin cannot mask a new
+   // obstacle ahead with a negative nearest-gap search bound.
+   foreach(float oldDistance in new[]{79f,80f,83f}){
+    var passedWorld=Snapshot(route,new AiObservation{Distance=80,Speed=7},new AiObservation{Distance=85,Speed=6},new AiObservation{Distance=87,Finished=true});var passedDriver=new AiDriver(0,DriverProfile.Racer,91,balance);
+    passedDriver.Step(passedWorld,route,.1f,false);var passedObs=(AiObservation[])Observations.GetValue(passedWorld);passedObs[1].Distance=oldDistance;passedObs[2].Finished=false;Advance(passedWorld,10.1);passedDriver.Step(passedWorld,route,.1f,false);Check(passedDriver.Target==(oldDistance>80?1:2),"retained target masked closer forward obstacle");
+   }
+   // A moving blocker cannot silently flip an escape's committed side. New
+   // escape endpoints are validated against the road and every third car.
+   foreach(int scenario in new[]{0,1,2}){
+    float lateral=scenario==2?3.3f:.8f;
+    var movingBlocker=Snapshot(route,new AiObservation{Distance=80,Speed=6.6f,Lateral=lateral},new AiObservation{Distance=84.7f,Speed=4,Lateral=lateral},new AiObservation{Distance=80,Lateral=3.5f,Finished=scenario!=1});
+    var escapingDriver=new AiDriver(0,DriverProfile.Racer,77,balance);escapingDriver.Step(movingBlocker,route,.1f,false);
+    SetDriver(escapingDriver,"escapeActive",true);SetDriver(escapingDriver,"escapeBlocker",1);SetDriver(escapingDriver,"escapeRevision",0);SetDriver(escapingDriver,"escapeLane",3.4f);typeof(AiDriver).GetProperty("PassingSide").SetValue(escapingDriver,1);
+    Advance(movingBlocker,10.1);escapingDriver.Step(movingBlocker,route,.1f,false);
+    float endpoint=(float)typeof(AiDriver).GetField("escapeLane",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(escapingDriver);
+    Check(scenario==0?endpoint>=4.1f:Mathf.Abs(endpoint-3.4f)<.01f,"moving-blocker escape accepted unsafe endpoint or lost free same-side endpoint");
+    Check(escapingDriver.PassingSide==1&&Mathf.Abs(escapingDriver.Lane)+VehicleGeometry.HalfWidth<=8,"escape flipped side or left road");
+   }
    // A failed side gets a fresh attempt window, rather than flipping every tick.
    var fixedWorld=Snapshot(route,new AiObservation{Distance=80},new AiObservation{Distance=85});var fixedDriver=new AiDriver(0,DriverProfile.Racer,77,balance);int previousSide=0;double changedAt=-10;
    for(int tick=0;tick<70;tick++){double now=10+tick*.1;Advance(fixedWorld,now);fixedDriver.Step(fixedWorld,route,.1f,false);int side=fixedDriver.PassingSide;if(side!=0&&previousSide!=0&&side!=previousSide){Check(now-changedAt>=.5,"side switched without a new attempt window");changedAt=now;}if(side!=0)previousSide=side;}
@@ -124,6 +177,7 @@ namespace StarRacingPrototype {
    // Preserve geometric support envelopes and reset/finished behavior.
    Check(AiDriver.CrestSpeedLimit(.02f,18,100)<100,"crest envelope removed");Check(AiDriver.VerticalSpeedLimit(-1,.02f,18,100,true)==100,"loop envelope altered");
    var finish=(AiObservation[])Observations.GetValue(replay);finish[0].Finished=true;Advance(replay,30);var stopped=a.Step(replay,route,.1f);Check(stopped.throttle==0&&!stopped.nitro&&!a.ReverseActive,"finished car retained commands");
+   GeometryContracts();
    Debug.Log("AI_DECISIONS_OK assertions="+assertions);
   }
   static void GeometryContracts(){

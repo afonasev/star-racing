@@ -118,23 +118,37 @@ namespace StarRacingPrototype.Distribution {
     ReleaseAuthentication.VerifyFile(release,localFile); // Before SDK extracts/replaces its native helper.
    }catch{if(File.Exists(localFile))File.Delete(localFile);throw;}
   }
+  public DesktopRelease VerifyDescriptor(string descriptor)=>VerifyStored(descriptor);
   DesktopRelease VerifyStored(string descriptor){
    var value=ReleaseAuthentication.Parse(descriptor);
    if(value["unsignedProductionCatalog"]?.Type==JTokenType.Boolean&&(bool)value["unsignedProductionCatalog"])return ReleaseAuthentication.VerifyUnsignedProduction(descriptor,appId,channel,MinimumSequence,track);
    return ReleaseAuthentication.Verify(descriptor,appId,channel,MinimumSequence,track,modulus);
   }
   async Task<HttpResponseMessage> GetGithubPackage(DesktopRelease release,CancellationToken token){
-   var response=await client.GetAsync(ReleaseAuthentication.GithubPackage(release),HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);
+   var response=await GetPackageHeaders(ReleaseAuthentication.GithubPackage(release),token).ConfigureAwait(false);
    if((int)response.StatusCode==302 || (int)response.StatusCode==301 || (int)response.StatusCode==307){
     var location=response.Headers.Location;response.Dispose();
     if(!ReleaseAuthentication.IsReleaseRedirect(location))throw new InvalidDataException("Неподходящий адрес загрузки GitHub");
-    response=await client.GetAsync(location,HttpCompletionOption.ResponseHeadersRead,token).ConfigureAwait(false);
+    response=await GetPackageHeaders(location.AbsoluteUri,token).ConfigureAwait(false);
    }
    return response; // caller checks status, exact byte limit and signed SHA256.
   }
+  async Task<HttpResponseMessage> GetPackageHeaders(string url,CancellationToken token){
+   using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(token)){
+    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+    try{return await client.GetAsync(url,HttpCompletionOption.ResponseHeadersRead,timeout.Token).ConfigureAwait(false);}
+    catch(OperationCanceledException) when(!token.IsCancellationRequested){throw new TimeoutException("Сервер обновлений не отвечает. Повторите загрузку.");}
+   }
+  }
   static async Task CopyBounded(Stream input,Stream output,long limit,CancellationToken token,Action<int> progress){
    var buffer=new byte[65536];long copied=0;int count;
-   while((count=await input.ReadAsync(buffer,0,buffer.Length,token).ConfigureAwait(false))>0){
+   while(true){
+    using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(token)){
+     timeout.CancelAfter(TimeSpan.FromSeconds(30));
+     try{count=await input.ReadAsync(buffer,0,buffer.Length,timeout.Token).ConfigureAwait(false);}
+     catch(OperationCanceledException) when(!token.IsCancellationRequested){throw new TimeoutException("Загрузка прервана: сервер не отвечает. Повторите загрузку.");}
+    }
+    if(count==0)break;
     copied+=count;if(copied>limit)throw new InvalidDataException("Превышен размер загрузки");
     await output.WriteAsync(buffer,0,count,token).ConfigureAwait(false);progress?.Invoke((int)(copied*100/limit));
    }

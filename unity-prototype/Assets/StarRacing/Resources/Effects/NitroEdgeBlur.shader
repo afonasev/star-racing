@@ -21,19 +21,21 @@ Shader "StarRacing/NitroEdgeBlur" {
     float2 fromCenter=uv-float2(0.5,0.5);
     float radial=saturate(length(fromCenter)*2.0);
     float2 towardCenter=-normalize(fromCenter+1e-6);
-    float2 displacement=towardCenter*(0.035*_Strength*radial);
+    // Longer streaks and a stronger blend make the speed ramp visible earlier.
+    float visibility=_Strength*(2.0-_Strength);
+    float2 displacement=towardCenter*(0.08*_Strength*radial);
     float4 streak=0;
-    [unroll] for(int i=0;i<8;i++) {
-     float t=(i+1.0)/8.0;
+    [unroll] for(int i=0;i<12;i++) {
+     float t=(i+1.0)/12.0;
      streak+=SAMPLE_TEXTURE2D_X(_BlitTexture,sampler_LinearClamp,clamp(uv+displacement*t,0.5*_BlitTexture_TexelSize.xy,1-0.5*_BlitTexture_TexelSize.xy));
     }
-    streak*=0.125;
+    streak/=12.0;
 
     float2 outside=max(float2(0.2,0.2)-uv,uv-float2(0.8,0.8));
     float edgeMask=smoothstep(0.0,0.055,max(outside.x,outside.y));
     // The chase car sits below the center, especially in small split views.
     if(uv.y<0.2)edgeMask*=smoothstep(0.12,0.20,abs(uv.x-0.5));
-    return lerp(original,streak,edgeMask*_Strength);
+    return lerp(original,streak,edgeMask*visibility);
    }
    ENDHLSL
   }

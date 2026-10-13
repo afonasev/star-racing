@@ -66,7 +66,8 @@ public sealed class Sample
     public double distance, progress, halfWidth;
     public DVec position, tangent, normal, right;
     public bool railLeft, railRight;
-    public string kind, patternKind;
+    public string kind, patternKind, compositionRole;
+    public int compositionIndex;
 }
 [Serializable]
 public sealed class Branch
@@ -99,11 +100,18 @@ public sealed class Checkpoint
     public DVec position, tangent, normal, right;
 }
 [Serializable]
+public sealed class CompositionSection
+{
+    public string role;
+    public int index, startIndex, endIndex;
+}
+[Serializable]
 public sealed class Definition
 {
     public uint requestedSeed, seed;
     public int version = 8;
-    public string guardrailMode, theme, hash;
+    public string guardrailMode, theme, hash, family;
+    public CompositionSection[] composition = Array.Empty<CompositionSection>();
     public bool jumpModeEnabled, usedFallback;
     public Sample[] samples;
     public Branch[] branches;

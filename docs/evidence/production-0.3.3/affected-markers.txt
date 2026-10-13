@@ -1,0 +1,31 @@
+CLOUDLINE_VISUAL_CHECKS_OK triangles=121644 bounds=Center: (0.00, 0.29, 0.00), Extents: (1.08, 0.51, 2.10) scale=0.8102032
+CLOUDLINE_VEHICLE_CHECKS_OK assertions=190
+DAYLIGHT_CHECKS_OK assertions=93 staging activation oldCleanup sharing import colors
+VEHICLE_CONTACT_SSAO_OK assertions=14 package=URP17.3 radius=0.025 intensity=1.2 directLighting=0 source=DepthNormals afterOpaque=false
+ENVIRONMENT_TEXTURE_THEME_OK cloud-city seed=77
+ENVIRONMENT_TEXTURE_THEME_OK cloud-city seed=78
+ENVIRONMENT_TEXTURE_THEME_OK space-station seed=77
+ENVIRONMENT_TEXTURE_THEME_OK space-station seed=78
+CLOUDLINE_VISUAL_CHECKS_OK triangles=121644 bounds=Center: (0.00, 0.29, 0.00), Extents: (1.08, 0.51, 2.10) scale=0.8102032
+ENVIRONMENT_TEXTURE_CHECKS_OK themes=2 seeds=2 rebuilds=2 collision=unchanged STRIDE=unchanged
+DISPLAY_SETTINGS_CHECKS_OK assertions=13
+DESKTOP_UPDATE_CHECKS_OK assertions=9
+AIR_STEERING_CHECKS_OK pureCases=120 speed normal sign bounds neutral sharedAI hold reset generation finish; contactAndDisableProof=separateActualPlayMode
+CLOUDLINE_CONFIG_CHECKS_OK assertions=107
+RECOVERY_GHOST_CHECKS_OK assertions=1148
+NATIVE_RUNWAY_CASE_OK requested=77 actual=2175735190 theme=cloud-city rails=normal revision=11 hash=3c1118a0 estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=77 actual=2175735190 theme=cloud-city rails=full revision=11 hash=3c1118a0 estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=77 actual=2175735190 theme=cloud-city rails=none revision=11 hash=3c1118a0 estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=77 actual=116708644 theme=space-station rails=normal revision=11 hash=5ba8509b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=77 actual=116708644 theme=space-station rails=full revision=11 hash=5ba8509b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=77 actual=116708644 theme=space-station rails=none revision=11 hash=5ba8509b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=632734357 theme=cloud-city rails=normal revision=11 hash=d62af94b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=632734357 theme=cloud-city rails=full revision=11 hash=d62af94b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=632734357 theme=cloud-city rails=none revision=11 hash=d62af94b estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=4095976287 theme=space-station rails=normal revision=11 hash=3b1d9fac estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=4095976287 theme=space-station rails=full revision=11 hash=3b1d9fac estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CASE_OK requested=2273265884 actual=4095976287 theme=space-station rails=none revision=11 hash=3b1d9fac estimatedDuration=231.23 addedRunway=880m
+NATIVE_RUNWAY_CHECKS_OK cases=12 tacticalBoundaryUnchanged source8Comparison=separateEvidence
+CHECKPOINT_ADMISSION_PARITY_OK cases=6 below/exact/overflow accepted/rejected fallback cleared next-query current/stale support
+COMPOSITION_CHECKS_OK assertions=2931 corpus=9
+PRODUCTION_AFFECTED_QA_OK

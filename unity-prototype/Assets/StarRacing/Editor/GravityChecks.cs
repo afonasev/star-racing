@@ -127,6 +127,23 @@ namespace StarRacingPrototype
                         Step(car);
                         Check(Close(car.Body.linearVelocity / .01f, -frame.normal * MagneticVehicle.GravityMagnitude), "airborne force or car orientation changed gravity: acceleration=" + car.Body.linearVelocity / .01f + " expected=" + -frame.normal * MagneticVehicle.GravityMagnitude + " position=" + car.Body.position + " supports=" + car.HandlingSupportCount);
                         // Inverted loop: road-relative gravity points upward in world space.
+                        // Revision 11 makes driving family seed-dependent: seed 77
+                        // need not contain a loop. Retain its road/ramp coverage,
+                        // then use an explicit current vertical-family fixture.
+                        if(!Array.Exists(track.Route.Samples,s=>Vector3.Dot(s.normal,Vector3.up)<-.9f)) {
+                            car.AdditionalMagneticAdhesion=true;
+                            foreach(var ramp in track.Route.Definition.jumps)CheckNaturalRamp(car,track,ramp,theme);
+                            uint verticalSeed=77;
+                            while(verticalSeed<1077&&Procedural.Generator.FamilyFor(verticalSeed,theme)!="vertical")verticalSeed++;
+                            Check(verticalSeed<1077,"vertical gravity fixture seed missing");
+                            track.gameObject.SetActive(false);
+                            var verticalObject=new GameObject("vertical gravity track");verticalObject.transform.SetParent(root.transform);
+                            track=verticalObject.AddComponent<TrackBuilder>();
+                            track.Build(new TrackRoute(Procedural.Generator.Generate(verticalSeed,"normal",theme,true,true)));
+                            car.Initialize(track,0,Color.cyan,balance);car.ResetAt(80);car.AdditionalMagneticAdhesion=false;
+                            Physics.SyncTransforms();
+                            Debug.Log("GRAVITY_VERTICAL_FIXTURE theme="+theme+" requested="+verticalSeed+" seed77CoverageRetained=true");
+                        }
                         float inverted = -1;
                         foreach (var sample in track.Route.Samples) if (Vector3.Dot(sample.normal, Vector3.up) < -.9f) { inverted = sample.distance; break; }
                         Check(inverted >= 0, "fixture has no inverted road");

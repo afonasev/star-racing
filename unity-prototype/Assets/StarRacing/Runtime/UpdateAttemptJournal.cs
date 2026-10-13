@@ -5,7 +5,14 @@ using System.Text;
 using Newtonsoft.Json.Linq;
 namespace StarRacingPrototype.Distribution {
  public static class UpdateAttemptJournal {
-  public static string Digest(string envelope){using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(Convert.FromBase64String((string)JObject.Parse(envelope)["payloadBase64"]))).Replace("-","");}
+  // Caller validates the descriptor first. Keep signed payload digests compatible with existing journals.
+  public static string Digest(string envelope){
+   var descriptor=ReleaseAuthentication.Parse(envelope);
+   byte[] bytes=descriptor["unsignedProductionCatalog"]?.Type==JTokenType.Boolean&&(bool)descriptor["unsignedProductionCatalog"]
+    ?Encoding.UTF8.GetBytes(descriptor.ToString(Newtonsoft.Json.Formatting.None))
+    :Convert.FromBase64String((string)descriptor["payloadBase64"]);
+   using(var sha=SHA256.Create())return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","");
+  }
   public static bool AlreadyAttempted(string journal,string envelope,string fromVersion,string targetVersion){
    if(!File.Exists(journal))return false;
    try{var data=JObject.Parse(File.ReadAllText(journal));return (string)data["descriptorDigest"]==Digest(envelope)&&(string)data["targetVersion"]==targetVersion;}

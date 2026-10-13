@@ -163,9 +163,12 @@ namespace StarRacingPrototype {
             TrackFrame b = Samples[(lo + 1) % Samples.Length];
             float end = lo == Samples.Length - 1 ? Length : b.distance;
             float t = Mathf.InverseLerp(a.distance, end, d);
-            Vector3 position = Vector3.Lerp(a.position, b.position, t);
-            Vector3 tangent = Vector3.Slerp(a.tangent, b.tangent, t).normalized;
+            Vector3 position, tangent;
             if (derivatives != null) Curve(lo, t, out position, out tangent, out _);
+            else {
+                position = Vector3.Lerp(a.position, b.position, t);
+                tangent = Vector3.Slerp(a.tangent, b.tangent, t).normalized;
+            }
             var result = MakeFrame(d, position, tangent,
                 Vector3.Slerp(a.normal, b.normal, t).normalized,
                 t < .5f ? a.gap : b.gap, t < .5f ? a.segmentId : b.segmentId);
@@ -228,11 +231,14 @@ namespace StarRacingPrototype {
             var frame = Evaluate(bestDistance);
             if (Definition != null) {
                 var spans = PavedAt(bestDistance);
+                // Each improving strip starts from the same unshifted route frame.
+                // Evaluate has already computed it; TrackFrame is a value type.
+                var centreFrame = frame;
                 float lateral = -Vector3.Dot(position - frame.position, frame.right);
                 double best = double.PositiveInfinity;
                 foreach (var span in spans) {
                     double separation = Math.Max(0, Math.Abs(lateral - span.offset) - span.halfWidth);
-                    if (separation < best) { best = separation; frame = Evaluate(bestDistance); frame.position -= frame.right * (float)span.offset; frame.halfWidth = (float)span.halfWidth; }
+                    if (separation < best) { best = separation; frame = centreFrame; frame.position -= frame.right * (float)span.offset; frame.halfWidth = (float)span.halfWidth; }
                 }
                 frame.gap = spans.Length == 0;
             }

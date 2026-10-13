@@ -10,6 +10,7 @@ namespace StarRacingPrototype {
   const string Key="StarRacing.DisplayChecks";
   static int ticks;static double started;static GameObject preview;static EditorWindow view;
   static bool hadPrefs;static string prefs;static float volume;
+  static int previousVSync,previousTarget;
   static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_MENU_QA_DIR");
   static DisplaySettingsPlayModeChecks(){EditorApplication.playModeStateChanged+=Changed;}
   public static void Run(){
@@ -29,13 +30,18 @@ namespace StarRacingPrototype {
     EditorApplication.QueuePlayerLoopUpdate();if(view!=null)view.Repaint();ticks++;
     if(ticks==1){
      hadPrefs=PlayerPrefs.HasKey(DisplaySettings.PreferenceKey);prefs=PlayerPrefs.GetString(DisplaySettings.PreferenceKey);PlayerPrefs.DeleteKey(DisplaySettings.PreferenceKey);volume=AudioListener.volume;AudioListener.volume=0;
+     previousVSync=QualitySettings.vSyncCount;previousTarget=Application.targetFrameRate;
+     new DisplaySettings{vSync=true}.Save();
      new GameObject("Settings QA camera").AddComponent<Camera>();
      preview=new GameObject("Display settings preview");var director=preview.AddComponent<RaceDirector>();director.GetComponent<RaceMenu>().Open(RaceMenuScreen.Settings);
+     if(!director.GetComponent<RaceMenu>().Display.vSync||QualitySettings.vSyncCount!=1||Application.targetFrameRate!=120)throw new Exception("startup did not apply saved VSync");
     }
     if(ticks==25)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"settings.png"));
     if(ticks==40){
      var menu=preview.GetComponent<RaceMenu>();Invoke(menu,"fullscreen");
      if(menu.Display.fullscreen||DisplaySettings.Load().fullscreen)throw new Exception("menu toggle did not persist");
+     Invoke(menu,"vsync");
+     if(menu.Display.vSync||DisplaySettings.Load().vSync||QualitySettings.vSyncCount!=0||Application.targetFrameRate!=120)throw new Exception("main menu VSync toggle did not apply and persist");
      Invoke(menu,"resolution");if(!menu.PopupOpen)throw new Exception("resolution popup did not open");
     }
     if(ticks==55)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"resolution-popup.png"));
@@ -46,12 +52,19 @@ namespace StarRacingPrototype {
      var director=preview.GetComponent<RaceDirector>();director.enabled=false;typeof(RaceDirector).GetProperty("Started").SetValue(director,true);
     }
     if(ticks==90)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"pause-settings.png"));
-    if(ticks==100)Invoke(preview.GetComponent<RaceMenu>(),"resolution");
+    if(ticks==100){
+     var menu=preview.GetComponent<RaceMenu>();Invoke(menu,"vsync");
+     if(!menu.Display.vSync||!DisplaySettings.Load().vSync||QualitySettings.vSyncCount!=1||!preview.GetComponent<RaceDirector>().Paused)throw new Exception("pause VSync toggle did not apply and persist while paused");
+     Invoke(menu,"resolution");
+    }
     if(ticks==115)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"pause-resolution-popup.png"));
     if(ticks==135){
      var menu=preview.GetComponent<RaceMenu>();
      if(!menu.PopupOpen||!menu.ConsumePauseSettingsBack(true)||menu.PopupOpen||!menu.PauseSettings)throw new Exception("pause popup back failed");
      menu.ConsumePauseSettingsBack(true);if(menu.PauseSettings||!preview.GetComponent<RaceDirector>().Paused)throw new Exception("pause settings back resumed race");
+     foreach(var go in SceneManager.GetActiveScene().GetRootGameObjects())UnityEngine.Object.DestroyImmediate(go);
+     preview=new GameObject("Reload settings preview");var reloaded=preview.AddComponent<RaceDirector>();
+     if(!reloaded.GetComponent<RaceMenu>().Display.vSync||QualitySettings.vSyncCount!=1||Application.targetFrameRate!=120)throw new Exception("reinitialization overrode saved VSync");
      foreach(var go in SceneManager.GetActiveScene().GetRootGameObjects())UnityEngine.Object.DestroyImmediate(go);
      DisplaySettingsChecks.Run();File.WriteAllText(Path.Combine(Output,"playmode.txt"),"DISPLAY_SETTINGS_PLAYMODE_OK\n");Debug.Log("DISPLAY_SETTINGS_PLAYMODE_OK");Finish(false);
     }
@@ -65,6 +78,7 @@ namespace StarRacingPrototype {
   static void Finish(bool error){
    EditorApplication.update-=Tick;SessionState.SetBool(Key+"Failed",error);
    if(hadPrefs)PlayerPrefs.SetString(DisplaySettings.PreferenceKey,prefs);else PlayerPrefs.DeleteKey(DisplaySettings.PreferenceKey);PlayerPrefs.Save();AudioListener.volume=volume;Time.timeScale=1;EditorApplication.isPlaying=false;
+   QualitySettings.vSyncCount=previousVSync;Application.targetFrameRate=previousTarget;
   }
  }
 }

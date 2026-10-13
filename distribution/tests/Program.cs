@@ -13,6 +13,11 @@ string Envelope(JObject obj){byte[] payload=Encoding.UTF8.GetBytes(obj.ToString(
 DesktopRelease Verify(string json,long min=1)=>ReleaseAuthentication.Verify(json,"tech.afonasev.star-racing.win-x64","win-x64",min,"test",modulus);
 data["sha256"]=((string)data["sha256"]!).ToLowerInvariant();
 var release=Verify(Envelope(data));Require(release.sequence==2,"valid golden vector");
+using(var signedSource=new AuthenticatedUpdateSource(release.appId,release.channel,1,"test",modulus:modulus)){
+ string signed=Envelope(data);signedSource.Restore(signed);
+ Require(signedSource.VerifyDescriptor(signed).version==release.version,"signed activation descriptor");
+ Require(UpdateAttemptJournal.Digest(signed)==Convert.ToHexString(SHA256.HashData(Convert.FromBase64String((string)JObject.Parse(signed)["payloadBase64"]!))),"signed journal backwards compatibility");
+}
 var envelope=JObject.Parse(Envelope(data));envelope["payloadBase64"]=Convert.ToBase64String(Encoding.UTF8.GetBytes("{}"));Reject(()=>Verify(envelope.ToString()),"bad signature");
 Reject(()=>Verify(Envelope(data),3),"replay");
 foreach(var pair in new[]{("appId","foreign"),("channel","osx-universal"),("url","http://racing.afonasev.tech/a"),("url","https://evil.invalid/a"),("fileName","../racing-full.nupkg"),("fileName","C:\\racing-full.nupkg"),("sha256","abc"),("version","unknown")}){var other=(JObject)data.DeepClone();other[pair.Item1]=pair.Item2;Reject(()=>Verify(Envelope(other)),pair.Item1+pair.Item2);}
@@ -42,6 +47,22 @@ Reject(()=>Verify(production.ToString()),"unsigned passed to signed route");
 Reject(()=>Unsigned(production,1,"test"),"unsigned test route");
 #if STAR_RACING_UNSIGNED_PRODUCTION
 var unsignedRelease=Unsigned(production);Require(unsignedRelease.version=="0.3.0","unsigned production accepted with compiled opt-in");
+using(var activationSource=new AuthenticatedUpdateSource(unsignedRelease.appId,unsignedRelease.channel,1)){
+ activationSource.Restore(production.ToString());
+ Require(activationSource.VerifyDescriptor(production.ToString()).version==unsignedRelease.version,"unsigned activation uses same validation as feed");
+ var changed=(JObject)production.DeepClone();changed["channel"]="osx-universal";
+ Reject(()=>activationSource.VerifyDescriptor(changed.ToString()),"activation rejects changed platform");
+ activationSource.MinimumSequence=3;Reject(()=>activationSource.VerifyDescriptor(production.ToString()),"activation rejects replay against refreshed minimum sequence");
+}
+string journalDirectory=Path.Combine(Path.GetTempPath(),"star-racing-journal-"+Guid.NewGuid().ToString("N"));
+string journalFile=Path.Combine(journalDirectory,"attempt.json");
+try{
+ UpdateAttemptJournal.Begin(journalFile,production.ToString(),"0.2.0","0.3.0");
+ Require(UpdateAttemptJournal.AlreadyAttempted(journalFile,production.ToString(Newtonsoft.Json.Formatting.None),"0.2.0","0.3.0"),"unsigned startup attempt suppresses repeated activation across formatting");
+ var next=(JObject)production.DeepClone();next["version"]="0.3.1";
+ Require(!UpdateAttemptJournal.AlreadyAttempted(journalFile,next.ToString(),"0.3.0","0.3.1"),"new update can activate");
+ File.WriteAllText(journalFile,"corrupt");Require(UpdateAttemptJournal.AlreadyAttempted(journalFile,production.ToString(),"0.2.0","0.3.0"),"corrupt journal blocks automatic retry");
+}finally{if(Directory.Exists(journalDirectory))Directory.Delete(journalDirectory,true);}
 Reject(()=>Unsigned(production,3),"unsigned replay");
 foreach(var pair in new[]{("appId","foreign"),("channel","osx-universal"),("releaseTrack","test"),("version","0.3.0-test.1"),("url","https://evil.invalid/a"),("fileName","../racing-full.nupkg"),("sha256","abc")}){var other=(JObject)production.DeepClone();other[pair.Item1]=pair.Item2;Reject(()=>Unsigned(other),"unsigned "+pair.Item1);}
 foreach(var marker in new JToken[]{new JValue(false),new JValue("true"),JValue.CreateNull()}){var other=(JObject)production.DeepClone();other["unsignedProductionCatalog"]=marker;Reject(()=>Unsigned(other),"unsigned marker type");}
@@ -49,6 +70,7 @@ string unsignedFile=Path.GetTempFileName();try{File.WriteAllBytes(unsignedFile,n
 #else
 Reject(()=>Unsigned(production),"unsigned rejected without compiled opt-in");
 #endif
+await DownloadChecks.Run(data,Envelope,modulus,Require);
 Console.WriteLine("UPDATE_CONTRACTS_OK "+assertions);
 
 if(args.Length==2&&args[0]=="--live-production"){

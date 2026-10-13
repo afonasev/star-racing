@@ -18,6 +18,12 @@ namespace StarRacingPrototype
         public static void Run()
         {
             count=0;StrideVisualChecks.Run();
+            var glass=Resources.Load<Material>("Vehicle/CloudlineMaterials/Midnight_Glass");
+            var tire=Resources.Load<Material>("Vehicle/CloudlineMaterials/Tire_Rubber");
+            Check(glass!=null&&glass.shader.name=="Universal Render Pipeline/Lit"&&Mathf.Abs(glass.GetFloat("_Metallic")-.18f)<.001f&&Mathf.Abs(glass.GetFloat("_Smoothness")-.86f)<.001f,"Cloudline glass keeps standard Lit shader with restrained dark reflection profile");
+            Check(glass!=null&&glass.GetColor("_BaseColor")==new Color(.008f,.018f,.028f,1),"Cloudline glass base color preserved");
+            Check(tire!=null&&tire.shader.name=="Universal Render Pipeline/Lit"&&Mathf.Abs(tire.GetFloat("_Metallic"))<.001f&&Mathf.Abs(tire.GetFloat("_Smoothness")-.12f)<.001f,"Cloudline tire keeps standard Lit shader and matte nonmetal profile");
+            Check(tire!=null&&tire.GetColor("_BaseColor")==new Color(.012f,.014f,.017f,1),"Cloudline tire base color preserved");
             var tap=new ExhaustEnvelope();tap.Step(1,true,true,1f/240);
             Check(tap.GasLength>=.35f&&tap.NitroLength>=1.4f,"single high-FPS frame has visible gas and nitro onset");
             tap.Step(0,false,true,1f/60);Check(tap.NitroSignal>.5f&&tap.GasSignal>=.35f,"tap remains visible to audio block");

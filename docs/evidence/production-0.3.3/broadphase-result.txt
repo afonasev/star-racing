@@ -1,0 +1,1 @@
+BROADPHASE_AFFECTED_OK liveClock=true assertions=83374

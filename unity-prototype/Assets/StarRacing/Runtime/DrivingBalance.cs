@@ -7,11 +7,8 @@ namespace StarRacingPrototype {
   public float Charge {get;private set;}
   public bool Ready {get;private set;}=true;
   public bool Active {get;private set;}
-  float accelerationMultiplier=1,recoveryMultiplier=1;
-  public void ConfigureHandicap(DriverProfile profile,bool enabled) {
-   accelerationMultiplier=enabled && profile==DriverProfile.Racer?Snapshot["racerAccelerationMultiplier"]:enabled && profile==DriverProfile.Ace?Snapshot["aceAccelerationMultiplier"]:1;
-   recoveryMultiplier=enabled && profile==DriverProfile.Racer?Snapshot["racerNitroRecoveryMultiplier"]:enabled && profile==DriverProfile.Ace?Snapshot["aceNitroRecoveryMultiplier"]:1;
-  }
+  // Compatibility entry point for old saves and callers; skill never changes capability.
+  public void ConfigureHandicap(DriverProfile profile,bool enabled) { }
   public float Capacity => Snapshot["nitroCapacity"];
   public float BaseSpeed => Snapshot["baseSpeedKmh"]/3.6f;
   public float NitroSpeed => Snapshot["nitroMaxSpeedKmh"]/3.6f;
@@ -26,11 +23,11 @@ namespace StarRacingPrototype {
    if(Active){Charge=Math.Max(0,Charge-Snapshot["nitroDrainPerSecond"]*dt);if(Charge==0)Ready=false;}
    else {
     float behind=count<=1?0:Clamp((place-1f)/(count-1f),0,1);
-    float recovery=Snapshot["nitroRecoveryPerSecond"]*recoveryMultiplier*(1+behind*(Snapshot["nitroRecoveryBehindMultiplier"]-1));
+    float recovery=Snapshot["nitroRecoveryPerSecond"]*(1+behind*(Snapshot["nitroRecoveryBehindMultiplier"]-1));
     Charge=Math.Min(Capacity,Charge+recovery*dt);
    }
    float gas=Clamp(input.throttle,0,1),brake=Clamp(input.brake,0,1);
-   float drive=gas*Snapshot["acceleration"]*accelerationMultiplier+(Active?Snapshot["nitroAcceleration"]:0);
+   float drive=gas*Snapshot["acceleration"]+(Active?Snapshot["nitroAcceleration"]:0);
    float limit=Active?NitroSpeed:BaseSpeed;
    drive=Math.Min(drive,Math.Max(0,(limit-speed)/dt));
    if(brake>0) {

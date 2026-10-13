@@ -7,10 +7,11 @@ namespace StarRacingPrototype {
  public sealed class DisplaySettings {
   public const string PreferenceKey="StarRacing.DisplaySettings.v1";
   public bool fullscreen=true;
+  public bool vSync=true;
   public int width,height;
   public static DisplaySettings Load(){
    var value=new DisplaySettings();
-   try{if(PlayerPrefs.HasKey(PreferenceKey))value=JsonUtility.FromJson<DisplaySettings>(PlayerPrefs.GetString(PreferenceKey))??value;}catch(ArgumentException){}
+   try{if(PlayerPrefs.HasKey(PreferenceKey))JsonUtility.FromJsonOverwrite(PlayerPrefs.GetString(PreferenceKey),value);}catch(ArgumentException){value=new DisplaySettings();}
    return value;
   }
   public static Vector2Int[] Options(Resolution[] supported,Vector2Int native){
@@ -24,6 +25,7 @@ namespace StarRacingPrototype {
   public void Validate(Vector2Int[] options){if(Selected(options)<0){width=0;height=0;}}
   public void Save(){PlayerPrefs.SetString(PreferenceKey,JsonUtility.ToJson(this));PlayerPrefs.Save();}
   public void Apply(Vector2Int native){
+   QualitySettings.vSyncCount=vSync?1:0;
    // The Editor renders the same menu but must never change the host display.
    if(Application.isEditor)return;
    int w=width>0?width:native.x,h=height>0?height:native.y;

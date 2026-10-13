@@ -60,10 +60,12 @@ namespace StarRacingPrototype {
             float stationSide = space.Next() < .5 ? -1 : 1;
             Vector3 anchor = new Vector3(maxX + 650, lowest + 115, maxZ + 650);
             bool foundStation = false;
+            bool nearStation = theme == "space-station";
+            // Bring the existing cluster into the nearby scenery, retaining its full clearance envelope.
             for (int i = 0; i < 6 && !foundStation; i++) {
                 float side = i % 2 == 0 ? stationSide : -stationSide;
-                var candidate = start.position + forward * (780 + i / 2 * 110) +
-                                right * side * (270 + i / 2 * 70) + Vector3.up * 50;
+                var candidate = start.position + forward * ((nearStation ? 240 : 780) + i / 2 * (nearStation ? 80 : 110)) +
+                                right * side * ((nearStation ? 250 : 270) + i / 2 * (nearStation ? 35 : 70)) + Vector3.up * 50;
                 if (!ClearOfRoute(route, candidate, Vector3.one * 170, CorridorMargin)) continue;
                 anchor = candidate;
                 foundStation = true;
@@ -71,7 +73,7 @@ namespace StarRacingPrototype {
             for (int attempt = 0; attempt < 96 && !foundStation; attempt++) {
                 var frame = route.Samples[space.Int(0, route.Samples.Length - 1)];
                 float side = space.Next() < .5 ? -1 : 1;
-                var candidate = frame.position + frame.right * (side * (float)space.Range(350, 650)) + Vector3.up * (float)space.Range(50, 150);
+                var candidate = frame.position + frame.right * (side * (float)space.Range(nearStation ? 260 : 350, nearStation ? 350 : 650)) + Vector3.up * (float)space.Range(50, nearStation ? 100 : 150);
                 if (!ClearOfRoute(route, candidate, Vector3.one * 170, CorridorMargin)) continue;
                 anchor = candidate;
                 foundStation = true;
@@ -127,8 +129,8 @@ namespace StarRacingPrototype {
         public string kind;
         public Quaternion sunRotation;
         public Vector3 sunPosition;
-        public Color sunColor, ambientColor, skyColor, fogColor;
-        public float sunIntensity, fogDensity;
+        public Color sunColor, ambientColor, ambientEquatorColor, ambientGroundColor, skyColor, fogColor;
+        public float sunIntensity, fogDensity, reflectionIntensity;
 
         public static RaceLightingProfile Create(uint seed, string theme) {
             var random = new Procedural.SeedRandom(seed ^ 0x51a710c7u);
@@ -138,9 +140,11 @@ namespace StarRacingPrototype {
                 var sun = new[] { new Color(.72f, .91f, 1), new Color(1, .79f, .67f), new Color(.94f, .72f, 1) }[palette];
                 var sky = new[] { new Color(.025f, .06f, .14f), new Color(.09f, .04f, .15f), new Color(.065f, .035f, .13f) }[palette];
                 Quaternion rotation = Quaternion.Euler((float)random.Range(24, 55), azimuth, 0);
+                var ambient = Color.Lerp(sun, Color.white, .2f) * .48f;
                 return new RaceLightingProfile { kind = "space", sunRotation = rotation, sunPosition = -(rotation * Vector3.forward) * 900,
                     sunColor = sun, sunIntensity = 2.3f,
-                    ambientColor = Color.Lerp(sun, Color.white, .2f) * .48f, skyColor = sky, fogColor = sky, fogDensity = .00007f };
+                    ambientColor = ambient, ambientEquatorColor = ambient * .8f, ambientGroundColor = ambient * .65f,
+                    reflectionIntensity = .35f, skyColor = sky, fogColor = sky, fogDensity = .00007f };
             }
             string kind = "day";
             float elevation = (float)random.Range(42, 68);
@@ -149,8 +153,11 @@ namespace StarRacingPrototype {
             Quaternion cityRotation = Quaternion.Euler(elevation, azimuth, 0);
             return new RaceLightingProfile { kind = kind, sunRotation = cityRotation,
                 sunPosition = -(cityRotation * Vector3.forward) * 900, sunColor = sunColor,
-                sunIntensity = kind == "sunset" ? 1.75f : 2.1f, ambientColor = Color.Lerp(skyColor, Color.white, .45f) * .66f,
-                skyColor = skyColor, fogColor = skyColor, fogDensity = kind == "day" ? .00105f : kind == "golden-hour" ? .00115f : .00125f };
+                sunIntensity = 1.85f, ambientColor = new Color(.58f, .68f, .80f),
+                ambientEquatorColor = new Color(.46f, .50f, .54f), ambientGroundColor = new Color(.38f, .40f, .43f),
+                reflectionIntensity = .65f,
+                // Distance haze separates the far skyline while leaving the first 100m legible.
+                skyColor = skyColor, fogColor = new Color(.69f, .78f, .86f), fogDensity = .00155f };
         }
 
         public int HashCode() {
@@ -167,10 +174,21 @@ namespace StarRacingPrototype {
                 value = value * 31 + Mathf.RoundToInt(ambientColor.r * 1000);
                 value = value * 31 + Mathf.RoundToInt(ambientColor.g * 1000);
                 value = value * 31 + Mathf.RoundToInt(ambientColor.b * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientEquatorColor.r * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientEquatorColor.g * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientEquatorColor.b * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientGroundColor.r * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientGroundColor.g * 1000);
+                value = value * 31 + Mathf.RoundToInt(ambientGroundColor.b * 1000);
+                value = value * 31 + Mathf.RoundToInt(reflectionIntensity * 1000);
+                value = value * 31 + Mathf.RoundToInt(sunIntensity * 1000);
                 value = value * 31 + Mathf.RoundToInt(skyColor.r * 1000);
                 value = value * 31 + Mathf.RoundToInt(skyColor.g * 1000);
                 value = value * 31 + Mathf.RoundToInt(skyColor.b * 1000);
                 value = value * 31 + Mathf.RoundToInt(fogDensity * 1000000);
+                value = value * 31 + Mathf.RoundToInt(fogColor.r * 1000);
+                value = value * 31 + Mathf.RoundToInt(fogColor.g * 1000);
+                value = value * 31 + Mathf.RoundToInt(fogColor.b * 1000);
                 return value;
             }
         }

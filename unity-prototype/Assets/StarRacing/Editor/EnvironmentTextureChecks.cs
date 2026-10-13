@@ -12,6 +12,20 @@ namespace StarRacingPrototype {
         public static void BuildCheckedMac() { Run(); PrototypeBuilder.BuildMac(); }
 
         public static void Run() {
+            foreach (var surface in new[] { "RoadBlend", "RailBlend" }) {
+                foreach (var suffix in new[] { "Finish", "Normal" }) {
+                    var map = Resources.Load<Texture2D>("Environment/Textures/" + surface + suffix);
+                    Check(map != null, "missing finish map " + surface + suffix);
+                    var importer = (TextureImporter)AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(map));
+                    Check(!importer.sRGBTexture && !importer.isReadable && importer.mipmapEnabled &&
+                        importer.wrapMode == TextureWrapMode.Repeat && importer.anisoLevel == 16, "data map import " + map.name);
+                    Check(surface == "RoadBlend" ? map.width == 512 && map.height == 4096 :
+                        map.width == 4096 && map.height == 128, "finish map budget " + map.name);
+                    Check(suffix == "Normal" ? importer.textureType == TextureImporterType.NormalMap :
+                        importer.textureType == TextureImporterType.Default && importer.alphaSource == TextureImporterAlphaSource.FromInput &&
+                        !importer.alphaIsTransparency, "normal/packed alpha contract " + map.name);
+                }
+            }
             foreach (var name in new[] { "Road", "Hull", "Facade", "RoadCeramic", "RoadPanels", "RoadRibbed", "RailCeramic", "RailPanels", "RailRibbed", "RoadBlend", "RailBlend" }) {
                 var texture = Resources.Load<Texture2D>("Environment/Textures/" + name);
                 Check(texture != null, "missing " + name);
@@ -69,6 +83,15 @@ namespace StarRacingPrototype {
                                 roadMaterial != railMaterial && roadMaterial.mainTexture != railMaterial.mainTexture,
                                 "road and wall must use independent materials/textures");
                             Check(renderRoad.subMeshCount == 1, "road draw pass proliferation");
+                            foreach (var material in new[] { roadMaterial, railMaterial }) {
+                                Check(material.IsKeywordEnabled("_NORMALMAP") && material.IsKeywordEnabled("_METALLICSPECGLOSSMAP"), "PBR keywords");
+                                Check(material.GetTexture("_BumpMap") == Resources.Load<Texture2D>("Environment/Textures/" + material.mainTexture.name + "Normal") &&
+                                    material.GetTexture("_MetallicGlossMap") == Resources.Load<Texture2D>("Environment/Textures/" + material.mainTexture.name + "Finish"), "shared PBR binding");
+                            }
+                            foreach (var mesh in new[] { renderRoad, renderRail.sharedMesh }) {
+                                Check(mesh.tangents.Length == mesh.vertexCount && mesh.tangents.All(t =>
+                                    !float.IsNaN(t.x) && !float.IsNaN(t.y) && !float.IsNaN(t.z) && !float.IsNaN(t.w)), "finite complete tangent basis");
+                            }
                             var uv = renderRoad.uv;
                             Check(uv.Length == vertices.Length, "road has no complete UV map");
                             foreach (var face in surface.triangleFaces) {

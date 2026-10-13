@@ -123,6 +123,7 @@ namespace StarRacingPrototype {
             }
             visual.uv = uv;
             visual.triangles = triangles;
+            visual.RecalculateTangents();
             visual.RecalculateBounds(); meshes.Add(visual);
             var material = SurfaceMaterial("RoadBlend", false);
             // UVs retain their certified /8 metre mapping; material ST maps the atlas.
@@ -143,7 +144,14 @@ namespace StarRacingPrototype {
             Color tint = space ? new Color(.76f, .85f, .93f) : new Color(.95f, .97f, 1f);
             // Separate metallic wall finish and neutral tint distinguish housings from the cool floor.
             if (rail) tint = space ? new Color(.88f, .9f, .93f) : new Color(1f, .98f, .93f);
-            return Lit(tint, rail ? .6f : .32f, texture: texture, smoothness: rail ? .32f : .18f);
+            var material = Lit(tint, rail ? .45f : .18f, texture: texture, smoothness: 1f);
+            material.SetTexture("_MetallicGlossMap", Resources.Load<Texture2D>("Environment/Textures/" + texture + "Finish"));
+            material.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/" + texture + "Normal"));
+            material.SetFloat("_BumpScale", .65f);
+            material.EnableKeyword("_METALLICSPECGLOSSMAP");
+            material.EnableKeyword("_NORMALMAP");
+            // Lit shares BaseMap UV/ST for these maps. R metallic and A smoothness are linear.
+            return material;
         }
 
         void BuildRailSurfaces(Transform roadRoot) {
@@ -159,6 +167,7 @@ namespace StarRacingPrototype {
             // Keep the full top in the light cap instead of restarting at the dark base.
             for (int i = 0; i < uv.Length; i++) if (i % 12 >= 8) uv[i].y = 1.3f / 4f * .95f;
             visual.uv = uv;
+            visual.RecalculateTangents();
             var go = new GameObject("Visual rail surfaces"); go.transform.SetParent(root.transform, false);
             go.AddComponent<MeshFilter>().sharedMesh = visual;
             var material = SurfaceMaterial("RailBlend", true);
@@ -174,9 +183,9 @@ namespace StarRacingPrototype {
 
         void BuildCity(TrackRoute route) {
             var silver = Lit(new Color(.85f, .91f, .95f), .48f);
-            var facade = Lit(new Color(.86f, .94f, 1f), .35f, false, "Facade", .55f);
-            var blue = Lit(new Color(.65f, .8f, .95f), .35f, false, "Facade", .55f);
-            var dark = Lit(new Color(.6f, .73f, .84f), .35f, false, "Facade", .55f);
+            var facade = Lit(new Color(.86f, .94f, 1f), .22f, false, "Facade", .38f);
+            var blue = Lit(new Color(.65f, .8f, .95f), .22f, false, "Facade", .38f);
+            var dark = Lit(new Color(.6f, .73f, .84f), .22f, false, "Facade", .38f);
             var teal = Lit(new Color(.12f, .86f, .8f), .05f, true);
             var amber = Lit(new Color(1, .65f, .24f), .05f, true);
             for (int i = 0; i < Plan.towers.Count; i++) {

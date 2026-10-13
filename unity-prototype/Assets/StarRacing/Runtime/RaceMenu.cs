@@ -186,21 +186,30 @@ namespace StarRacingPrototype {
   public void DrawFps(){if(showFps)Skin.Text(new Rect(1450,870,110,24),fps+" FPS",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);}
   void DrawMain(){
    Skin.Brand(new Rect(68,78,800,112),76);
-   Skin.Panel(new Rect(56,245,690,590),.88f);
+   Skin.Panel(new Rect(56,245,690,610),.88f);
    Button("local",new Rect(80,269,642,86),"Игра на одном экране   →",()=>Open(RaceMenuScreen.LocalSetup,activatingPad),true, true,28);
    DisabledMenuButton("network",new Rect(80,371,642,90),"Сетевая игра");
    Button("settings",new Rect(80,477,642,80),"Настройки",()=>Open(RaceMenuScreen.Settings),false,true,26);
    var updater=Distribution.DesktopUpdater.Instance;
-   string updateLabel=updater==null?"Обновления доступны в установленной игре":updater.Staged?"Обновление готово · перезапустите игру":updater.Available?"Обновить до "+updater.NewVersion:"Проверить обновления";
-   Button("updates",new Rect(80,573,642,72),updateLabel,()=>{if(updater==null)return;if(updater.Staged)updater.InstallAndRestart();else if(updater.Available)_=updater.Download();else _=updater.Check();},false,updater==null||(!updater.Busy&&updater.CanUpdate),22);
-   DisabledMenuButton("lab",new Rect(80,661,642,64),"Лаборатория геймдизайна");
-   CloudlineSkin.Box(new Rect(80,707,642,1),new Color(.74f,.8f,.89f),0);
-   Button("quit",new Rect(80,738,642,72),"Выход",()=>{Selected.Save();Application.Quit();},false,true,26);
+   string updateLabel=updater==null?"Обновления доступны в установленной игре":updater.ButtonLabel;
+   Button("updates",new Rect(80,573,642,60),updateLabel,()=>{if(updater==null)return;if(updater.Staged)updater.InstallAndRestart();else if(updater.Available)_=updater.Download();else _=updater.Check();},false,updater!=null&&!updater.Busy&&!updater.StartupApplying&&updater.CanUpdate,22);
+   if(updater!=null){
+    Skin.Text(new Rect(80,637,updater.Downloading?490:642,40),updater.VisibleStatus,15,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
+    if(updater.Downloading){
+     Button("cancel-update",new Rect(590,641,132,34),"Отменить",updater.Cancel,false,updater.Progress<100,16);
+     CloudlineSkin.Box(new Rect(80,681,642,5),new Color(.74f,.8f,.89f,.25f),2);
+     CloudlineSkin.Box(new Rect(80,681,642*updater.Progress/100f,5),CloudlineSkin.Blue,2);
+    }
+   }
+   DisabledMenuButton("lab",new Rect(80,695,642,58),"Лаборатория геймдизайна");
+   CloudlineSkin.Box(new Rect(80,763,642,1),new Color(.74f,.8f,.89f),0);
+   Button("quit",new Rect(80,779,642,56),"Выход",()=>{Selected.Save();Application.Quit();},false,true,26);
   }
   void DisabledMenuButton(string id,Rect rect,string title){
    Button(id,rect,"",()=>{},false,false);
-   Skin.Text(new Rect(rect.x+20,rect.y+8,rect.width-40,40),title,25,true,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
-   Skin.Text(new Rect(rect.x+20,rect.y+49,rect.width-40,30),"Пока недоступна",16,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
+   bool compact=rect.height<80;
+   Skin.Text(new Rect(rect.x+20,rect.y+(compact?4:8),rect.width-40,compact?30:40),title,compact?22:25,true,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
+   Skin.Text(new Rect(rect.x+20,rect.y+(compact?32:49),rect.width-40,compact?22:30),"Пока недоступна",16,false,CloudlineSkin.Muted,TextAnchor.MiddleCenter);
   }
   void Header(string title){Button("back",new Rect(56,36,240,54),"‹  Главное меню",()=>Open(RaceMenuScreen.Main),false,true,21);Skin.Brand(new Rect(1170,34,374,60),33);Skin.Text(new Rect(56,111,1430,75),title,48,true);}
   void DrawSetup(){
@@ -221,7 +230,6 @@ namespace StarRacingPrototype {
    Skin.Panel(new Rect(56,352,704,448));
    Skin.Text(new Rect(84,371,470,32),"Участников всего",22,true);
    for(int i=0;i<LocalRaceConfig.ParticipantCounts.Length;i++){int count=LocalRaceConfig.ParticipantCounts[i];Button("count-"+count,new Rect(84+i*161,411,149,46),count.ToString(),()=>Change(()=>Selected.entrants=count),Selected.entrants==count);}
-   Toggle("handicap",new Rect(84,475,648,46),"Высокая сложность ИИ",Selected.handicap,()=>Change(()=>Selected.handicap=!Selected.handicap));
    Dropdown("theme",new Rect(84,534,648,46),"Тема трассы",LocalRaceConfig.ThemeNames,Array.IndexOf(LocalRaceConfig.ThemeIds,Selected.theme),index=>Change(()=>Selected.theme=LocalRaceConfig.ThemeIds[index]));
    Dropdown("rails",new Rect(84,593,648,46),"Ограждения",LocalRaceConfig.RailNames,Array.IndexOf(LocalRaceConfig.RailIds,Selected.rails),index=>Change(()=>Selected.rails=LocalRaceConfig.RailIds[index]));
    Toggle("jumps",new Rect(84,652,648,46),"Трамплины и пропасти",Selected.jumps,()=>Change(()=>Selected.jumps=!Selected.jumps));
@@ -256,9 +264,10 @@ namespace StarRacingPrototype {
    Toggle("fullscreen",new Rect(88,288,634,44),"Полный экран",Display.fullscreen,()=>{Display.fullscreen=!Display.fullscreen;ApplyDisplay();});
    var labels=new string[displayOptions.Length];labels[0]="Авто ("+nativeSize.x+" × "+nativeSize.y+")";for(int i=1;i<labels.Length;i++)labels[i]=displayOptions[i].x+" × "+displayOptions[i].y;
    Dropdown("resolution",new Rect(88,341,634,44),"Разрешение",labels,Mathf.Max(0,Display.Selected(displayOptions)),index=>{Display.width=displayOptions[index].x;Display.height=displayOptions[index].y;ApplyDisplay();});
-   Skin.Text(new Rect(88,404,500,40),"Звук",28,true);DrawAudio(new Rect(88,454,634,256));
-   Toggle("fps",new Rect(88,733,634,44),"Показывать FPS",showFps,()=>{showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();});
-   Toggle("nitro-blur",new Rect(88,789,634,44),"Размытие на нитро",NitroBlurSettings.Enabled,()=>NitroBlurSettings.Enabled=!NitroBlurSettings.Enabled);
+   Toggle("vsync",new Rect(88,394,634,44),"Вертикальная синхронизация",Display.vSync,()=>{Display.vSync=!Display.vSync;ApplyDisplay();});
+   Skin.Text(new Rect(88,445,500,40),"Звук",28,true);DrawAudio(new Rect(88,493,634,256));
+   Toggle("fps",new Rect(88,755,634,44),"Показывать FPS",showFps,()=>{showFps=!showFps;PlayerPrefs.SetInt("StarRacing.ShowFps",showFps?1:0);PlayerPrefs.Save();});
+   Toggle("nitro-blur",new Rect(88,805,634,44),"Размытие на нитро",NitroBlurSettings.Enabled,()=>NitroBlurSettings.Enabled=!NitroBlurSettings.Enabled);
    var guide=controlPage==0?Skin.KeyboardGuide:Skin.GamepadGuide;
    if(guide!=null)GUI.DrawTexture(new Rect(792,231,744,560),guide,ScaleMode.ScaleToFit);
    Button("controls-prev",new Rect(1040,814,60,48),"‹",()=>controlPage=1-controlPage,false,true,30);

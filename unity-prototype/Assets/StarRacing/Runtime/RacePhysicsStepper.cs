@@ -59,7 +59,9 @@ namespace StarRacingPrototype
                 var pair=pairs[index];
                 bool first=roadProtected.TryGetValue(pair.bodyInstanceID,out var firstNormal);
                 bool second=roadProtected.TryGetValue(pair.otherBodyInstanceID,out var secondNormal);
-                bool carPair=contactVehicles.ContainsKey(pair.bodyInstanceID)&&contactVehicles.ContainsKey(pair.otherBodyInstanceID);
+                ContactVehicle secondContact=default;
+                bool carPair=contactVehicles.TryGetValue(pair.bodyInstanceID,out var firstContact) &&
+                    contactVehicles.TryGetValue(pair.otherBodyInstanceID,out secondContact);
                 // Scale only contact-induced rotation. Linear impulses still stop a
                 // direct hit; steering, suspension and jump torques retain inertia.
                 if((carPair && (!first || !second || Vector3.Dot(firstNormal,secondNormal)>.7f)) ||
@@ -69,7 +71,7 @@ namespace StarRacingPrototype
                     if(second)stableMass.otherInverseInertiaScale=0;
                     pair.massProperties=stableMass;
                 }
-                if(!contactVehicles.TryGetValue(pair.bodyInstanceID,out var firstContact) || !contactVehicles.TryGetValue(pair.otherBodyInstanceID,out var secondContact))continue;
+                if(!carPair)continue;
                 Vector3 forward=pair.rotation*Vector3.forward,otherForward=pair.otherRotation*Vector3.forward;
                 if(Vector3.Dot(forward,otherForward)<.8f)continue;
                 Vector3 delta=pair.otherPosition-pair.position;
@@ -132,8 +134,15 @@ namespace StarRacingPrototype
                     contactVehicles.Add(car.Body.GetInstanceID(),new ContactVehicle(car));
                     // Inventory only live barriers from these cars' current track builds.
                     // No retained collider IDs survive rebuilds/domain reloads.
-                    if(car.SourceTrack!=null&&barrierTracks.Add(car.SourceTrack.GetInstanceID()))foreach(var collider in car.SourceTrack.BarrierColliders)
-                        if(collider!=null&&collider.enabled&&collider.gameObject.activeInHierarchy)barriers.Add(collider.GetInstanceID());
+                    if(car.SourceTrack!=null&&barrierTracks.Add(car.SourceTrack.GetInstanceID())) {
+                        // Indexed traversal avoids an interface enumerator in this
+                        // 100 Hz path; continue filtering live colliders every tick.
+                        var colliders=car.SourceTrack.BarrierColliders;
+                        for(int barrierIndex=0;barrierIndex<colliders.Count;barrierIndex++) {
+                            var collider=colliders[barrierIndex];
+                            if(collider!=null&&collider.enabled&&collider.gameObject.activeInHierarchy)barriers.Add(collider.GetInstanceID());
+                        }
+                    }
                     if(car.ProtectRoadContacts)roadProtected.Add(car.Body.GetInstanceID(),car.ProtectedRoadNormal);
                 }
             }

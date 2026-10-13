@@ -79,7 +79,7 @@ def build_players(version,track,evidence,unsigned_production=False):
     try:
         for platform,method in [('mac','BuildMac'),('windows','BuildWindows')]:
             log=evidence/('build-'+platform+'.log')
-            run([ROOT/'tools/unity.sh','shared','-batchmode','-nographics','-disableManagedDebugger','-quit','-executeMethod','StarRacingPrototype.PrototypeBuilder.'+method,'-logFile',log],env=env)
+            run([ROOT/'tools/unity.sh','shared','-noaudio','-batchmode','-nographics','-disableManagedDebugger','-quit','-executeMethod','StarRacingPrototype.PrototypeBuilder.'+method,'-logFile',log],env=env)
             if 'PROTOTYPE_BUILD_OK' not in log.read_text():raise ValueError('Native build receipt missing')
     finally:
         for p,data in original.items():p.write_bytes(data)
@@ -90,7 +90,7 @@ def smoke_macos(folder,evidence):
         run(['ditto','-x','-k',portable,tmp])
         app=Path(tmp)/'Star Racing.app'
         env=dict(os.environ,UNITY_RUN_MODE='shared')
-        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--muted','--cloudline-proof-dir',proof,'-logFile',proof/'player.log'],env=env)
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--muted','--cloudline-proof-dir',proof,'-logFile',proof/'player.log'],env=env)
         result=json.loads((proof/'success.json').read_text())
         if result.get('success') is not True or result.get('natural_ai_finish') is not True:raise ValueError('Packaged macOS smoke failed')
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')

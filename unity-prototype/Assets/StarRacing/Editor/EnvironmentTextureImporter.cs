@@ -7,17 +7,20 @@ namespace StarRacingPrototype {
             if (!assetPath.StartsWith("Assets/StarRacing/Resources/Environment/Textures/") ||
                 !assetPath.EndsWith(".png")) return;
             var importer = (TextureImporter)assetImporter;
-            importer.textureType = TextureImporterType.Default;
-            importer.sRGBTexture = true;
-            importer.alphaSource = TextureImporterAlphaSource.None;
+            bool normal = assetPath.EndsWith("Normal.png");
+            bool finish = assetPath.EndsWith("Finish.png");
+            importer.textureType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            importer.sRGBTexture = !normal && !finish;
+            importer.alphaSource = finish ? TextureImporterAlphaSource.FromInput : TextureImporterAlphaSource.None;
+            importer.alphaIsTransparency = false;
             importer.wrapMode = UnityEngine.TextureWrapMode.Repeat;
             importer.filterMode = UnityEngine.FilterMode.Trilinear;
             // Long cyclic blend atlases need metre-scale texel density at grazing angles.
-            bool blendAtlas = assetPath.EndsWith("/RoadBlend.png") || assetPath.EndsWith("/RailBlend.png");
+            bool blendAtlas = assetPath.Contains("/RoadBlend") || assetPath.Contains("/RailBlend");
             importer.anisoLevel = blendAtlas ? 16 : 8;
             importer.mipmapEnabled = true;
             importer.isReadable = false;
-            importer.maxTextureSize = blendAtlas ? 8192 : 1024;
+            importer.maxTextureSize = normal || finish ? 4096 : blendAtlas ? 8192 : 1024;
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
         }
     }

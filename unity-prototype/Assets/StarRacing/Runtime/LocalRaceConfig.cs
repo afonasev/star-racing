@@ -36,7 +36,7 @@ namespace StarRacingPrototype {
    return error.Length==0;
   }
   public static LocalRaceConfig Normalize(LocalRaceConfig config){
-   config=config??new LocalRaceConfig();config.version=1;
+   config=config??new LocalRaceConfig();config.version=1;config.handicap=false;
    config.humans=Mathf.Clamp(config.humans,0,4);
    if(config.devices==null||config.devices.Length!=4)config.devices=new[]{-2,-1,0,1};
    for(int i=0;i<4;i++){if(config.devices[i]<-2)config.devices[i]=i-2;

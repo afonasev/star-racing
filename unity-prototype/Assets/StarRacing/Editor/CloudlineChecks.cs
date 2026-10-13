@@ -7,7 +7,7 @@ namespace StarRacingPrototype {
  public static class CloudlineChecks {
   static int assertions;
   static void Check(bool condition,string message){assertions++;if(!condition)throw new Exception("CLOUDLINE: "+message);}
-  public static void Run(){
+  public static void RunConfigurationChecks(){
    assertions=0;
    var bad=LocalRaceConfig.Normalize(new LocalRaceConfig{entrants=2,seed="bad",theme="missing",rails="missing",humans=7,devices=new[]{2,2}});
    Check(bad.entrants==8&&bad.Seed==77&&bad.theme=="random"&&bad.rails=="normal"&&bad.humans==4,"legacy / invalid configuration migration");
@@ -27,10 +27,14 @@ namespace StarRacingPrototype {
    var empty=new LocalRaceConfig{humans=0};Check(empty.Validate(out _)&&!LocalInputRouter.CanBind(empty,out _),"empty draft must save but not start");
    bool existing=PlayerPrefs.HasKey(LocalRaceConfig.PreferenceKey);string previous=PlayerPrefs.GetString(LocalRaceConfig.PreferenceKey);
    try{
-    config=new LocalRaceConfig{entrants=32,humans=4,seed="4294967295",theme="cloud-city",rails="full",jumps=true,handicap=true,devices=new[]{0,1,2,3}};config.Save();
+    config=new LocalRaceConfig{entrants=32,humans=4,seed="4294967295",theme="cloud-city",rails="full",jumps=true,handicap=true,devices=new[]{0,1,2,3}};config=LocalRaceConfig.Normalize(config);config.Save();
     var restored=LocalRaceConfig.Load();Check(JsonUtility.ToJson(config)==JsonUtility.ToJson(restored),"roundtrip loses configuration");
     var copy=config.Copy();copy.seed="12";Check(config.seed=="4294967295","active snapshot aliases selected settings");
    }finally{if(existing)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,previous);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();}
+   Debug.Log("CLOUDLINE_CONFIG_CHECKS_OK assertions="+assertions);
+  }
+  public static void Run(){
+   RunConfigurationChecks();var config=new LocalRaceConfig();
    var owned=new Gamepad[4];Keyboard keyboard=null;
    try{
     keyboard=InputSystem.AddDevice<Keyboard>();

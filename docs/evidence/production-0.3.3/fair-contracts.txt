@@ -1,0 +1,1 @@
+FAIR_AI_CONTRACTS_OK assertions=2220

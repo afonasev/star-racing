@@ -18,8 +18,10 @@ namespace StarRacingPrototype {
                 fill.shadows = LightShadows.None;
             }
             RenderSettings.sun = sun;
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = profile.ambientColor;
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = profile.ambientColor;
+            RenderSettings.ambientEquatorColor = profile.ambientEquatorColor;
+            RenderSettings.ambientGroundColor = profile.ambientGroundColor;
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogDensity = profile.fogDensity;

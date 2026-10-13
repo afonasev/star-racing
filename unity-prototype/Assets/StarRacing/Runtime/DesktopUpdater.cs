@@ -27,6 +27,8 @@ namespace StarRacingPrototype.Distribution {
   readonly string track=DesktopReleaseChannel.Track;
   int progress;
   public int Progress=>Volatile.Read(ref progress);
+  public string ButtonLabel=>StartupApplying?"Установка обновления…":Downloading?"Скачивание · "+Progress+"%":Busy?"Проверка обновлений…":Staged?"Установить и перезапустить":Available?"Обновить до "+NewVersion:"Проверить обновления";
+  public string VisibleStatus=>Downloading&&Progress<100?Status+" · "+Progress+"% из "+SizeMB.ToString("F1")+" МБ":Status;
   UpdateManager manager;AuthenticatedUpdateSource source;UpdateInfo update;CancellationTokenSource download;
   string receipt,channel,appId;long minimumSequence;
   [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -77,45 +79,55 @@ namespace StarRacingPrototype.Distribution {
   }
   public async Task Download(){
    if(!CanUpdate||Busy||!Available||Staged||update==null)return;
-   Busy=true;Interlocked.Exchange(ref progress,0);Status="Загрузка обновления";download=new CancellationTokenSource();
+   Busy=true;Interlocked.Exchange(ref progress,0);Status="Подключение к серверу…";download=new CancellationTokenSource();
+   var cancellation=download;
    try{
+    Debug.Log("DESKTOP_UPDATE_DOWNLOAD_BEGIN version="+NewVersion);
     source.DownloadConsent=true;
     string cached=PackagePath(source.Release);
     if(File.Exists(cached)){
-     try{ReleaseAuthentication.VerifyFile(source.Release,cached);}catch(InvalidDataException){File.Delete(cached);}
+     Status="Проверка скачанного пакета…";
+     try{await Task.Run(()=>ReleaseAuthentication.VerifyFile(source.Release,cached));}catch(InvalidDataException){File.Delete(cached);}
     }
-    await manager.DownloadUpdatesAsync(update,value=>Interlocked.Exchange(ref progress,value),download.Token);
-    ReleaseAuthentication.VerifyFile(source.Release,PackagePath(source.Release));
+    cancellation.Token.ThrowIfCancellationRequested();Status="Скачивание обновления";
+    await manager.DownloadUpdatesAsync(update,value=>Interlocked.Exchange(ref progress,Math.Max(0,Math.Min(100,value))),cancellation.Token);
+    cancellation.Token.ThrowIfCancellationRequested();Interlocked.Exchange(ref progress,100);Status="Проверка обновления…";
+    await Task.Run(()=>ReleaseAuthentication.VerifyFile(source.Release,PackagePath(source.Release)));
+    cancellation.Token.ThrowIfCancellationRequested();
     UpdateAttemptJournal.Save(receipt,source.Envelope);
     if(File.Exists(journal))File.Delete(journal);
     Debug.Log("DESKTOP_UPDATE_STAGED version="+NewVersion);
     Staged=true;Status="Готово. Перезапустите игру или установите при следующем запуске.";
    }catch(OperationCanceledException){Status="Загрузка отменена. Текущая версия доступна.";}
    catch(Exception e){Status="Не удалось загрузить обновление: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_DOWNLOAD "+e);}
-   finally{source.DownloadConsent=false;Busy=false;download.Dispose();download=null;}
+   finally{source.DownloadConsent=false;Busy=false;cancellation.Dispose();download=null;}
   }
   public void Cancel(){download?.Cancel();}
   public void InstallAndRestart(){Apply(false);}
   void TryApplyAtStartup(){Apply(true);}
   void Apply(bool startup){
-   if(!Staged||Busy||!CanUpdate||(!startup&&!GetMenuState()))return;
+   if(!Staged||Busy||StartupApplying||!CanUpdate)return;
+   if(!startup&&!GetMenuState()){Status="Вернитесь в главное меню для установки обновления";return;}
    try{
     // A separate receipt is authenticated again immediately before activation.
-    var release=ReleaseAuthentication.Verify(File.ReadAllText(receipt),appId,channel,minimumSequence,track);
-    if(release.version!=NewVersion)throw new InvalidDataException("Согласованная версия изменилась");
+    var expectedVersion=NewVersion;
+    var envelope=File.ReadAllText(receipt);
+    source.MinimumSequence=minimumSequence;
+    var release=source.VerifyDescriptor(envelope);
+    if(release.version!=expectedVersion)throw new InvalidDataException("Согласованная версия изменилась");
     ReleaseAuthentication.VerifyFile(release,PackagePath(release));
     using(var mutex=new Mutex(false,"StarRacing-Apply-"+channel+"-"+track)){
      if(!mutex.WaitOne(0)){Status="Обновление применяется другой копией игры";return;}
      try{
-      if(startup&&UpdateAttemptJournal.AlreadyAttempted(journal,source.Envelope,InstalledVersion,release.version)){Status="Предыдущая установка не завершилась. Можно играть или повторить вручную.";return;}
+      if(startup&&UpdateAttemptJournal.AlreadyAttempted(journal,envelope,InstalledVersion,release.version)){Status="Предыдущая установка не завершилась. Можно играть или повторить вручную.";return;}
       if(Application.platform==RuntimePlatform.OSXPlayer){
        // User-scope package supports atomic bundle swap; never invoke non-atomic elevated fallback.
        var parent=Directory.GetParent(Application.dataPath)?.Parent?.FullName;
        var probe=Path.Combine(parent,".star-racing-update-"+Guid.NewGuid().ToString("N"));
        try{using(File.Create(probe)){}File.Delete(probe);}catch{Status="Для безопасного обновления переместите игру в ~/Applications. Текущая игра доступна.";return;}
       }
-      UpdateAttemptJournal.Begin(journal,source.Envelope,InstalledVersion,release.version);
-      PlayerPrefs.Save();StartupApplying=true;
+      UpdateAttemptJournal.Begin(journal,envelope,InstalledVersion,release.version);
+      PlayerPrefs.Save();StartupApplying=true;Status="Установка обновления. Игра перезапустится…";
       var args=Environment.GetCommandLineArgs().Skip(1).Where(x=>!x.StartsWith("--star-racing-apply-attempt=")).Concat(new[]{"--star-racing-apply-attempt="+release.version}).ToArray();
       Debug.Log("DESKTOP_UPDATE_APPLY_WAIT from="+InstalledVersion+" target="+release.version+" startup="+startup);
       manager.WaitExitThenApplyUpdates(release.Asset,false,true,args);
@@ -125,7 +137,7 @@ namespace StarRacingPrototype.Distribution {
    }catch(Exception e){StartupApplying=false;Status="Обновление не установлено: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_APPLY "+e);}
   }
   static bool GetMenuState(){var director=FindFirstObjectByType<RaceDirector>();return director!=null&&director.InPreparationMenu;}
-  static string SafeError(Exception error)=>error is IOException||error is InvalidDataException||error is CryptographicException?error.Message:"Проверьте подключение и свободное место";
+  static string SafeError(Exception error)=>error is UnauthorizedAccessException?"Нет доступа к папке обновления":error is IOException||error is InvalidDataException||error is CryptographicException||error is TimeoutException?error.Message:"Проверьте подключение и свободное место";
   void OnDestroy(){download?.Cancel();source?.Dispose();if(Instance==this)Instance=null;}
  }
 }

@@ -60,7 +60,7 @@ namespace StarRacingPrototype
         Vector3 airSteeringNormal;float preparedAirSteer;bool airSteeringBlocked;
         public long AirSteeringSteps {get;private set;}
         public bool AirSteeringActive=>Mathf.Abs(preparedAirSteer)>=AirSteeringForces.Deadzone;
-        internal void ApplyPreparedForces(float step){preparedForces.Apply(Body,step);ApplyRoadEdgeForces(step);if(AirSteeringActive){AirSteeringForces.Apply(Body,airSteeringNormal,preparedAirSteer,step);AirSteeringSteps++;}}
+        internal void ApplyPreparedForces(float step){preparedForces.Apply(Body,step);if(AirSteeringActive){AirSteeringForces.Apply(Body,airSteeringNormal,preparedAirSteer,step);AirSteeringSteps++;}}
         void CancelAirSteering(){preparedAirSteer=0;if(activeJump!=null)airSteeringBlocked=true;}
         internal void ClearPreparedForces(){preparedForces=default;preparedHandlingCorrection=preparedHandlingAngular=Vector3.zero;preparedAirSteer=0;preparedContactYawTorque=preparedContactSeparation=Vector3.zero;}
         void AddForce(Vector3 value,ForceMode mode)=>preparedForces.AddForce(value,mode);
@@ -81,7 +81,7 @@ namespace StarRacingPrototype
             new Vector3(-TrackWidth * .5f, 0f, -Wheelbase * .5f), new Vector3(TrackWidth * .5f, 0f, -Wheelbase * .5f)
         };
         readonly List<Transform> wheelVisuals = new List<Transform>(4);
-        readonly List<Collider> ignoredCars = new List<Collider>();
+        readonly List<Collider> ignoredCars = new List<Collider>(64);
         readonly RecoveryPolicy recovery = new RecoveryPolicy();
         readonly List<RecoveryEvent> recoveryEvents = new List<RecoveryEvent>(2);
         long recoveryTick, recoverySequence;
@@ -121,7 +121,7 @@ namespace StarRacingPrototype
         BoxCollider chassis;
         float sideContactNormal; int sideContactSamples, sideContactRevision; long sideContactInterval=-2;
         internal const float WeakContactRelativeSpeed=12f;
-        internal bool RearContactSteeringRequested => humanDriver && HandlingContinuous && activeJump==null
+        internal bool RearContactSteeringRequested => HandlingContinuous && activeJump==null
             && Mathf.Abs(input.steer)>=.01f && strongContacts.Count==0;
         float separationDirection,separationRemaining,contactYawRemaining;
         Vector3 preparedContactYawTorque,preparedContactSeparation;
@@ -157,37 +157,9 @@ namespace StarRacingPrototype
         Procedural.Jump lastRampSupport, activeJump;
         Vector3 launchNormal;
         bool roadBelow, unlandedJump, roadProtection;
-        float protectedLeft,protectedRight;
-        Vector3 protectedOrigin,protectedNormal,protectedRightAxis;
+        Vector3 protectedNormal;
         internal bool ProtectRoadContacts=>roadProtection;
         internal Vector3 ProtectedRoadNormal=>protectedNormal;
-        // Braking acts before loss of the supported top surface, not as a rescue
-        // after an off-road fall. Re-evaluate native velocity each CCD substep.
-        void ApplyRoadEdgeForces(float step) {
-            if(!roadProtection || onRampSupport || Body.isKinematic)return;
-            var offset=Body.position-protectedOrigin;
-            float lane=Vector3.Dot(offset,protectedRightAxis);
-            float height=Vector3.Dot(offset,protectedNormal);
-            if(lane<protectedLeft || lane>protectedRight || height<-.05f || height>RestBodyHeight+1.5f)return;
-            var forward=Body.rotation*Vector3.forward;
-            float extent=Mathf.Abs(Vector3.Dot(forward,protectedRightAxis))*VehicleGeometry.HalfLength+
-                Mathf.Abs(Vector3.Dot(forward,Frame.tangent))*VehicleGeometry.HalfWidth;
-            // AddForce queues delta-v until Simulate. Include every already queued
-            // controller force when predicting this native step's outward speed.
-            var predicted=Body.linearVelocity+(preparedForces.force/Body.mass+preparedForces.acceleration)*step;
-            float lateral=Vector3.Dot(predicted,protectedRightAxis);
-            float left=lane-protectedLeft-extent-.12f,right=protectedRight-lane-extent-.12f;
-            float allowedRight=EdgeSpeed(right,step),allowedLeft=EdgeSpeed(left,step);
-            float target=Mathf.Clamp(lateral,-allowedLeft,allowedRight);
-            float correction=Mathf.Clamp(target-lateral,-1000f*step,1000f*step);
-            if(correction!=0)Body.AddForce(protectedRightAxis*correction,ForceMode.VelocityChange);
-        }
-        static float EdgeSpeed(float clearance,float step) {
-            // Include a geometric one-step bound, so a held outward command cannot
-            // creep across the edge after its braking distance reaches zero.
-            if(clearance<=0)return -Mathf.Min(20f,-clearance*30f);
-            return Mathf.Min(clearance/step,Mathf.Sqrt(2*1000f*clearance));
-        }
         float rampContactTime, flightStarted;
         public string ActiveJumpId => activeJump?.id ?? "";
         void EndJump(string reason) {activeJump=null;preparedAirSteer=0;airSteeringBlocked=false;}
@@ -221,7 +193,6 @@ namespace StarRacingPrototype
             AddForce(GravityAcceleration, ForceMode.Acceleration);
         }
 
-        bool humanDriver;
         readonly HumanHandlingState handling = new HumanHandlingState();
         readonly HumanHandlingReconciliation reconciliation = new HumanHandlingReconciliation();
         long physicsInterval, lastHandlingContactInterval=-1;
@@ -243,7 +214,7 @@ namespace StarRacingPrototype
         public void Initialize(TrackBuilder sourceTrack, int seat, Color color, ReleaseBalance balance = null, bool human = true)
         {
             track = sourceTrack;
-            Seat = seat; humanDriver=human;
+            Seat = seat;
             if(balance!=null)Drive=new DrivingBalance(balance);
             EnsurePhysics();
             CreateVisuals(color, human);
@@ -451,13 +422,11 @@ namespace StarRacingPrototype
             HandlingContinuous=grounded && wasGrounded && routeNear && !Frame.gap && Frame.normal.sqrMagnitude>0 && Frame.tangent.sqrMagnitude>0;
             HandlingContacted=lastHandlingContactInterval==physicsInterval-1;
             HandlingObserved=HumanHandlingForces.Observe(Body.linearVelocity,Body.rotation*Vector3.forward,Body.angularVelocity,Frame);
-            if(humanDriver) reconciliation.Observe(handling,HandlingObserved,Body.angularVelocity,Frame,physicsInterval,handlingGeneration,PositionRevision,
+            reconciliation.Observe(handling,HandlingObserved,Body.angularVelocity,Frame,physicsInterval,handlingGeneration,PositionRevision,
                 HandlingContinuous,HandlingContacted);
             var driveInput=input;driveInput.throttle=Mathf.Max(driveInput.throttle,pendingThrottle);driveInput.nitro|=pendingNitro;
             pendingThrottle=0;pendingNitro=false;
-            driveAcceleration=Drive==null?0:humanDriver
-                ?Drive.StepHuman(driveInput,(float)HandlingObserved.Speed,dt,raceActive && !FinishedCoasting,grounded && !IsGhosting,place,entrantCount,handling)
-                :Drive.Step(driveInput,Vector3.Dot(Body.linearVelocity,transform.forward),dt,raceActive && !FinishedCoasting,grounded && !IsGhosting,place,entrantCount);
+            driveAcceleration=Drive==null?0:Drive.StepHuman(driveInput,(float)HandlingObserved.Speed,dt,raceActive && !FinishedCoasting,grounded && !IsGhosting,place,entrantCount,handling);
             acceptedBoost|=Drive!=null && Drive.Active;
             if(grounded) EndJump("landing");
             else if(wasGrounded && lastRampSupport!=null && Time.time-rampContactTime<.1f &&
@@ -474,9 +443,9 @@ namespace StarRacingPrototype
             var protectedFrame=track.Route.Evaluate(Distance);
             float protectedLane=Vector3.Dot(Body.position-protectedFrame.position,protectedFrame.right);
             roadProtection=AdditionalMagneticAdhesion && roadBelow && !Frame.gap && activeJump==null && !unlandedJump && !IsGhosting &&
-                track.Route.TryRoadBounds(Distance,protectedLane,out protectedLeft,out protectedRight);
-            protectedOrigin=protectedFrame.position;protectedNormal=protectedFrame.normal;protectedRightAxis=protectedFrame.right;
-            if(humanDriver && activeJump!=null && !grounded && raceActive && !airSteeringBlocked && !IsGhosting && !FinishedCoasting && !recovery.Falling)
+                track.Route.TryRoadBounds(Distance,protectedLane,out _,out _);
+            protectedNormal=protectedFrame.normal;
+            if(activeJump!=null && !grounded && raceActive && !airSteeringBlocked && !IsGhosting && !FinishedCoasting && !recovery.Falling)
                 preparedAirSteer=float.IsNaN(input.steer)?0:Mathf.Clamp(input.steer,-1,1);
             // Contact loss on a crest must not switch off the force that counters
             // centrifugal separation. Authored ramp flight retains its ballistic arc.
@@ -509,10 +478,8 @@ namespace StarRacingPrototype
                 }
                 if(Mathf.Abs(input.steer)>=.01f || input.drift)contactYawRemaining=0;
                 if(separationRemaining>0 && strongContacts.Count==0 && !IsGhosting && activeJump==null && !unlandedJump && !onRampSupport) {
-                    // The AI's four tyre forces damp lateral motion strongly. Open
-                    // the same small clearance without relying on collision spin.
-                    bool neutralAi=!humanDriver&&Mathf.Abs(input.steer)<.01f&&!input.drift;
-                    preparedContactSeparation=Frame.right*((neutralAi?12f:4f)*separationDirection);
+                    // The same contact assistance applies to every driver.
+                    preparedContactSeparation=Frame.right*(4f*separationDirection);
                     AddForce(preparedContactSeparation,ForceMode.Acceleration);
                     // Dissipate contact spin, never command a heading. Steering/drift
                     // retain their complete existing angular command.
@@ -533,7 +500,7 @@ namespace StarRacingPrototype
                 reconciliation.Invalidate("flight");
                 offRouteTime += dt;
             }
-            if(humanDriver) {
+            {
                 var suppression=(!raceActive?DrivingSuppression.Inactive:DrivingSuppression.None)
                     | (FinishedCoasting?DrivingSuppression.Finished:DrivingSuppression.None)
                     | (IsGhosting?DrivingSuppression.Ghost:DrivingSuppression.None)
@@ -557,13 +524,6 @@ namespace StarRacingPrototype
                 }
             }
             AlignToRoad(grounded);
-            if(!humanDriver&&NeutralContactRecovery){
-                var localTorque=Quaternion.Inverse(Body.rotation*Body.inertiaTensorRotation)*preparedForces.torque;
-                var localAcceleration=new Vector3(localTorque.x/Body.inertiaTensor.x,localTorque.y/Body.inertiaTensor.y,localTorque.z/Body.inertiaTensor.z);
-                var torqueAcceleration=Body.rotation*Body.inertiaTensorRotation*localAcceleration;
-                float existing=Vector3.Dot(preparedForces.angularAcceleration+torqueAcceleration,Frame.normal);
-                AddTorque(Frame.normal*((ContactRecoveryYaw()-Vector3.Dot(Body.angularVelocity,Frame.normal))/dt-existing),ForceMode.Acceleration);
-            }
             UpdateWheels();
 
             wasGrounded = grounded;
@@ -695,8 +655,7 @@ namespace StarRacingPrototype
         void ApplyMagnetAndDrive(float dt)
         {
             Vector3 velocity = Body.linearVelocity;
-            float speedAlong = Vector3.Dot(velocity, transform.forward);
-            if(humanDriver && Drive!=null && raceActive && !FinishedCoasting) {
+            if(Drive!=null && raceActive && !FinishedCoasting) {
                 var observed=HandlingObserved;
                 var accelerated=new HandlingObservation(observed.Speed+driveAcceleration*dt,observed.Heading,observed.MotionYaw,observed.YawRate,observed.LateralVelocity);
                 var longStraight=HasLongStraightAhead();
@@ -712,26 +671,6 @@ namespace StarRacingPrototype
                 preparedHandlingCorrection=acceleration-engineAcceleration;preparedHandlingAngular=angularAcceleration;
                 reconciliation.Record(handling,Body.angularVelocity,angularAcceleration,Frame,dt,physicsInterval,handlingGeneration,PositionRevision);
                 AddForce(acceleration,ForceMode.Acceleration);AddTorque(angularAcceleration,ForceMode.Acceleration);
-            }
-            else if(!humanDriver) AddForce(transform.forward * driveAcceleration, ForceMode.Acceleration);
-
-            if(!humanDriver) {
-
-            float steerAngle = input.steer * Mathf.Lerp(25f, 9f, Mathf.InverseLerp(12f, 48f, Mathf.Abs(speedAlong)));
-            float lateralGrip = input.drift ? 3500f : 10500f;
-            for (int side = -1; side <= 1; side += 2)
-            {
-                Vector3 front = transform.TransformPoint(new Vector3(side * TrackWidth * .5f, -.15f, Wheelbase * .5f));
-                Vector3 wheelRight = Quaternion.AngleAxis(steerAngle, transform.up) * transform.right;
-                float lateralSpeed = Vector3.Dot(Body.GetPointVelocity(front), wheelRight);
-                AddForceAtPosition(-wheelRight * Mathf.Clamp(lateralSpeed * lateralGrip, -12000f, 12000f), front, ForceMode.Force);
-            }
-            for (int side = -1; side <= 1; side += 2)
-            {
-                Vector3 rear = transform.TransformPoint(new Vector3(side * TrackWidth * .5f, -.15f, -Wheelbase * .5f));
-                float lateralSpeed = Vector3.Dot(Body.GetPointVelocity(rear), transform.right);
-                AddForceAtPosition(-transform.right * Mathf.Clamp(lateralSpeed * lateralGrip * 1.15f, -14000f, 14000f), rear, ForceMode.Force);
-            }
             }
         }
 
@@ -809,8 +748,7 @@ namespace StarRacingPrototype
             if (other != null && (IsGhosting || IsFalling))
             {
                 Collider otherCollider = collision.collider;
-                Physics.IgnoreCollision(chassis, otherCollider, true);
-                ignoredCars.Add(otherCollider);
+                IgnoreCarCollision(otherCollider);
             }
         }
 
@@ -825,13 +763,23 @@ namespace StarRacingPrototype
 
         void BeginGhosting()
         {
-            RestoreCarCollisions();
-            foreach (MagneticVehicle vehicle in FindObjectsByType<MagneticVehicle>(FindObjectsSortMode.None))
+            // Falling -> respawn extends protection on the same pairs. Keep that
+            // ownership instead of enabling and immediately disabling every pair.
+            var vehicles=RacePhysicsStepper.Vehicles;
+            for(int i=0;i<vehicles.Count;i++)
             {
-                if (vehicle == this || vehicle.chassis == null) continue;
-                Physics.IgnoreCollision(chassis, vehicle.chassis, true);
-                ignoredCars.Add(vehicle.chassis);
+                var vehicle=vehicles[i];
+                if (vehicle == null || vehicle == this || !vehicle.gameObject.activeInHierarchy || vehicle.chassis == null) continue;
+                IgnoreCarCollision(vehicle.chassis);
             }
+        }
+
+        void IgnoreCarCollision(Collider other)
+        {
+            if(ignoredCars.Contains(other))return;
+            // A peer may already own protection of this symmetric PhysX pair.
+            if(!Physics.GetIgnoreCollision(chassis,other))Physics.IgnoreCollision(chassis,other,true);
+            ignoredCars.Add(other);
         }
 
         void OnDisable() { CancelAirSteering();ResetPresentation();ClearSideContacts();ClearPreparedForces();track?.TireMarks?.Break(Seat); }

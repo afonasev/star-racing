@@ -4,10 +4,14 @@ namespace StarRacingPrototype {
  // Resources belong to one prepared environment; activation happens only after race publication.
  public sealed class TrackSky {
   public Material Material {get;private set;}
+  public Cubemap Reflection {get;private set;}
+  readonly float reflectionIntensity;
   Material deckMaterial,mistMaterial;Mesh plane;
   const string Path="Environment/Sky/";
   public TrackSky(EnvironmentPlan plan,TrackRoute route,Transform parent) {
    bool space=plan.theme=="space-station";
+   Reflection=Required<Cubemap>(space?"SpaceReflection":"DaylightReflection");
+   reflectionIntensity=plan.lighting.reflectionIntensity;
    var skyShader=Required<Shader>("TrackSky");
    var texture=Required<Texture2D>(space?plan.SkyPlanetTexture:"CloudSea");
    var deckShader=space?null:Required<Shader>("CloudDeck");
@@ -42,8 +46,20 @@ namespace StarRacingPrototype {
    var go=new GameObject(name);go.transform.SetParent(parent,false);go.transform.position=position;go.transform.localScale=scale;
    go.AddComponent<MeshFilter>().sharedMesh=plane;var renderer=go.AddComponent<MeshRenderer>();renderer.sharedMaterial=material;renderer.shadowCastingMode=ShadowCastingMode.Off;renderer.receiveShadows=false;
   }
-  public void Activate(){RenderSettings.skybox=Material;}
-  public void Clear(){if(RenderSettings.skybox==Material)RenderSettings.skybox=null;Dispose(Material);Dispose(deckMaterial);Dispose(mistMaterial);Dispose(plane);Material=null;}
+  public void Activate(){
+   RenderSettings.skybox=Material;
+   RenderSettings.defaultReflectionMode=DefaultReflectionMode.Custom;
+   RenderSettings.customReflectionTexture=Reflection;
+   RenderSettings.reflectionIntensity=reflectionIntensity;
+  }
+  public void Clear(){
+   // Two prepared environments may share the same Resources cube: the active sky is the owner.
+   if(Material!=null && RenderSettings.skybox==Material){
+    RenderSettings.skybox=null;RenderSettings.customReflectionTexture=null;
+    RenderSettings.defaultReflectionMode=DefaultReflectionMode.Skybox;RenderSettings.reflectionIntensity=1;
+   }
+   Dispose(Material);Dispose(deckMaterial);Dispose(mistMaterial);Dispose(plane);Material=null;Reflection=null;
+  }
   static void Dispose(Object value){if(value==null)return;if(Application.isPlaying)Object.Destroy(value);else Object.DestroyImmediate(value);}
  }
 }

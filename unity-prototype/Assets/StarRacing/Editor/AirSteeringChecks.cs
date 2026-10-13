@@ -15,10 +15,10 @@ namespace StarRacingPrototype {
    try{Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;root=new GameObject("air control lifecycle");var road=new GameObject("road");road.transform.SetParent(root.transform);var track=road.AddComponent<TrackBuilder>();track.Build(new TrackRoute(RoadVolumeChecks.FlatRoad()));var balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config").text);var tick=typeof(MagneticVehicle).GetMethod("FixedUpdate",BindingFlags.NonPublic|BindingFlags.Instance);
     foreach(bool human in new[]{true,false}){var obj=new GameObject("air entrant");obj.transform.SetParent(root.transform);var car=obj.AddComponent<MagneticVehicle>();car.Initialize(track,0,Color.cyan,balance,human);car.ResetAt(100);car.Body.position=car.Frame.position+car.Frame.normal*4;car.Body.linearVelocity=car.Frame.tangent*80;car.transform.position=car.Body.position;Physics.SyncTransforms();
      Set(car,"activeJump",new Procedural.Jump{id="test",rampStartIndex=10,launchIndex=11,landingEndIndex=50,ballisticLandingEndIndex=50});Set(car,"airSteeringNormal",car.Frame.normal);Set(car,"flightStarted",Time.time);car.SetRaceContext(true,1,1,1);car.SetInput(new DrivingInput{steer=.5f});tick.Invoke(car,null);
-     Check(car.AirSteeringActive==human,"human-only arming");RacePhysicsStepper.Simulate(.01f);Check(car.AirSteeringSteps==(human?8:0),"native substep actuation");
+     Check(car.AirSteeringActive,"shared driver arming");RacePhysicsStepper.Simulate(.01f);Check(car.AirSteeringSteps==8,"native substep actuation");
      car.SetInput(default);tick.Invoke(car,null);Check(!car.AirSteeringActive,"release leaves command");long before=car.AirSteeringSteps;RacePhysicsStepper.Simulate(.01f);Check(car.AirSteeringSteps==before,"neutral substep force");
      car.SetInput(new DrivingInput{steer=.5f});tick.Invoke(car,null);car.Hold(true);Check(!car.AirSteeringActive,"hold command");car.Hold(false);tick.Invoke(car,null);Check(!car.AirSteeringActive,"held flight rearmed");car.ResetAt(100);Check(!car.AirSteeringActive&&car.ActiveJumpId=="","reset command");
-     if(human){
+     {
       void Arm(){car.ResetAt(100);car.Body.position=car.Frame.position+car.Frame.normal*4;car.Body.linearVelocity=car.Frame.tangent*80;car.transform.position=car.Body.position;Physics.SyncTransforms();Set(car,"activeJump",new Procedural.Jump{id="lifecycle",landingEndIndex=50,ballisticLandingEndIndex=50});Set(car,"airSteeringNormal",car.Frame.normal);Set(car,"flightStarted",Time.time);car.SetRaceContext(true,1,1,1);car.SetInput(new DrivingInput{steer=.5f});tick.Invoke(car,null);Check(car.AirSteeringActive,"lifecycle arm");}
       Arm();car.SetDrivingGeneration(2);Check(!car.AirSteeringActive,"generation command");tick.Invoke(car,null);Check(!car.AirSteeringActive,"generation rearmed");
       Arm();car.BeginFinishCoast();Check(!car.AirSteeringActive,"finish command");
@@ -26,7 +26,7 @@ namespace StarRacingPrototype {
      UnityEngine.Object.DestroyImmediate(obj);
     }
    }finally{if(root!=null)UnityEngine.Object.DestroyImmediate(root);Physics.simulationMode=mode;Time.fixedDeltaTime=dt;}
-   Debug.Log("AIR_STEERING_CHECKS_OK pureCases="+cases+" speed normal sign bounds neutral rawAI hold reset generation finish; contactAndDisableProof=separateActualPlayMode");
+   Debug.Log("AIR_STEERING_CHECKS_OK pureCases="+cases+" speed normal sign bounds neutral sharedAI hold reset generation finish; contactAndDisableProof=separateActualPlayMode");
   }
  }
 }

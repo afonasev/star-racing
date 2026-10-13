@@ -25,6 +25,7 @@ namespace StarRacingPrototype
         {
             EditorApplication.playModeStateChanged+=Changed;
         }
+        public static void RunRearImpactChecks(){SessionState.SetBool(Key+"ImpactOnly",true);Run();}
         public static void RunRearSteeringDiagnostic()
         {
             SessionState.SetBool(Key+"RearOnly",true);
@@ -88,6 +89,11 @@ namespace StarRacingPrototype
                 }
                 )
                 {
+                    if(SessionState.GetBool(Key+"ImpactOnly",false)) {
+                        RearTrain(human,2);RearTrain(human,4);HeadOn(human);Pair(human,"strong",25);
+                        foreach(float side in new[]{-1f,1f})foreach(bool reverseOrder in new[]{false,true})ObliqueRear(human,side,reverseOrder);
+                        continue;
+                    }
                     if(SessionState.GetBool(Key+"RearSteering",false)) {
                         foreach(float steer in new[]{.2f,.7f})foreach(float direction in new[]{-1f,1f})RearSteering(human,direction,steer);
                         if(human)foreach(float direction in new[]{-1f,1f}) {
@@ -144,6 +150,7 @@ namespace StarRacingPrototype
                 Physics.simulationMode=mode;
                 Time.fixedDeltaTime=dt;
                 AudioListener.volume=volume;
+                SessionState.SetBool(Key+"ImpactOnly",false);
                 SessionState.SetBool(Key+"RearOnly",false);
                 SessionState.SetBool(Key+"RearSteering",false);
                 SessionState.SetBool(Key+"RoadStability",false);
@@ -315,6 +322,26 @@ namespace StarRacingPrototype
                 Check(Mathf.Abs(Vector3.Dot(cars[0].Body.position-cars[0].Frame.position,cars[0].Frame.right))+VehicleGeometry.HalfWidth<=cars[0].Frame.halfWidth,"rear steering left road");
                 Check(!cars[0].IsFalling&&cars[0].PositionRevision==revision,"rear steering required recovery");
             }finally {UnityEngine.Object.DestroyImmediate(root);}
+        }
+        static void ObliqueRear(bool human,float side,bool reverseOrder)
+        {
+            cases++;var root=new GameObject("oblique rear fixture");
+            try {
+                var track=Track(root);MagneticVehicle rear,lead;
+                if(reverseOrder){lead=Car(root,track,1,human,84.25f,0,42);rear=Car(root,track,0,human,80,side*.7f,44,-side*40);}
+                else{rear=Car(root,track,0,human,80,side*.7f,44,-side*40);lead=Car(root,track,1,human,84.25f,0,42);}
+                rear.Body.linearVelocity=rear.Frame.tangent*44;
+                var control=Car(root,track,2,human,140,0,42);var cars=new[]{rear,lead,control};int hits=0,revision=lead.PositionRevision;float peakLoss=0;bool oblique=false;
+                lead.ContactObserved+=c=>{if(c.rigidbody==null)return;hits++;for(int i=0;i<c.contactCount;i++)if(Vector3.Dot(rear.transform.forward,lead.transform.forward)<.8f)oblique=true;};
+                Physics.SyncTransforms();
+                for(int t=0;t<150;t++){
+                    Step(cars,t);float loss=Vector3.Dot(control.Body.linearVelocity,control.Frame.tangent)-Vector3.Dot(lead.Body.linearVelocity,lead.Frame.tangent);peakLoss=Mathf.Max(peakLoss,loss);
+                    Check(loss<=.01f,"oblique rear slowed leader loss="+loss);
+                }
+                File.AppendAllText(Path.Combine(Output,"metrics.txt"),$"OBLIQUE_REAR human={human} side={side} reverseOrder={reverseOrder} hits={hits} oblique={oblique} peakLoss={peakLoss:F6}\n");
+                Check(hits>0,"oblique rear never contacted");Check(oblique,"oblique fixture lacked an angled rear impact");
+                Check(!lead.IsFalling&&lead.PositionRevision==revision,"oblique rear required recovery");
+            }finally{UnityEngine.Object.DestroyImmediate(root);}
         }
         static void RearTrain(bool human,int count)
         {
