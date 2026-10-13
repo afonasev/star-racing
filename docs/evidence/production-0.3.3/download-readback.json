@@ -1,0 +1,122 @@
+[
+  {
+    "name": "RELEASES-osx-universal",
+    "size": 124,
+    "sha256": "a1e035642a3ccf6c1a68c66b336d7135040c4b539647775c3f6193e91bbbb035",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/RELEASES-osx-universal"
+  },
+  {
+    "name": "Star-Racing-0.3.3-macOS-Setup.pkg",
+    "size": 251740277,
+    "sha256": "e8862b5e6ca95e908f90656768b3add693b378487fa1d4421db5a96daf93b765",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/Star-Racing-0.3.3-macOS-Setup.pkg"
+  },
+  {
+    "name": "assets.osx-universal.json",
+    "size": 323,
+    "sha256": "19140c2dd23fbf5e6b80fac5383600bf0df67df133b2ddd355f2d546562b45ad",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/assets.osx-universal.json"
+  },
+  {
+    "name": "identity-osx-universal.json",
+    "size": 1819,
+    "sha256": "5d46e0db1719abe6df0424cc326243b8531e75afd922207cbfa2756df158fa26",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/identity-osx-universal.json"
+  },
+  {
+    "name": "notes-osx-universal.md",
+    "size": 617,
+    "sha256": "a87b5956c27798256cf7150a9b7313d2a39e8a05b2b9f24970d309cb7023e02d",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/notes-osx-universal.md"
+  },
+  {
+    "name": "releases.osx-universal.json",
+    "size": 1600,
+    "sha256": "dc7e12b9cd8e6a691883918ad73b66653d64c04dd3b48f86bbd1299f093820c6",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/releases.osx-universal.json"
+  },
+  {
+    "name": "tech.afonasev.star-racing.osx-universal-0.3.3-osx-universal-full.nupkg",
+    "size": 251810318,
+    "sha256": "0908886e670eda6fdb87097e30eccb3fa86b52d9cb7675aa6d93db51f420b05f",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/tech.afonasev.star-racing.osx-universal-0.3.3-osx-universal-full.nupkg"
+  },
+  {
+    "name": "tech.afonasev.star-racing.osx-universal-osx-universal-Portable.zip",
+    "size": 251905055,
+    "sha256": "422a5375c0a53365b1170cd1f4a1e3c1297ccef21a2476a0695af9b2477c81b3",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/tech.afonasev.star-racing.osx-universal-osx-universal-Portable.zip"
+  },
+  {
+    "name": "unsigned-osx-universal.json",
+    "size": 2530,
+    "sha256": "e91d6ba9f11e8f6350e23a73c2fa9db65974c02b7b0edf21a809ccb9e72cfc09",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/unsigned-osx-universal.json"
+  },
+  {
+    "name": "RELEASES-win-x64",
+    "size": 112,
+    "sha256": "a680ee09771ae1ac967a34521b3d2f9c6e5d9999720cb64da547a4fe79e6e709",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/RELEASES-win-x64"
+  },
+  {
+    "name": "Star-Racing-0.3.3-Windows-Setup.exe",
+    "size": 211441897,
+    "sha256": "bbff632b78501b5c3e300afa767cfdcbea517bb3393c4f79bdf89f7ab3fe52b2",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/Star-Racing-0.3.3-Windows-Setup.exe"
+  },
+  {
+    "name": "assets.win-x64.json",
+    "size": 287,
+    "sha256": "3c90e89467dd68ff7be76635cdcd141fabecb5ab5e46afe4fcac2e0cc5e4d766",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/assets.win-x64.json"
+  },
+  {
+    "name": "identity-win-x64.json",
+    "size": 1913,
+    "sha256": "0d554641f5be022e3db6fa1d32678c132dcaa420ebda4e24eabbecab2e657222",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/identity-win-x64.json"
+  },
+  {
+    "name": "installer-policy-win-x64.json",
+    "size": 750,
+    "sha256": "7dada5607394b68d8f44dbad9ad4c74efd8a3cc674c1dd8c67c0af4991f6737a",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/installer-policy-win-x64.json"
+  },
+  {
+    "name": "notes-win-x64.md",
+    "size": 617,
+    "sha256": "a87b5956c27798256cf7150a9b7313d2a39e8a05b2b9f24970d309cb7023e02d",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/notes-win-x64.md"
+  },
+  {
+    "name": "releases.win-x64.json",
+    "size": 1582,
+    "sha256": "6be2ea81cca1b540f87ce37a2ccd890c6fc227860e21622fd4cf46b09b2fc8e9",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/releases.win-x64.json"
+  },
+  {
+    "name": "tech.afonasev.star-racing.win-x64-0.3.3-win-x64-full.nupkg",
+    "size": 242680932,
+    "sha256": "d8c8dabdde32391736960150f0647c0c09eaa2d699865725a035148e51b8916f",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/tech.afonasev.star-racing.win-x64-0.3.3-win-x64-full.nupkg"
+  },
+  {
+    "name": "tech.afonasev.star-racing.win-x64-win-x64-Portable.zip",
+    "size": 242657923,
+    "sha256": "6a575a43ce19886f56d7f69d780f002dcb3937207fa5935f280231ecd2211836",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/tech.afonasev.star-racing.win-x64-win-x64-Portable.zip"
+  },
+  {
+    "name": "unsigned-win-x64.json",
+    "size": 2498,
+    "sha256": "63149c50eca035f1dc8074534cbcc3b0aaaf1432d2d8e2c6b0810d048813f377",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/unsigned-win-x64.json"
+  },
+  {
+    "name": "manifest.json",
+    "size": 5856,
+    "sha256": "ede4ab1bf9026588df712c7fb9ffc66c2ba88e04f04a9b029e376850174bbbe8",
+    "url": "https://github.com/afonasev/star-racing/releases/download/untagged-739f835caf3c28313ac5/manifest.json"
+  }
+]

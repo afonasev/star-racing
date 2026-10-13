@@ -1,0 +1,7 @@
+{
+  "url": "https://racing.afonasev.tech/",
+  "version": "0.3.3",
+  "windows": "https://github.com/afonasev/star-racing/releases/download/v0.3.3/Star-Racing-0.3.3-Windows-Setup.exe",
+  "macos": "https://github.com/afonasev/star-racing/releases/download/v0.3.3/Star-Racing-0.3.3-macOS-Setup.pkg",
+  "browserVisibleLinksVerified": true
+}

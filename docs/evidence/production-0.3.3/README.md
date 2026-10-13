@@ -17,3 +17,9 @@ Affected Editor gate: exit 0. Broadphase PlayMode: exit 0, 83374 live-clock asse
 First native builds both exited 0; release stopped before draft because URP global settings auto-serialization was outside the restoration list. Restored the committed settings and added Assets/Settings to the existing preservation contract with a regression assertion. No production/draft/channel mutation occurred. Repeat builds use the corrected publishing revision.
 
 Packaged smoke attempt was interrupted after diagnosing idle human input in the older local QA harness. Retain the stronger existing public CloudlinePlaytest harness from production 0.3.2: virtual gamepad through ordinary input/physics, unchanged 600-second deadline, natural human and AI finish assertions. Gameplay source remains the latest game-main snapshot; only this opt-in public QA harness is retained. No draft/channel mutation occurred. Batchmode screenshots are NotRun; no visual acceptance is claimed.
+
+## Published
+
+Production 0.3.3 / sequence 4 published from `6d70db5801537f21e129fdc8e382d186c72509f2`: https://github.com/afonasev/star-racing/releases/tag/v0.3.3 . Both native builds exited 0. Windows wizard run 38417826741 succeeded from the exact source/portable identity. Packaged macOS smoke exited 0 with 78 assertions, natural human and AI finish, and restored preferences. All 20 assets passed actual download size/SHA256 readback before switching channel-production. Browser-visible landing links show 0.3.3 for both Windows and macOS.
+
+Exact artifacts and complete logs: `/Users/eaafonasev/Projects/star-racing-planning/evidence/production-0.3.3/release/`. Selection/failed-attempt logs: `/Users/eaafonasev/Projects/star-racing-planning/evidence/production-0.3.3/qa/`. Full suite, installed Windows/macOS update/device/gamepad, audible/visual human acceptance were not performed. Batchmode screenshot capture failed and is not visual evidence.
