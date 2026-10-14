@@ -97,11 +97,14 @@ def smoke_macos(folder,evidence):
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
 
 def smoke_menu_macos(folder,evidence):
-    portable=next(folder.glob('*Portable.zip'));proof=evidence/'macos-menu-smoke';proof.mkdir()
+    portable=next(folder.glob('*Portable.zip'));proof=evidence/'macos-menu-smoke';attempt=1
+    while proof.exists():
+        attempt+=1;proof=evidence/('macos-menu-smoke-'+str(attempt))
+    proof.mkdir()
     with tempfile.TemporaryDirectory(prefix='star-racing-menu-smoke-') as tmp:
         run(['ditto','-x','-k',portable,tmp]);app=Path(tmp)/'Star Racing.app'
         env=dict(os.environ,UNITY_RUN_MODE='shared')
-        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
         result=json.loads((proof/'success.json').read_text())
         if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True:raise ValueError('Packaged menu smoke failed')
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
@@ -135,8 +138,27 @@ def wizard(tag,source,folder,evidence):
     report=json.loads(policy.read_text())
     if report['sourceRevision']!=source or report['portableSHA256']!=sha(portable) or report['installerSHA256']!=sha(folder/setup):raise ValueError('CI wizard readback mismatch')
     policy.rename(folder/'installer-policy.json')
+def verify_prepared(output,version,sequence):
+    sources=set()
+    for channel in ['osx-universal','win-x64']:
+        folder=output/channel/version;identity=json.loads((folder/'identity.json').read_text())
+        if identity['version']!=version or identity['channel']!=channel or identity['sequence']!=sequence or identity['sourceStatus']:raise ValueError('Prepared identity mismatch')
+        sources.add(identity['sourceRevision'])
+        for item in identity['files']:
+            name=item['name']
+            if name!=Path(name).name:raise ValueError('Unsafe prepared filename')
+            file=folder/name
+            if file.stat().st_size!=item['size'] or sha(file)!=item['sha256']:raise ValueError('Prepared bytes changed')
+    if len(sources)!=1:raise ValueError('Prepared sources differ')
+    source=sources.pop()
+    # Only release-controller/test changes can be admitted without a rebuild.
+    changed=subprocess.check_output(['git','diff','--name-only',source,'HEAD'],cwd=ROOT,text=True).splitlines()
+    if any(p not in ['distribution/release.py','distribution/tests/test_release.py','docs/PUBLISHING.md'] for p in changed):raise ValueError('Prepared game or packaging source differs')
+    return source
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--resume-prepared',action='store_true',help='Resume exact existing packages after validating source, size and hashes; never rebuild or overwrite them')
     p.add_argument('--smoke-scope',choices=['menu','race'],default='menu',help='Choose affected native smoke; race preserves the existing natural-match contract')
     p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
     p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
@@ -153,6 +175,7 @@ def main():
     if not 0<a.sequence<2147483648:p.error('Sequence must be a positive Int32')
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Commit and verify source before publication')
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    if a.resume_prepared:source=verify_prepared(ROOT/'.local/releases'/a.version,a.version,a.sequence)
     api('commits/'+source) # Commit must already be published to this repository.
     tag='v'+a.version
     if optional_release(tag):raise ValueError('Version already exists, including draft. Inspect it; never overwrite a release')
@@ -170,16 +193,22 @@ def main():
     finally:api(lock,'DELETE')
 def publish_candidate(a,key,source,tag,previous):
     output=ROOT/'.local/releases'/a.version
-    output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
-    dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
-    if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
     directories=[]
-    for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
-        args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
-        if a.unsigned_production:args+=['--unsigned-production']
-        else:args+=['--key',key]
-        if channel=='win-x64':args+=['--defer-windows-installer']
-        run(args);directories.append(output/channel/a.version)
+    if a.resume_prepared:
+        if verify_prepared(output,a.version,a.sequence)!=source:raise ValueError('Resume source changed')
+        evidence=output/'evidence';directories=[output/channel/a.version for channel in ['osx-universal','win-x64']]
+        (evidence/'resume-source.json').write_text(json.dumps(dict(packageSource=source,controllerSource=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),rebuilt=False),indent=2)+'\n')
+    else:
+        output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
+        dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
+        if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
+        directories=[]
+        for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
+            args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
+            if a.unsigned_production:args+=['--unsigned-production']
+            else:args+=['--key',key]
+            if channel=='win-x64':args+=['--defer-windows-installer']
+            run(args);directories.append(output/channel/a.version)
     (smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
