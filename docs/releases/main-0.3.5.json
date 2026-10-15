@@ -17,7 +17,7 @@
     "download all uploaded assets and verify SHA256"
   ],
   "qaOnlyDifferences": [
-    "public CloudlinePlaytest virtual gamepad finish adapter",
+    "public CloudlinePlaytest virtual gamepad finish adapter using Native12 graph observation",
     "opt-in MenuReleaseSmoke and updater isolation guard",
     "rendered race smoke without batchmode"
   ],

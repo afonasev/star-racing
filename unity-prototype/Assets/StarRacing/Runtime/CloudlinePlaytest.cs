@@ -47,7 +47,7 @@ namespace StarRacingPrototype {
    InputSystem.QueueStateEvent(joining,new GamepadState().WithButton(GamepadButton.North));yield return null;yield return null;
    Check(menu.Selected.humans==1,"Y-no-duplicate");InputSystem.QueueStateEvent(joining,new GamepadState());yield return null;
    for(int humans=1;humans<=4;humans++){
-    menu.Open(RaceMenuScreen.LocalSetup);var chosen=menu.Selected;chosen.humans=humans;chosen.entrants=8;chosen.devices=(int[])proofDevices.Clone();chosen.theme=humans%2==0?"space-station":"cloud-city";chosen.rails="normal";chosen.jumps=false;chosen.seed="77";
+    menu.Open(RaceMenuScreen.LocalSetup);var chosen=menu.Selected;chosen.generatorRevision=12;chosen.replay=null;chosen.humans=humans;chosen.entrants=8;chosen.devices=(int[])proofDevices.Clone();chosen.theme=humans%2==0?"space-station":"cloud-city";chosen.rails="normal";chosen.jumps=false;chosen.seed="77";
     typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");
     chosen.Save();Check(LocalRaceConfig.Load().humans==humans,"saved-human-count-"+humans);
     if(humans==4){
@@ -57,7 +57,7 @@ namespace StarRacingPrototype {
     }
     int generation=director.RaceGeneration;menu.StartSelected();while(menu.Loading)yield return null;Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
     Check(director.HumanCount==humans&&director.Cars.Length==8,"applied-roster-"+humans);
-    Check(director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0,"staged-road-inventory-"+humans);
+    Check(director.Course.GeneratorRevision==12&&director.Course.IsIndependent&&director.Track.GraphSurface!=null&&director.Track.GetComponentsInChildren<MeshCollider>().Length>0,"staged-road-inventory-"+humans);
     foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
     Check(director.Cars[0].HasProvenCheckpoint,"initial-checkpoint-"+humans);
     for(int seat=0;seat<4;seat++)Check(director.CameraFor(seat).GetComponent<Camera>().enabled==(seat<humans),"camera-enabled-"+humans+"-"+seat);
@@ -84,7 +84,7 @@ namespace StarRacingPrototype {
    while(director.Session.Phase!=RacePhase.Results&&Time.realtimeSinceStartup<deadline){
     var state=new GamepadState();
     if(director.Session.CanDrive(0)&&!director.Paused){
-     var command=pilot.Step(director.World,director.Track.Route,Time.deltaTime);
+     var command=director.Track.GraphSurface!=null?pilot.ApplyGraphControl(director.Cars[0],pilot.StepGraph(director.GraphWorld,Time.deltaTime),Time.deltaTime):pilot.Step(director.World,director.Track.Route,Time.deltaTime);
      state.rightTrigger=command.throttle;state.leftStick=new Vector2(command.steer,0);
      if(command.brake>0)state=state.WithButton(GamepadButton.South);
      if(command.drift)state=state.WithButton(GamepadButton.LeftShoulder);
