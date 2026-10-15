@@ -57,7 +57,7 @@ namespace StarRacingPrototype {
     }
     int generation=director.RaceGeneration;menu.StartSelected();while(menu.Loading)yield return null;Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
     Check(director.HumanCount==humans&&director.Cars.Length==8,"applied-roster-"+humans);
-    Check(director.Course.GeneratorRevision==12&&director.Course.IsIndependent&&director.Track.GraphSurface!=null&&director.Track.GetComponentsInChildren<MeshCollider>().Length>0,"staged-road-inventory-"+humans);
+    Check(director.Course.GeneratorRevision==12&&(director.Course.IsIndependent?director.Track.GraphSurface!=null&&director.Track.GetComponentsInChildren<MeshCollider>().Length>0:director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0),"staged-road-inventory-"+humans);
     foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
     Check(director.Cars[0].HasProvenCheckpoint,"initial-checkpoint-"+humans);
     for(int seat=0;seat<4;seat++)Check(director.CameraFor(seat).GetComponent<Camera>().enabled==(seat<humans),"camera-enabled-"+humans+"-"+seat);
@@ -77,9 +77,18 @@ namespace StarRacingPrototype {
     director.Restart();Check(director.Session.Phase==RacePhase.Countdown,"repeat-"+humans);director.SetPaused(true);Check(director.ExitToMenu(),"pause-return-"+humans);
     Check(!director.Started&&menu.ScreenState==RaceMenuScreen.LocalSetup&&director.TrackSeed==77&&menu.Selected.Seed!=77,"return-refreshes-draft-seed-"+humans);
    }
+   // Native12 also contains path-choice courses; exercise the real graph startup separately.
+   var graphConfig=menu.Selected;graphConfig.generatorRevision=12;graphConfig.replay=null;graphConfig.seed="20";graphConfig.theme="cloud-city";graphConfig.jumps=true;graphConfig.humans=1;graphConfig.entrants=8;graphConfig.devices=(int[])proofDevices.Clone();
+   typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"20");graphConfig.Save();menu.StartSelected();while(menu.Loading)yield return null;
+   Check(director.Started&&director.Course.GeneratorRevision==12&&director.Course.IsIndependent&&director.Track.GraphSurface!=null,"native12-path-choice-start");
+   string graphIdentity=director.Course.GeometryIdentity;Check(director.Cars[0].GraphRoute!=null&&director.Cars[0].HasProvenCheckpoint,"native12-graph-checkpoint");
+   yield return Shot("native12-path-choice");yield return new WaitForSecondsRealtime(4);
+   Check(director.Session.Phase==RacePhase.Racing&&director.GraphWorld!=null,"native12-graph-racing");
+   director.Restart();Check(director.Course.GeometryIdentity==graphIdentity&&director.Session.Phase==RacePhase.Countdown,"native12-graph-repeat-identity");
+   director.SetPaused(true);Check(director.ExitToMenu(),"native12-graph-return");
    // Drive the human seat through a virtual gamepad and the unchanged input/physics path.
    // Results now require the last human to cross; an idle human cannot certify completion.
-   var last=menu.Selected;last.humans=1;last.devices=(int[])proofDevices.Clone();last.theme="cloud-city";last.entrants=8;last.seed="77";typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();while(menu.Loading)yield return null;
+   var last=menu.Selected;last.humans=1;last.devices=(int[])proofDevices.Clone();last.theme="cloud-city";last.entrants=8;last.seed="77";last.jumps=false;last.replay=null;typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();while(menu.Loading)yield return null;
    Check(director.Started,"natural-race-start");var pilot=new AiDriver(0,DriverProfile.Racer,77,director.Balance);float deadline=Time.realtimeSinceStartup+600,nextProgress=Time.realtimeSinceStartup;
    while(director.Session.Phase!=RacePhase.Results&&Time.realtimeSinceStartup<deadline){
     var state=new GamepadState();
