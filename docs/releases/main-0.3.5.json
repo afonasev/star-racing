@@ -1,0 +1,29 @@
+{
+  "applicationBranch": "main",
+  "applicationSource": "b2057dcaabab4efbe3bb07cbfae7b2f9b6e3d1db",
+  "publicBaseline": "adf0529c1f9e1ce7c3daec3b8a97d0c177657523",
+  "releaseBranch": "codex/release-main-0-3-5",
+  "worktree": "/Users/eaafonasev/.codex/worktrees/release-main-0-3-5/star-racing",
+  "version": "0.3.5",
+  "sequence": 6,
+  "track": "production",
+  "authorization": "User: собери и опубликуй с последнх правок main",
+  "fullTestsAuthorized": false,
+  "qa": [
+    "release tooling tests",
+    "silent wrapper startup contract",
+    "both platform builds",
+    "packaged natural race smoke",
+    "download all uploaded assets and verify SHA256"
+  ],
+  "qaOnlyDifferences": [
+    "public CloudlinePlaytest virtual gamepad finish adapter",
+    "opt-in MenuReleaseSmoke and updater isolation guard",
+    "rendered race smoke without batchmode"
+  ],
+  "sourceParityFiles": 647,
+  "differences": [
+    "unity-prototype/Assets/StarRacing/Runtime/CloudlinePlaytest.cs",
+    "unity-prototype/Assets/StarRacing/Runtime/DesktopUpdater.cs"
+  ]
+}

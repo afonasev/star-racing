@@ -8,7 +8,9 @@ namespace StarRacingPrototype {
   readonly float reflectionIntensity;
   Material deckMaterial,mistMaterial;Mesh plane;
   const string Path="Environment/Sky/";
-  public TrackSky(EnvironmentPlan plan,TrackRoute route,Transform parent) {
+  public TrackSky(EnvironmentPlan plan,TrackRoute route,Transform parent):this(plan,RouteBounds(route),parent) {}
+  static Bounds RouteBounds(TrackRoute route){var b=new Bounds(route.Samples[0].position,Vector3.zero);foreach(var s in route.Samples)b.Encapsulate(s.position);return b;}
+  public TrackSky(EnvironmentPlan plan,Bounds bounds,Transform parent) {
    bool space=plan.theme=="space-station";
    Reflection=Required<Cubemap>(space?"SpaceReflection":"DaylightReflection");
    reflectionIntensity=plan.lighting.reflectionIntensity;
@@ -32,7 +34,6 @@ namespace StarRacingPrototype {
     mistMaterial=new Material(mistShader){name="Tower cloud mist"};mistMaterial.SetTexture("_CloudTex",clouds);
     plane=new Mesh{name="Render-only cloud plane"};plane.vertices=new[]{new Vector3(-.5f,0,-.5f),new Vector3(-.5f,0,.5f),new Vector3(.5f,0,.5f),new Vector3(.5f,0,-.5f)};
     plane.uv=new[]{Vector2.zero,Vector2.up,Vector2.one,Vector2.right};plane.triangles=new[]{0,1,2,0,2,3};plane.RecalculateNormals();plane.RecalculateBounds();
-    var bounds=new Bounds(route.Samples[0].position,Vector3.zero);foreach(var sample in route.Samples)bounds.Encapsulate(sample.position);
     AddPlane(parent,"Cloud sea",deckMaterial,new Vector3(bounds.center.x,plan.cityBaseY+25,bounds.center.z),new Vector3(bounds.size.x+3640,1,bounds.size.z+3640));
     foreach(var tower in plan.towers) for(int layer=0;layer<3;layer++)
      AddPlane(parent,"Tower cloud mist",mistMaterial,new Vector3(tower.position.x,plan.cityBaseY+29+layer*6,tower.position.z),new Vector3(tower.width*7+layer*13,1,tower.width*7+layer*13));

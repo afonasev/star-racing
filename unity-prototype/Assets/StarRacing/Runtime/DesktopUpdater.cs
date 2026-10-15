@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -139,7 +140,7 @@ namespace StarRacingPrototype.Distribution {
       }
       UpdateAttemptJournal.Begin(journal,envelope,InstalledVersion,release.version);
       PlayerPrefs.Save();StartupApplying=true;Status="Установка обновления. Игра перезапустится…";
-      var args=Environment.GetCommandLineArgs().Skip(1).Where(x=>!x.StartsWith("--star-racing-apply-attempt=")).Concat(new[]{"--star-racing-apply-attempt="+release.version}).ToArray();
+      var args=RestartArguments(Environment.GetCommandLineArgs().Skip(1),release.version);
       Debug.Log("DESKTOP_UPDATE_APPLY_WAIT from="+InstalledVersion+" target="+release.version+" startup="+startup);
       manager.WaitExitThenApplyUpdates(release.Asset,false,true,args);
      }finally{mutex.ReleaseMutex();}
@@ -147,6 +148,7 @@ namespace StarRacingPrototype.Distribution {
     Application.Quit();
    }catch(Exception e){StartupApplying=false;Status="Обновление не установлено: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_APPLY "+e);}
   }
+  internal static string[] RestartArguments(IEnumerable<string> current,string version)=>current.Where(x=>!x.StartsWith("--star-racing-apply-attempt=")).Concat(new[]{"--star-racing-apply-attempt="+version}).ToArray();
   static bool GetMenuState(){var director=FindFirstObjectByType<RaceDirector>();return director!=null&&director.InPreparationMenu;}
   static string SafeError(Exception error)=>error is UnauthorizedAccessException?"Нет доступа к папке обновления":error is IOException||error is InvalidDataException||error is CryptographicException||error is TimeoutException?error.Message:"Проверьте подключение и свободное место";
   void OnDestroy(){download?.Cancel();source?.Dispose();if(Instance==this)Instance=null;}

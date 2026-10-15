@@ -25,14 +25,16 @@ namespace StarRacingPrototype {
             public bool amber;
         }
 
-        EnvironmentPlan(TrackRoute route, uint? skySeed) {
-            seed = route.Definition.seed;
-            theme = route.Definition.theme;
+        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null) {}
+
+        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity) {
+            seed = sourceSeed;
+            theme = sourceTheme;
             lighting = RaceLightingProfile.Create(seed, theme);
             var decor = new Procedural.SeedRandom(seed ^ 0xb17f00d5u);
             float lowest = float.PositiveInfinity;
             float maxX = float.NegativeInfinity, maxZ = float.NegativeInfinity;
-            foreach (var frame in route.Samples) {
+            foreach (var frame in frames) {
                 lowest = Mathf.Min(lowest, frame.position.y);
                 maxX = Mathf.Max(maxX, frame.position.x);
                 maxZ = Mathf.Max(maxZ, frame.position.z);
@@ -40,19 +42,19 @@ namespace StarRacingPrototype {
             cityBaseY = lowest - 240f;
             if (theme == "cloud-city") {
                 for (int attempt = 0; attempt < 240 && towers.Count < 24; attempt++) {
-                    var frame = route.Samples[decor.Int(10, route.Samples.Length - 11)];
+                    var frame = frames[decor.Int(10, frames.Length - 11)];
                     float width = (float)decor.Range(18, 32);
                     float lateral = frame.halfWidth + CorridorMargin + width + (float)decor.Range(18, 85);
                     float side = decor.Next() < .5 ? -1 : 1;
                     var center = frame.position + frame.right * (side * lateral);
                     float height = Mathf.Max(260, frame.position.y - cityBaseY + (float)decor.Range(40, 135));
                     center.y = cityBaseY + height * .5f;
-                    if (!ClearOfRoute(route, center, new Vector3(width * .5f, height * .5f, width * .5f), CorridorMargin)) continue;
+                    if (!clear(center, new Vector3(width * .5f, height * .5f, width * .5f), CorridorMargin)) continue;
                     towers.Add(new CityTower { position = center, width = width, height = height, amber = decor.Next() < .35 });
                 }
             }
             var space = new Procedural.SeedRandom(seed ^ 0x5aceu);
-            var start = route.Samples[0];
+            var start = frames[0];
             Vector3 forward = Vector3.ProjectOnPlane(start.tangent, Vector3.up).normalized;
             if (forward.sqrMagnitude < .1f) forward = start.tangent;
             Vector3 right = Vector3.ProjectOnPlane(start.right, Vector3.up).normalized;
@@ -66,15 +68,15 @@ namespace StarRacingPrototype {
                 float side = i % 2 == 0 ? stationSide : -stationSide;
                 var candidate = start.position + forward * ((nearStation ? 240 : 780) + i / 2 * (nearStation ? 80 : 110)) +
                                 right * side * ((nearStation ? 250 : 270) + i / 2 * (nearStation ? 35 : 70)) + Vector3.up * 50;
-                if (!ClearOfRoute(route, candidate, Vector3.one * 170, CorridorMargin)) continue;
+                if (!clear(candidate, Vector3.one * 170, CorridorMargin)) continue;
                 anchor = candidate;
                 foundStation = true;
             }
             for (int attempt = 0; attempt < 96 && !foundStation; attempt++) {
-                var frame = route.Samples[space.Int(0, route.Samples.Length - 1)];
+                var frame = frames[space.Int(0, frames.Length - 1)];
                 float side = space.Next() < .5 ? -1 : 1;
                 var candidate = frame.position + frame.right * (side * (float)space.Range(nearStation ? 260 : 350, nearStation ? 350 : 650)) + Vector3.up * (float)space.Range(50, nearStation ? 100 : 150);
-                if (!ClearOfRoute(route, candidate, Vector3.one * 170, CorridorMargin)) continue;
+                if (!clear(candidate, Vector3.one * 170, CorridorMargin)) continue;
                 anchor = candidate;
                 foundStation = true;
             }
@@ -83,12 +85,17 @@ namespace StarRacingPrototype {
             skyPlanetDirection = (forward * 1350 - right * stationSide * 410 + Vector3.up * 90).normalized;
             // Preserve the approved ocean world for seed 77; consecutive seeds cycle all four worlds.
             skyPlanetVariant = (int)(((skySeed ?? seed) % SkyPlanetVariantCount + 3) % SkyPlanetVariantCount);
-            hash = ComputeHash();
+            hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity);
         }
 
         public static EnvironmentPlan Create(TrackRoute route, uint? skySeed = null) {
             if (route == null || route.Definition == null) throw new ArgumentException("Procedural route required");
             return new EnvironmentPlan(route, skySeed);
+        }
+
+        public static EnvironmentPlan Create(GraphEnvironmentGeometry geometry,uint seed,string theme,uint? skySeed=null) {
+            if(geometry==null||(theme!="cloud-city"&&theme!="space-station"))throw new ArgumentException("Graph and supported theme required");
+            return new EnvironmentPlan(seed,theme,geometry.Samples,geometry.Clear,skySeed,geometry.Graph.Identity);
         }
 
         public int District(float distance) => Mathf.FloorToInt((distance + (seed % 3) * 73f) / 240f) % 3;

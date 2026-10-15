@@ -150,7 +150,7 @@ namespace StarRacingPrototype
             try {
                 for(int part=0;part<count;part++) {
                     for(int i=0;i<cars.Count;i++)if(cars[i]!=null)cars[i].ApplyPreparedForces(step);
-                    Physics.Simulate(step);NativeSteps++;SimulatedSeconds+=step;afterSubstep?.Invoke();
+                    using(GraphRuntimeProfile.NativePhysics.Auto())Physics.Simulate(step);NativeSteps++;SimulatedSeconds+=step;afterSubstep?.Invoke();
                 }
                 // Publish once per controller tick, never once per native substep.
                 for(int i=0;i<cars.Count;i++)if(cars[i]!=null && cars[i].gameObject.activeInHierarchy)cars[i].CapturePresentation(Time.fixedTimeAsDouble,duration);

@@ -9,6 +9,14 @@ namespace StarRacingPrototype {
   static void Check(bool condition,string message){assertions++;if(!condition)throw new Exception("CLOUDLINE: "+message);}
   public static void RunConfigurationChecks(){
    assertions=0;
+   Check(new LocalRaceConfig().generatorRevision==12&&LocalRaceConfig.Normalize(null).generatorRevision==12,"fresh config selects Native12");
+   Check(LocalRaceConfig.Normalize(new LocalRaceConfig{generatorRevision=999}).generatorRevision==12,"invalid revision uses current default");
+   Check(LocalRaceConfig.Normalize(JsonUtility.FromJson<LocalRaceConfig>("{\"version\":1}")).generatorRevision==12,"missing revision uses current default");
+   foreach(int revision in new[]{10,11}){
+    var old=new LocalRaceConfig{generatorRevision=revision,replay=new NativeCourseReplay{fullIdentity=new string('a',64)}};
+    var copy=LocalRaceConfig.Normalize(JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(old)));
+    Check(copy.generatorRevision==revision&&JsonUtility.ToJson(copy.replay)==JsonUtility.ToJson(old.replay),"explicit legacy revision and replay metadata are preserved");
+   }
    var bad=LocalRaceConfig.Normalize(new LocalRaceConfig{entrants=2,seed="bad",theme="missing",rails="missing",humans=7,devices=new[]{2,2}});
    Check(bad.entrants==8&&bad.Seed==77&&bad.theme=="random"&&bad.rails=="normal"&&bad.humans==4,"legacy / invalid configuration migration");
    var config=new LocalRaceConfig();config.seed="";Check(!config.Validate(out _),"empty seed accepted");config.seed="4294967296";Check(!config.Validate(out _),"overflow seed accepted");config.seed="4294967295";Check(config.Validate(out _),"uint max refused");

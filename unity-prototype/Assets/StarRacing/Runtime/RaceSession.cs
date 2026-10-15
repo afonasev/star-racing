@@ -7,8 +7,12 @@ namespace StarRacingPrototype {
         public float distance;
         public int revision;
         public bool valid;
+        public readonly GraphRaceObservation graph;
+        public RaceObservation(GraphRaceObservation graph) {
+            this.graph=graph; distance=(float)graph.CommonProgress; revision=graph.PositionRevision; valid=graph.Valid;
+        }
         public RaceObservation(float distance, int revision = 0, bool valid = true) {
-            this.distance = distance; this.revision = revision; this.valid = valid;
+            graph=default; this.distance = distance; this.revision = revision; this.valid = valid;
         }
     }
 
@@ -23,6 +27,9 @@ namespace StarRacingPrototype {
             internal int revision;
             internal bool valid;
             internal double gateTime;
+            internal GraphRaceObservation graphPrevious;
+            internal int graphGate, graphBranch;
+            public int ValidatedGateCount => graphGate;
         }
         public readonly Racer[] Racers;
         readonly double[] candidates;
@@ -34,6 +41,8 @@ namespace StarRacingPrototype {
         public double Remaining => resultsAt < 0 ? 3 : Math.Max(0, resultsAt - Elapsed);
         public float RaceLength => finish - start;
         readonly float start, finish;
+        readonly GraphRaceCourse graphCourse;
+        public GraphRaceCourse GraphCourse => graphCourse;
         readonly int humanCount;
         double resultsAt = -1;
         int humanFinishCount;
@@ -48,6 +57,11 @@ namespace StarRacingPrototype {
             this.start = start; this.finish = finish;
             var initial=new RaceObservation[count];for(int i=0;i<count;i++)initial[i]=new RaceObservation(start);Reset(initial);
         }
+        public RaceSession(GraphRoadSurface surface, float start, float finish, int count=2, int humans=-1)
+            : this(start,finish,count,humans) {
+            graphCourse=new GraphRaceCourse(surface,start,finish);
+            Reset(new RaceObservation[count]);
+        }
         public void Reset(RaceObservation a, RaceObservation b) {pair[0]=a;pair[1]=b;Reset(pair);}
         public void Reset(RaceObservation[] observations) {
             if(observations.Length!=Racers.Length)throw new ArgumentException("Roster observation count");
@@ -56,6 +70,10 @@ namespace StarRacingPrototype {
             for (int i = 0; i < Racers.Length; i++) {
                 var o = observations[i];
                 Racers[i] = new Racer { previous = o.distance, revision = o.revision, valid = o.valid, Progress=Math.Max(0,Math.Min(o.distance-start,RaceLength)), nextGate = Math.Min(start + (float)(Math.Floor(Math.Max(0,o.distance-start)/50)+1)*50, finish) };
+                if(graphCourse!=null) {
+                    var r=Racers[i];r.graphPrevious=graphCourse.Accepts(o.graph)?o.graph:default;r.graphGate=0;r.graphBranch=0;
+                    r.Progress=0;r.nextGate=(float)graphCourse.Gates[0].CommonProgress;
+                }
             }
         }
         public void Begin() { if (Phase == RacePhase.Ready) Phase = RacePhase.Countdown; }
@@ -72,11 +90,16 @@ namespace StarRacingPrototype {
             double end = Elapsed + dt;
             if (resultsAt >= 0) end = Math.Min(end, resultsAt);
             double step = end - Elapsed;
-            for(int i=0;i<Racers.Length;i++)candidates[i]=Observe(i,observations[i],step,dt);
+            for(int i=0;i<Racers.Length;i++)candidates[i]=graphCourse==null?Observe(i,observations[i],step,dt):
+                Racers[i].Finished?-1:ObserveGraph(Racers[i],observations[i].graph,resultsAt>=0 && resultsAt<Elapsed+dt?resultsAt-Elapsed:dt,dt,false);
             for(int j=0;j<Racers.Length;j++) {
                 int next=-1;double earliest=double.PositiveInfinity;
                 for(int i=0;i<candidates.Length;i++)if(candidates[i]>=0 && candidates[i]<earliest){next=i;earliest=candidates[i];}
                 if(next<0)break;Finish(next,earliest);candidates[next]=-1;
+            }
+            if(graphCourse!=null) {
+                double creditedStep=resultsAt>=0 && resultsAt<Elapsed+dt?resultsAt-Elapsed:dt;
+                for(int i=0;i<Racers.Length;i++)if(!Racers[i].Finished)ObserveGraph(Racers[i],observations[i].graph,creditedStep,dt,true);
             }
             Elapsed = resultsAt >= 0 ? Math.Min(end, resultsAt) : end;
             Rank();
@@ -85,6 +108,8 @@ namespace StarRacingPrototype {
         double Observe(int seat, RaceObservation o, double step, double dt) {
             var r = Racers[seat];
             if (r.Finished) return -1;
+            if(graphCourse!=null)return ObserveGraph(r,o.graph,step,dt,true);
+            if(o.graph.Owner!=null){r.valid=false;return -1;}
             float before = r.previous;
             float after = before + (o.distance - before) * (float)(step / dt);
             bool continuous = r.valid && o.valid && r.revision == o.revision && Math.Abs(o.distance - before) <= 30;
@@ -105,9 +130,42 @@ namespace StarRacingPrototype {
             if (r.nextGate == finish && before < finish && after >= finish) return Elapsed + step * (finish - before) / (after - before);
             return -1;
         }
+        double ObserveGraph(Racer r, GraphRaceObservation o, double step, double dt, bool commit) {
+            var before=r.graphPrevious;
+            bool bound=before.Owner!=null;
+            bool owned=graphCourse.Accepts(o) && (!bound || ReferenceEquals(before.Owner,o.Owner));
+            if(!owned){if(commit)r.valid=false;return -1;}
+            bool continuous=r.valid && before.Valid && o.Valid && o.Continuous &&
+                before.PositionRevision==o.PositionRevision && o.Tick==before.Tick+1 &&
+                Math.Abs(o.PhysicalDelta)<=GraphVehicleRoute.ProjectionWindow && graphCourse.Continuous(before,o);
+            if(commit){r.graphPrevious=o;r.valid=o.Valid;}
+            int frontier=r.graphGate,branch=r.graphBranch;double gateTime=r.gateTime;
+            // A physical reverse into the undivided split reopens choice, but discards
+            // separated-road credit. Another branch must traverse its own instances.
+            if(branch!=0 && o.Branch==0 && (o.Cursor.roadId==10||o.Cursor.roadId==11) && step==dt) {
+                frontier=Math.Min(frontier,graphCourse.FirstBranchGate);branch=0;
+            }
+            if(!bound || !continuous){if(commit){r.graphGate=frontier;r.graphBranch=branch;
+                r.Progress=(float)Math.Min(r.Progress,Math.Max(0,o.CommonProgress-start));}return -1;}
+            if(branch!=0 && o.Branch!=0 && branch!=o.Branch)return -1;
+            if(o.Branch!=0 && step==dt)branch=o.Branch;
+            double finishTime=-1;
+            while(frontier<graphCourse.Gates.Count) {
+                var gate=graphCourse.Gates[frontier];
+                if(!graphCourse.Crossing(gate,before,o,out double fraction) || fraction>step/dt)break;
+                gateTime=Elapsed+dt*fraction;frontier++;
+                if(frontier==graphCourse.Gates.Count){finishTime=gateTime;break;}
+            }
+            double cap=frontier<graphCourse.Gates.Count?graphCourse.Gates[frontier].CommonProgress:finish;
+            double progress=before.CommonProgress+(o.CommonProgress-before.CommonProgress)*(step/dt);
+            if(commit){r.graphGate=frontier;r.graphBranch=branch;r.gateTime=gateTime;
+                r.Progress=(float)Math.Max(0,Math.Min(Math.Min(progress,cap)-start,RaceLength));}
+            return finishTime;
+        }
         void Finish(int seat, double time) {
             if (time < 0 || (resultsAt >= 0 && time > resultsAt)) return;
             var r = Racers[seat]; r.FinishTime = time; r.Place = ++finishCount; r.Progress = RaceLength;
+            if(graphCourse!=null)r.graphGate=graphCourse.Gates.Count;
             // Roster stores local humans first, independently of their shuffled grid slots.
             if (seat < humanCount && ++humanFinishCount == humanCount) {
                 resultsAt = time + 3; Phase = RacePhase.FinishWindow;

@@ -13,7 +13,8 @@ namespace StarRacingPrototype {
   public int Id,Generation,Revision,Span;
   public float Distance,Lateral,Heading,LeftClearance,RightClearance;
   public Vector3 Velocity,Right,Tangent,Normal;
-  public bool Suppressed,LeftRail,RightRail;
+  public bool Suppressed,LeftRail,RightRail,GraphMode;
+  public GraphRaceObservation Graph;public Vector3 Position;
  }
  // A semantic observer only: never applies separation, damping, forces or pose writes.
  public sealed class DrivingContactPolicy {
@@ -40,13 +41,24 @@ namespace StarRacingPrototype {
    }
    foreach(var key in expired)pairs.Remove(key);
   }
-  public static bool HasGap(DrivingContactObservation a,DrivingContactObservation b)=>Mathf.Abs(b.Distance-a.Distance)>=VehicleGeometry.PairRearmDistance||Mathf.Abs(b.Lateral-a.Lateral)>=VehicleGeometry.PairRearmLateral;
-  public static bool Compatible(DrivingContactObservation a,DrivingContactObservation b)=>!a.Suppressed&&!b.Suppressed&&a.Generation==b.Generation&&!(a.Span>=0&&b.Span>=0&&a.Span!=b.Span)&&Vector3.Dot(a.Normal,b.Normal)>0;
+  public static bool HasGap(DrivingContactObservation a,DrivingContactObservation b) {
+   if(a.GraphMode||b.GraphMode){var delta=b.Position-a.Position;return Mathf.Abs(Vector3.Dot(delta,a.Tangent))>=VehicleGeometry.PairRearmDistance || Mathf.Abs(Vector3.Dot(delta,a.Right))>=VehicleGeometry.PairRearmLateral || Mathf.Abs(Vector3.Dot(delta,a.Normal))>3;}
+   return Mathf.Abs(b.Distance-a.Distance)>=VehicleGeometry.PairRearmDistance||Mathf.Abs(b.Lateral-a.Lateral)>=VehicleGeometry.PairRearmLateral;
+  }
+  public static bool Compatible(DrivingContactObservation a,DrivingContactObservation b) {
+   if(a.Suppressed||b.Suppressed||a.Generation!=b.Generation||Vector3.Dot(a.Normal,b.Normal)<=0)return false;
+   if(a.GraphMode||b.GraphMode) {
+    if(!a.GraphMode||!b.GraphMode||!a.Graph.Valid||!b.Graph.Valid||a.Revision!=a.Graph.PositionRevision||b.Revision!=b.Graph.PositionRevision||a.Graph.Tick!=a.Graph.Owner.RaceObservation.Tick||b.Graph.Tick!=b.Graph.Owner.RaceObservation.Tick||!ReferenceEquals(a.Graph.Surface,b.Graph.Surface)||a.Graph.BuildRevision!=b.Graph.BuildRevision)return false;
+    var graph=a.Graph.Surface.Graph;var first=graph.Road(a.Graph.Cursor.roadId);var second=graph.Road(b.Graph.Cursor.roadId);
+    return GraphVehicleRoute.Geometry(first.id)==GraphVehicleRoute.Geometry(second.id)||first.toPort==second.fromPort||second.toPort==first.fromPort;
+   }
+   return !(a.Span>=0&&b.Span>=0&&a.Span!=b.Span);
+  }
   public static float Score(DrivingContactObservation a,DrivingContactObservation b,float lateral=.72f,float longitudinal=.3f){
-   float delta=b.Lateral-a.Lateral,direction=delta==0?(a.Id%2==0?1:-1):Mathf.Sign(delta);
+   float delta=a.GraphMode?Vector3.Dot(b.Position-a.Position,a.Right):b.Lateral-a.Lateral,direction=delta==0?(a.Id%2==0?1:-1):Mathf.Sign(delta);
    float closingLateral=Vector3.Dot(b.Velocity-a.Velocity,a.Right)*direction;
    float firstSpeed=Vector3.Dot(a.Velocity,a.Tangent),secondSpeed=Vector3.Dot(b.Velocity,a.Tangent);
-   float along=b.Distance-a.Distance;
+   float along=a.GraphMode?Vector3.Dot(b.Position-a.Position,a.Tangent):b.Distance-a.Distance;
    float closingLongitudinal=along>0||(along==0&&firstSpeed>=secondSpeed)?firstSpeed-secondSpeed:secondSpeed-firstSpeed;
    return Mathf.Clamp01((Mathf.Max(0,-closingLateral)*lateral*.5f+Mathf.Max(0,closingLongitudinal)*longitudinal*.5f)/12f);
   }

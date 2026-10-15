@@ -45,6 +45,7 @@ namespace StarRacingPrototype {
   AudioListener ownedListener;
   const string Preference="StarRacing.Audio.";
   void Awake(){
+   if(SilentStartup.Enabled||SilentStartup.IsRequested(Environment.GetCommandLineArgs())){forceMuted=true;return;}
    Director=GetComponent<RaceDirector>();
    Director.DrivingContact+=OnDrivingContact;
    Muted=PlayerPrefs.GetInt(Preference+"Muted",0)!=0;
@@ -52,7 +53,7 @@ namespace StarRacingPrototype {
    EnginesVolume=Mathf.Clamp01(PlayerPrefs.GetFloat(Preference+"Engines",1));
    EffectsVolume=Mathf.Clamp01(PlayerPrefs.GetFloat(Preference+"Effects",1));
    var args=Environment.GetCommandLineArgs();
-   forceMuted=Array.IndexOf(args,"--muted")>=0;
+   forceMuted=Array.IndexOf(args,"-muted")>=0||Array.IndexOf(args,"--muted")>=0;
    if(FindAnyObjectByType<AudioListener>()==null)ownedListener=gameObject.AddComponent<AudioListener>();
    var manifest=Resources.Load<TextAsset>("Audio/decoded-manifest");
    if(manifest==null)throw new InvalidOperationException("AUDIO_MISSING decoded manifest");
@@ -117,6 +118,7 @@ namespace StarRacingPrototype {
    if(menuMusic!=null){menuMusic.Stop();menuMusic.volume=0;}
   }
   void LateUpdate(){
+   if(forceMuted&&SilentStartup.Enabled)return;
    if(Director==null)return;
    if(!Director.Started){if(Running)StopRace();TickMenuMusic();return;}
    StopMenuMusic();

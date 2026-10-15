@@ -154,7 +154,7 @@ namespace StarRacingPrototype
                     if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
-            public void Create(Transform parent, Material material,int bottomIndices)
+            public void Create(Transform parent, Material material,int bottomIndices,bool graph=false)
             {
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
@@ -164,30 +164,54 @@ namespace StarRacingPrototype
                 go.AddComponent<MeshRenderer>().sharedMaterial = material;
                 var bottom=new Mesh {name=BottomName,indexFormat=IndexFormat.UInt32};
                 bottom.SetVertices(vertices);bottom.SetTriangles(triangles.GetRange(0,bottomIndices),0);bottom.RecalculateBounds();
-                go.AddComponent<MeshCollider>().sharedMesh = bottom;
+                // An empty graph collider carrier avoids AddComponent automatically
+                // cooking the multi-million-triangle visual shell before assigning
+                // the actual bottom/exterior inventories.
+                var collisionObject=go;
+                if(graph){collisionObject=new GameObject("Graph shell collision");collisionObject.transform.SetParent(go.transform,false);}
+                var bottomCollider=collisionObject.AddComponent<MeshCollider>();
+                if(graph)bottomCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+                bottomCollider.sharedMesh = bottom;
                 // Preserve the exact exterior triangle boundary at hull seams/tips.
                 // Contained convex supports supply the small-motion CCD contacts.
                 var exterior=new Mesh {name=ExteriorName,indexFormat=IndexFormat.UInt32};
                 exterior.SetVertices(vertices);exterior.SetTriangles(triangles.GetRange(bottomIndices,triangles.Count-bottomIndices),0);exterior.RecalculateBounds();
-                go.AddComponent<MeshCollider>().sharedMesh=exterior;
+                var exteriorCollider=collisionObject.AddComponent<MeshCollider>();
+                if(graph)exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+                exteriorCollider.sharedMesh=exterior;
             }
         }
         static int Key(float value) => Mathf.RoundToInt(value / Tolerance);
 
         public static void Build(Transform parent, TrackRoute route, IList<Vector3> top, IList<RoadFace> faces,IList<int> topTriangles, Material material,System.Action<SupportTriangle> observer=null)
         {
+            BuildCore(parent, (face,distance)=>route.Evaluate(distance), top, faces, topTriangles, material, observer, null);
+        }
+        public static void BuildGraph(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
+            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer=null, System.Func<int,Vector3> portNormal=null)
+        {
+            BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
+        }
+        static void BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
+            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal)
+        {
             var supports=observer==null?new List<SupportTriangle>():null;
             var shell = new Geometry(observer??(triangle=>supports.Add(triangle)));
             // Section edges may have different subdivisions on their two sides.
-            var sections = new Dictionary<int, List<Edge>>();
+            var sections = new Dictionary<(int,int), List<Edge>>();
             // Emission uses the same .5m longitudinal stations for ramps and lanes.
             // Along edges therefore share full station intervals; lateral T-junctions
             // are handled separately by section interval subtraction.
-            var along = new Dictionary<(int, int, int, int), List<Edge>>();
+            var along = new Dictionary<(int, int, int, int, int, int), List<Edge>>();
             for (int q = 0; q < top.Count / 4; q++)
             {
                 RoadFace face = faces[q*2]; int at = q*4;
-                var start = route.Evaluate(face.startDistance); var end = route.Evaluate(face.endDistance);
+                var start = evaluate(face,face.startDistance); var end = evaluate(face,face.endDistance);
+                if(face.canonicalFlatPorts) {
+                    if(portNormal==null)throw new System.ArgumentException("Canonical port normal registry required");
+                    if(face.startPort!=0)start.normal=portNormal(face.startPort);
+                    if(face.endPort!=0)end.normal=portNormal(face.endPort);
+                }
                 var points = new[] { top[at], top[at+1], top[at+2], top[at+3] };
                 var down = new[] { start.normal, end.normal, start.normal, end.normal };
                 var distances = new[] { face.startDistance, face.endDistance, face.startDistance, face.endDistance };
@@ -197,6 +221,7 @@ namespace StarRacingPrototype
                 {
                     var frame = i%2==0 ? start : end;
                     heights[i] = Vector3.Dot(points[i] - (frame.position-frame.right*laterals[i]), frame.normal);
+                    if(face.canonicalFlatPorts && (i%2==0?face.startPort:face.endPort)!=0)heights[i]=0;
                 }
                 shell.Quad(points[0]-down[0]*Thickness, points[1]-down[1]*Thickness,
                     points[2]-down[2]*Thickness, points[3]-down[3]*Thickness, -start.normal);
@@ -208,19 +233,27 @@ namespace StarRacingPrototype
                     int a=perimeter[i], b=perimeter[i+1];
                     bool section = distances[a] == distances[b];
                     float x=section?laterals[a]:distances[a], y=section?laterals[b]:distances[b];
+                    int port=0;float seamOffset=0;
+                    if(section) {
+                        bool first=distances[a]==face.startDistance;
+                        port=first?face.startPort:face.endPort;
+                        seamOffset=first?face.startSeamOffset:face.endSeamOffset;
+                        if(port!=0){x+=seamOffset;y+=seamOffset;}
+                    }
                     if (Mathf.Abs(y-x)<Tolerance) continue;
                     int low=x<y?a:b, high=x<y?b:a;
                     var edge = new Edge { a=points[low], b=points[high], downA=down[low], downB=down[high],
                         from=Mathf.Min(x,y),to=Mathf.Max(x,y),heightA=heights[low],heightB=heights[high],forward=x<y,owner=owner,side=i };
                     if (section)
                     {
-                        int key=Key(distances[a]);
+                        var key=port!=0?(-port-1,0):(face.geometryId,Key(distances[a]));
                         if (!sections.TryGetValue(key,out var group)) sections[key]=group=new List<Edge>();
                         group.Add(edge);
                     }
                     else
                     {
-                        var key=(Key(distances[low]),Key(laterals[low]),Key(distances[high]),Key(laterals[high]));
+                        int boundaryTag=(low<2 && high<2)?face.leftBoundaryTag:face.rightBoundaryTag;
+                        var key=(face.geometryId,boundaryTag,Key(distances[low]),Key(laterals[low]),Key(distances[high]),Key(laterals[high]));
                         if (!along.TryGetValue(key,out var group)) along[key]=group=new List<Edge>();
                         group.Add(edge);
                     }
@@ -231,7 +264,7 @@ namespace StarRacingPrototype
             foreach (var group in along.Values) CloseGroup(shell,group);
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
-            shell.Create(parent,material,bottomIndices);
+            shell.Create(parent,material,bottomIndices,portNormal!=null);
             if(supports!=null)foreach(var triangle in supports)CreateSupport(parent,triangle);
         }
         public static MeshCollider CreateSupport(Transform parent,SupportTriangle triangle)
@@ -246,6 +279,7 @@ namespace StarRacingPrototype
                 if(min<=0 && max>=0 || Mathf.Max(Mathf.Abs(min),Mathf.Abs(max))>2*Mathf.Min(Mathf.Abs(min),Mathf.Abs(max)))origin[axis]=0;
             }
             var mesh=new Mesh {name=SupportName};
+            try {
             var local=new[]{Vector3.zero,triangle.b-origin,triangle.c-origin,apex-origin};
             local[0]=triangle.a-origin;
             for(int i=0;i<4;i++)if(!(origin+local[i]).Equals(world[i]))throw new System.InvalidOperationException("Support local coordinates changed authored vertex");
@@ -261,6 +295,10 @@ namespace StarRacingPrototype
             var go=new GameObject(SupportName);go.transform.SetParent(parent,false);go.transform.localPosition=origin;
             var collider=go.AddComponent<MeshCollider>();collider.convex=true;collider.cookingOptions=options;collider.sharedMesh=mesh;
             return collider;
+            } catch {
+                if(Application.isPlaying)Object.Destroy(mesh);else Object.DestroyImmediate(mesh);
+                throw;
+            }
         }
         static void CloseGroup(Geometry shell, List<Edge> edges)
         {

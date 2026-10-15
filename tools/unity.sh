@@ -4,6 +4,22 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 project_dir="$repo_dir/unity-prototype"
 runner=${UNITY_RUNNER:-$HOME/.local/bin/unity-run}
 editor=${UNITY_EDITOR:-/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity}
+# Autonomous launches disable Unity audio before engine initialization.
+# Interactive launches retain the caller's explicitly selected audio mode.
+automated=false
+silent=false
+muted=false
+legacy_muted=false
+for argument in "$@"; do
+  case "$argument" in -batchmode|-executeMethod|-runTests) automated=true ;; esac
+  [ "$argument" != -noaudio ] || silent=true
+  [ "$argument" != -muted ] || muted=true
+  [ "$argument" != --muted ] || legacy_muted=true
+done
+if $automated || $silent || $muted || $legacy_muted; then
+  if ! $silent; then set -- "$@" -noaudio; fi
+  if ! $muted; then set -- "$@" -muted; fi
+fi
 # Aggregate suites must never become an implicit gate, including production routes.
 previous=
 for argument in "$@"; do
@@ -26,9 +42,10 @@ case "${1:-}" in
     exec "$runner" "--$mode" --timeout "${UNITY_ADMISSION_TIMEOUT:-120}" --project "$project_dir" -- "$editor" -projectPath "$project_dir" "$@" ;;
   player)
     shift
-    mode=${UNITY_RUN_MODE:-exclusive}
+    mode=${UNITY_RUN_MODE:-shared}
     [ "$mode" = shared ] || [ "$mode" = exclusive ] || exit 2
     [ "$#" -gt 0 ] || { echo "Provide direct Player executable" >&2; exit 2; }
-    exec "$runner" "--$mode" --timeout "${UNITY_ADMISSION_TIMEOUT:-120}" -- "$@" ;;
+    executable=$1; shift
+    exec "$runner" "--$mode" --timeout "${UNITY_ADMISSION_TIMEOUT:-120}" -- "$executable" "$@" ;;
   *) echo "Usage: tools/unity.sh shared|exclusive [Editor arguments] | player EXECUTABLE [arguments]" >&2; exit 2 ;;
 esac

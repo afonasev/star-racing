@@ -4,7 +4,7 @@ using UnityEngine.Rendering;
 
 namespace StarRacingPrototype {
     // Owns render resources only; route and physical road are never modified.
-    public sealed class TrackEnvironmentBuilder {
+    public sealed partial class TrackEnvironmentBuilder {
         readonly List<Mesh> meshes = new List<Mesh>();
         readonly List<Material> materials = new List<Material>();
         readonly Dictionary<Vector4, Mesh> mappedCubes = new Dictionary<Vector4, Mesh>();
@@ -35,6 +35,7 @@ namespace StarRacingPrototype {
         }
 
         public void Clear() {
+            ClearGraphRenderers();
             Sky?.Clear(); Sky = null;
             if (roadRenderer != null) roadRenderer.enabled = roadRendererOriginalEnabled;
             if (railRenderer != null) railRenderer.enabled = railRendererOriginalEnabled;

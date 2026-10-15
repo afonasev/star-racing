@@ -4,6 +4,8 @@ namespace StarRacingPrototype {
     /// <summary>Marks road colliders with their route position for local contact filtering.</summary>
     public sealed class TrackSurface : MonoBehaviour {
         public int segmentId;
+        public string graphIdentity;
+        public int graphBuildRevision;
         public float distance;
         // Each MeshCollider triangle maps to the route sample at the start of its road face.
         public int[] triangleSamples;
@@ -19,13 +21,17 @@ namespace StarRacingPrototype {
 
     public struct RoadFace {
         public int sample;
+        // Zero defaults preserve legacy single-route grouping. Graph ports use explicit namespaces.
+        public int geometryId, arm, startPort, endPort, leftBoundaryTag, rightBoundaryTag;
+        public float startSeamOffset, endSeamOffset;
+        public bool canonicalFlatPorts;
         public int quad;
         public float startDistance, endDistance;
         public float leftStart, rightStart, leftEnd, rightEnd;
         public bool ramp;
         public RoadFace(int sample, int quad, float start, float end,
             float left0, float right0, float left1, float right1, bool ramp) {
-            this.sample=sample;this.quad=quad;startDistance=start;endDistance=end;
+            this=default;this.sample=sample;this.quad=quad;startDistance=start;endDistance=end;
             leftStart=left0;rightStart=right0;leftEnd=left1;rightEnd=right1;this.ramp=ramp;
         }
     }

@@ -29,7 +29,7 @@ namespace StarRacingPrototype {
   public float Speed,Desired,Heading; public AiNitroHazard Hazards;
   public AiSpeedLimitSource LimitSource;public int LimitingEntrant;
  }
- public sealed class AiDriver {
+ public sealed partial class AiDriver {
   public AiMode Mode {get;private set;}
   public int Target {get;private set;}=-1;
   public float Lane {get;private set;}
@@ -267,10 +267,12 @@ namespace StarRacingPrototype {
   // Only returns ordinary steering; no physical-state writes or extra grip.
   float TrackSteering(TrackRoute route,AiObservation self,float lane,float look){
    var frame=route.Evaluate(self.Distance);var ahead=route.Evaluate(self.Distance+look);
-   Vector3 target=ahead.position+ahead.right*lane;
-   Vector3 offset=Vector3.ProjectOnPlane(target-self.Position,frame.normal);
+   return SteeringTo(self,frame.normal,ahead.position+ahead.right*lane);
+  }
+  float SteeringTo(AiObservation self,Vector3 normal,Vector3 target){
+   Vector3 offset=Vector3.ProjectOnPlane(target-self.Position,normal);
    float speed=Mathf.Max(6,Mathf.Abs(self.Speed));
-   float angle=Vector3.SignedAngle(self.Forward,offset.normalized,frame.normal)*Mathf.Deg2Rad;
+   float angle=Vector3.SignedAngle(self.Forward,offset.normalized,normal)*Mathf.Deg2Rad;
    // Pursuit follows the actual selected paved branch, not the centerline through a split.
    float pursuit=2*speed*Mathf.Sin(angle)/Mathf.Max(5,offset.magnitude);
    // At walking speed the usual speed-weighted pursuit cannot open a contact queue.
@@ -291,7 +293,7 @@ namespace StarRacingPrototype {
   public int DefendingAgainst=>defendingAgainst;
   public AiDriver(int id,DriverProfile profile,uint seed,ReleaseBalance balance){boostLimit=balance["nitroMaxSpeedKmh"]/3.6f;brake=balance["brakeDeceleration"];accelEnvelope=balance["acceleration"]+balance["nitroAcceleration"];this.id=id;this.profile=profile;this.balance=balance;random=seed;personality=Random01();Temperament=(AiTemperament)((seed^(seed>>16))%3);decisionSeed=random;Reset();}
   float Random01()=>RaceRoster.Next(ref random)/(float)uint.MaxValue;
-  public void Reset(){ResetManeuver();arrestReverse=false;random=decisionSeed;Mode=AiMode.Pace;Target=-1;revision=-1;stalled=0;reverseUntil=0;ReverseActive=false;ReverseReason="none";Lane=0;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;CorridorBlocked=false;returningToInterior=false;NitroCommand=false;recoveryUntil=0;defendingAgainst=-1;defendUntil=defendCooldown=0;boost=false;boostUntil=0;nextBoost=.25+personality*2.5;lastHeadingAt=double.NegativeInfinity;headingRate=0;LastFullDecision=0;Attacks=Overtakes=Plans=0;}
+  public void Reset(){ResetGraphState();ResetManeuver();arrestReverse=false;random=decisionSeed;Mode=AiMode.Pace;Target=-1;revision=-1;stalled=0;reverseUntil=0;ReverseActive=false;ReverseReason="none";Lane=0;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;CorridorBlocked=false;returningToInterior=false;NitroCommand=false;recoveryUntil=0;defendingAgainst=-1;defendUntil=defendCooldown=0;boost=false;boostUntil=0;nextBoost=.25+personality*2.5;lastHeadingAt=double.NegativeInfinity;headingRate=0;LastFullDecision=0;Attacks=Overtakes=Plans=0;}
   float SpeedLimit=>balance["baseSpeedKmh"]/3.6f;
   float BoostLimit=>boostLimit;
   float Brake=>brake;
@@ -388,6 +390,7 @@ namespace StarRacingPrototype {
    return Mathf.Abs(Vector3.Dot(Vector3.Cross(firstUnit,lastUnit),current.normal))/arc;
   }
   public DrivingInput Step(AiWorldSnapshot world,TrackRoute route,float dt,bool allowNitro=true) {
+   graphStopIntent=false;graphWorld=null;
    var self=world[id];double now=world.Time;NitroCommand=false;NitroHazards=AiNitroHazard.None;if(self.Finished||dt<=0){ReverseActive=false;return default;}
    if(revision!=self.Revision){if(revision>=0){Mode=AiMode.Recovery;recoveryUntil=now+1.1+personality;EndBoost(now,self,"position-recovery");Target=-1;}revision=self.Revision;defendingAgainst=-1;defendUntil=0;stalled=0;ResetManeuver();Lane=self.Lateral;BranchIndex=BranchLane=-1;MergeYieldTo=mergeYieldBranch=mergeYieldRevision=-1;partialJumpIndex=-1;returningToInterior=false;ReverseActive=false;reverseUntil=0;lastHeadingAt=double.NegativeInfinity;headingRate=0;}
    float speed=Mathf.Max(0,self.Speed);
@@ -860,7 +863,9 @@ namespace StarRacingPrototype {
    return Mathf.Abs(Vector3.Dot(Vector3.Cross(firstUnit,lastUnit),b.normal))/arc;
   }
   TrackFrame FrameAt(TrackRoute route,float distance,ref FrameCache cache)=>cache.Get(route,distance);
-  float HandlingCurveSpeed(float curvature){
+  float HandlingCurveSpeed(float curvature)=>HandlingCurveSpeedFor(balance,curvature);
+  public static float HandlingCurveSpeedFor(ReleaseBalance balance,float curvature){
+   float SpeedLimit=balance["baseSpeedKmh"]/3.6f,BoostLimit=balance["nitroMaxSpeedKmh"]/3.6f;
    if(curvature<.00001f)return BoostLimit;
    float low=0,high=BoostLimit;
    for(int i=0;i<10;i++){

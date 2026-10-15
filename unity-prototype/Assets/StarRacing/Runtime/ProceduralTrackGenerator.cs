@@ -606,11 +606,18 @@ public static class Generator
     {
         return GenerateCandidates(requested, mode, theme, jumps, native, 0, 1, revision);
     }
+    // Explicit union generator supplies the native12 family. The existing
+    // Generate/GenerateFallback defaults and10/11 selectors stay unchanged.
+    internal static Definition GenerateNative12(uint requested,string mode,string theme,bool jumps,string family,bool fallback) {
+        if(!DrivingFamilies.Contains(family) || !new[]{"normal","full","none"}.Contains(mode) || !new[]{"cloud-city","space-station"}.Contains(theme))throw new ArgumentException("Unsupported native12 settings/family");
+        uint themed=theme=="space-station"?requested^0x5a710a1eu:requested;
+        return GenerateCandidates(requested,mode,theme,jumps,true,themed,fallback?1:0,12,family);
+    }
     static Definition GenerateCandidates(uint requested, string mode, string theme, bool jumps, bool native,
-                                         uint themed, int firstPhase, int revision)
+                                         uint themed, int firstPhase, int revision,string forcedFamily=null)
     {
-        if (native && revision != 10 && revision != NativeRevision) throw new ArgumentException("Unsupported native revision");
-        string family = native && revision >= 11 ? FamilyFor(requested, theme) : null;
+        if (native && revision != 10 && revision != NativeRevision && !(revision==12&&forcedFamily!=null)) throw new ArgumentException("Unsupported native revision");
+        string family = native && revision >= 11 ? forcedFamily??FamilyFor(requested, theme) : null;
         string[] reasons = Array.Empty<string>();
         for (int phase = firstPhase; phase < 2; phase++)
         {

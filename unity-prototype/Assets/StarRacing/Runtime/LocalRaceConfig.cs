@@ -19,11 +19,15 @@ namespace StarRacingPrototype {
   public void RandomizeSeed(){uint previous=Seed,value;do{var bytes=Guid.NewGuid().ToByteArray();value=BitConverter.ToUInt32(bytes,0);}while(value==previous);seed=value.ToString();}
   public string seed="77",theme="random",rails="normal";
   public bool jumps,handicap;
+  // New configurations use Native12; explicit saved legacy revisions remain replayable.
+  public int generatorRevision=12;
+  public NativeCourseReplay replay;
   public uint Seed=>uint.Parse(seed);
   public LocalRaceConfig Copy()=>JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(this));
   public bool Validate(out string error){
    error="";
-   if(version!=1)error="Неизвестная версия настроек";
+   if(generatorRevision!=10&&generatorRevision!=11&&generatorRevision!=12)error="Неизвестная версия трассы";
+   else if(version!=1)error="Неизвестная версия настроек";
    else if(humans<0||humans>4||devices==null||devices.Length!=4||names==null||names.Length!=4)error="Выберите до 4 игроков";
    else if(Array.IndexOf(ParticipantCounts,entrants)<0)error="Выберите 8, 16, 32 или 64 участника";
    else if(!uint.TryParse(seed,out _))error="Seed: целое число от 0 до 4294967295";
@@ -36,7 +40,7 @@ namespace StarRacingPrototype {
    return error.Length==0;
   }
   public static LocalRaceConfig Normalize(LocalRaceConfig config){
-   config=config??new LocalRaceConfig();config.version=1;config.handicap=false;
+   config=config??new LocalRaceConfig();if(config.generatorRevision!=10&&config.generatorRevision!=11&&config.generatorRevision!=12)config.generatorRevision=12;config.version=1;config.handicap=false;
    config.humans=Mathf.Clamp(config.humans,0,4);
    if(config.devices==null||config.devices.Length!=4)config.devices=new[]{-2,-1,0,1};
    for(int i=0;i<4;i++){if(config.devices[i]<-2)config.devices[i]=i-2;

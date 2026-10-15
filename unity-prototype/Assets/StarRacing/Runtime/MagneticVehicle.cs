@@ -61,7 +61,7 @@ namespace StarRacingPrototype
         public long AirSteeringSteps {get;private set;}
         public bool AirSteeringActive=>Mathf.Abs(preparedAirSteer)>=AirSteeringForces.Deadzone;
         internal void ApplyPreparedForces(float step){preparedForces.Apply(Body,step);if(AirSteeringActive){AirSteeringForces.Apply(Body,airSteeringNormal,preparedAirSteer,step);AirSteeringSteps++;}}
-        void CancelAirSteering(){preparedAirSteer=0;if(activeJump!=null)airSteeringBlocked=true;}
+        void CancelAirSteering(){preparedAirSteer=0;if(Jumping)airSteeringBlocked=true;}
         internal void ClearPreparedForces(){preparedForces=default;preparedHandlingCorrection=preparedHandlingAngular=Vector3.zero;preparedAirSteer=0;preparedContactYawTorque=preparedContactSeparation=Vector3.zero;}
         void AddForce(Vector3 value,ForceMode mode)=>preparedForces.AddForce(value,mode);
         void AddTorque(Vector3 value,ForceMode mode)=>preparedForces.AddTorque(value,mode);
@@ -72,11 +72,11 @@ namespace StarRacingPrototype
         }
 
         const float Mass = 1000f;
-        const float WheelRadius = .34f;
-        const float SuspensionTravel = .78f;
-        const float Wheelbase = 2.35f;
-        const float TrackWidth = 1.42f;
-        static readonly Vector3[] SuspensionOffsets = {
+        internal const float WheelRadius = .34f;
+        internal const float SuspensionTravel = .78f;
+        internal const float Wheelbase = 2.35f;
+        internal const float TrackWidth = 1.42f;
+        internal static readonly Vector3[] SuspensionOffsets = {
             new Vector3(-TrackWidth * .5f, 0f, Wheelbase * .5f), new Vector3(TrackWidth * .5f, 0f, Wheelbase * .5f),
             new Vector3(-TrackWidth * .5f, 0f, -Wheelbase * .5f), new Vector3(TrackWidth * .5f, 0f, -Wheelbase * .5f)
         };
@@ -87,6 +87,15 @@ namespace StarRacingPrototype
         long recoveryTick, recoverySequence;
 
         TrackBuilder track;
+        GraphVehicleRoute graphRoute;
+        GraphVehicleRoute.SafePose graphSafePose;
+        long graphObservationTick;
+        public GraphVehicleRoute GraphRoute => graphRoute;
+        bool HasRoute => track!=null && (graphRoute!=null ? graphRoute.Current && track.GraphSurface==graphRoute.Surface : track.Route!=null);
+        internal static long GraphFixedTick => (long)System.Math.Round(Time.fixedTimeAsDouble/Time.fixedDeltaTime);
+        static TrackFrame FromGraph(Procedural.GraphFrame f) => new TrackFrame { distance=(float)f.distance,
+            position=f.position.Float,tangent=f.tangent.Float,normal=f.normal.Float,right=-f.right.Float,halfWidth=(float)f.halfWidth };
+        TrackFrame EvaluateRoad(float distance) => graphRoute==null ? track.Route.Evaluate(distance) : FromGraph(graphRoute.LookAhead(distance-Distance));
         internal TrackBuilder SourceTrack=>track;
         DrivingInput input;
         StaticVehicleVisual visual;
@@ -95,7 +104,7 @@ namespace StarRacingPrototype
         public Pose RenderPose=>presentationCaptured?presentation.Sample(Time.timeAsDouble):Body!=null?new Pose(Body.position,Body.rotation):new Pose(transform.position,transform.rotation);
         public int PresentationEpoch=>presentation.Epoch;
         public TrackFrame RenderFrame=>ProjectPresentationFrame(RenderPose.position);
-        public TrackFrame ProjectPresentationFrame(Vector3 position)=>track.Route.Project(position,Distance,30f);
+        public TrackFrame ProjectPresentationFrame(Vector3 position)=>graphRoute==null ? track.Route.Project(position,Distance,30f) : FromGraph(graphRoute.ProjectPresentation(position));
         internal void CapturePresentation(double time,float step){presentation.Capture(new Pose(Body.position,Body.rotation),time,step);presentationCaptured=true;}
         public void ResetPresentation(){if(Body==null)return;presentation.Reset(new Pose(Body.position,Body.rotation));presentationCaptured=false;if(presentationRoot!=null)presentationRoot.SetPositionAndRotation(Body.position,Body.rotation);}
         void UpdatePresentation(){if(presentationRoot==null)return;var pose=RenderPose;presentationRoot.SetPositionAndRotation(pose.position,pose.rotation);}
@@ -121,7 +130,7 @@ namespace StarRacingPrototype
         BoxCollider chassis;
         float sideContactNormal; int sideContactSamples, sideContactRevision; long sideContactInterval=-2;
         internal const float WeakContactRelativeSpeed=12f;
-        internal bool RearContactSteeringRequested => HandlingContinuous && activeJump==null
+        internal bool RearContactSteeringRequested => HandlingContinuous && !Jumping
             && Mathf.Abs(input.steer)>=.01f && strongContacts.Count==0;
         float separationDirection,separationRemaining,contactYawRemaining;
         Vector3 preparedContactYawTorque,preparedContactSeparation;
@@ -143,7 +152,7 @@ namespace StarRacingPrototype
         float lastSafeDistance;
         CheckpointAdmission.Result lastSafeAdmission;
         bool lastSafeValid;
-        public bool HasProvenCheckpoint => lastSafeValid && track!=null && lastSafeAdmission.revision==track.BuildRevision;
+        public bool HasProvenCheckpoint => graphRoute!=null ? graphRoute.Current && graphSafePose!=null : lastSafeValid && track!=null && lastSafeAdmission.revision==track.BuildRevision;
         readonly CheckpointAdmission.Support[] suspensionSupports=new CheckpointAdmission.Support[4];
         readonly float[] previousSuspensionLengths = new float[4];
         readonly bool[] previousSuspensionContacts = new bool[4];
@@ -161,7 +170,9 @@ namespace StarRacingPrototype
         internal bool ProtectRoadContacts=>roadProtection;
         internal Vector3 ProtectedRoadNormal=>protectedNormal;
         float rampContactTime, flightStarted;
-        public string ActiveJumpId => activeJump?.id ?? "";
+        bool Jumping=>activeJump!=null || graphRoute!=null&&graphRoute.IsFlying;
+        bool FlightCorridor()=>graphRoute==null?track.Route.InFlightCorridor(activeJump,Body.position,Distance):graphRoute.InFlightCorridor(graphRoute.FlightJump,Body.position,Distance);
+        public string ActiveJumpId => activeJump?.id ?? graphRoute?.FlightJump?.id ?? "";
         void EndJump(string reason) {activeJump=null;preparedAirSteer=0;airSteeringBlocked=false;}
         void ApplyGravity(bool updateDirection = true)
         {
@@ -170,21 +181,21 @@ namespace StarRacingPrototype
                 roadBelow = false;
                 // Probe toward the local road, independently of the car's pitch/roll.
                 // A nearest-point query also selects road beside a gap or a real off-road fall.
-                var frame = track.Route.Evaluate(Distance);
+                var frame = EvaluateRoad(Distance);
                 float height = Vector3.Dot(Body.position - frame.position, frame.normal);
                 float lateral = Mathf.Abs(Vector3.Dot(Body.position - frame.position, frame.right));
                 if (height >= -.05f && lateral <= frame.halfWidth &&
-                    RaycastRoad(Body.position, -frame.normal, Mathf.Max(2f, height + 4f), Distance, out var hit))
+                    RaycastRoad(Body.position, -frame.normal, Mathf.Max(2f, height + 4f), Distance, out var hit,GraphRuntimeProfile.SupportProbe.GravityRoadBelow))
                 {
                     gravityDirection = -hit.normal.normalized;
                     roadBelow = true;
                 }
-                else if (activeJump != null && track.Route.InFlightCorridor(activeJump, Body.position, Distance))
+                else if (Jumping && FlightCorridor())
                 {
                     // Continue the takeoff plane into the authored gap, blending to the
                     // landing road. In a gap there is intentionally no collider to raycast.
-                    float gapStart = 30 + activeJump.gapStartIndex * 5;
-                    float gapEnd = 30 + activeJump.gapEndIndex * 5;
+                    float gapStart = graphRoute==null?30 + activeJump.gapStartIndex * 5:(float)graphRoute.FlightJump.gapStart;
+                    float gapEnd = graphRoute==null?30 + activeJump.gapEndIndex * 5:(float)graphRoute.FlightJump.gapEnd;
                     float t = Mathf.InverseLerp(gapStart, gapEnd, Distance);
                     gravityDirection = -Vector3.Slerp(launchNormal, frame.normal, t).normalized;
                 }
@@ -213,6 +224,7 @@ namespace StarRacingPrototype
 
         public void Initialize(TrackBuilder sourceTrack, int seat, Color color, ReleaseBalance balance = null, bool human = true)
         {
+            graphRoute=null;graphSafePose=null;
             track = sourceTrack;
             Seat = seat;
             if(balance!=null)Drive=new DrivingBalance(balance);
@@ -220,6 +232,34 @@ namespace StarRacingPrototype
             CreateVisuals(color, human);
             ResetAt(seat * 3f, seat == 0 ? -1.5f : 1.5f);
             initialized = true;
+        }
+
+        public void InitializeIndependent(TrackBuilder sourceTrack, Procedural.RouteCursor cursor, int seat, Color color,
+            ReleaseBalance balance=null, bool human=true) {
+            if(sourceTrack==null || sourceTrack.GraphSurface==null)throw new System.ArgumentException("Independent physical build required");
+            track=sourceTrack;Seat=seat;if(balance!=null)Drive=new DrivingBalance(balance);
+            EnsurePhysics();CreateVisuals(color,human);
+            ResetOnGraph(cursor);initialized=true;
+        }
+        public void ResetOnGraph(Procedural.RouteCursor cursor,float lateral=0) {
+            if(track==null || track.GraphSurface==null)throw new System.InvalidOperationException("No independent graph build");
+            var frame=FromGraph(track.GraphSurface.Graph.Evaluate(cursor));
+            var pose=new Pose(frame.position+frame.right*lateral+frame.normal*RestBodyHeight,frame.Rotation);
+            if(!GraphVehicleRoute.TryCreate(track.GraphSurface,cursor,pose,PositionRevision+1,GraphFixedTick,out var binding,RestBodyHeight))
+                throw new System.InvalidOperationException("Graph reset pose has no proven footprint/support");
+            graphRoute=binding;graphObservationTick=GraphFixedTick;graphSafePose=null;PositionRevision++;
+            ClearSideContacts();ResetSuspensionHistory();ClearPreparedForces();CancelAirSteering();
+            EndJump("reset");unlandedJump=false;roadProtection=false;lastRampSupport=null;
+            FinishedCoasting=false;StoppedAtWall=false;Body.isKinematic=false;Body.constraints=RigidbodyConstraints.None;
+            Frame=frame;Distance=(float)cursor.localPhysicalDistance;gravityDirection=-Frame.normal;
+            Body.position=pose.position;Body.rotation=pose.rotation;Body.linearVelocity=Vector3.zero;Body.angularVelocity=Vector3.zero;
+            transform.SetPositionAndRotation(pose.position,pose.rotation);ResetPresentation();
+            graphRoute.TryCaptureSafePose(pose,out graphSafePose,RestBodyHeight);
+            lastSafeValid=false;offRouteTime=0;recovery.Reset();recoveryEvents.Clear();recoverySequence=0;
+            chassis.enabled=true;input=default;pendingThrottle=0;pendingNitro=acceptedBoost=false;
+            presentationThrottle=0;presentationEnabled=false;nitroFeedbackActive=false;visual?.Exhaust.ResetEffect();
+            Drive?.Reset();handling.Reset();reconciliation.Invalidate("reset");handlingTick=0;wasGrounded=false;
+            RestoreCarCollisions();Telemetry.recovering=false;Telemetry.speedKmh=0;Telemetry.nitro01=1;
         }
 
         public void SetInput(DrivingInput value) {
@@ -249,18 +289,19 @@ namespace StarRacingPrototype
             recovery.Reset();recoveryEvents.Clear();
             ClearPreparedForces();
             chassis.enabled=true;
-            var f = track.Route.Evaluate(track.Route.FinishDistance);
+            var f = graphRoute==null ? track.Route.Evaluate(track.Route.FinishDistance) : FromGraph(graphRoute.LookAhead(double.MaxValue));
             float speed = Mathf.Max(0, Vector3.Dot(Body.linearVelocity, f.tangent));
             Body.rotation = f.Rotation; Body.angularVelocity = Vector3.zero;
             Body.linearVelocity = f.tangent * speed;
             // The finish straight is parallel to world Z. PhysX retains forward inertia and suspension.
             ResetPresentation();
-            Body.constraints = track.Route.Definition == null ? RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezeRotation : RigidbodyConstraints.FreezeRotation;
+            Body.constraints = graphRoute==null && track.Route.Definition == null ? RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezeRotation : RigidbodyConstraints.FreezeRotation;
             BeginGhosting();
         }
 
         public void ResetAt(float distance, float lateral = 0f)
         {
+            if(graphRoute!=null)throw new System.InvalidOperationException("Independent reset requires explicit route cursor");
             ClearSideContacts();
             if (track == null || track.Route == null) return;
             PositionRevision++; ResetSuspensionHistory();track.TireMarks?.Break(Seat);
@@ -296,9 +337,14 @@ namespace StarRacingPrototype
 
         public void ResetToCheckpoint()
         {
-            if (track == null || track.Route == null) return;
+            if (!HasRoute) return;
             if (FinishedCoasting) return;
-            if (!lastSafeValid || lastSafeAdmission.revision!=track.BuildRevision) {
+            if(graphRoute!=null) {
+                if(!graphRoute.TryRestore(graphSafePose,PositionRevision+1,GraphFixedTick,out var pose))return;
+                graphObservationTick=GraphFixedTick;
+                lastSafePosition=pose.position;lastSafeRotation=pose.rotation;lastSafeDistance=(float)graphRoute.Cursor.localPhysicalDistance;
+            }
+            if (graphRoute==null && (!lastSafeValid || lastSafeAdmission.revision!=track.BuildRevision)) {
                 Debug.LogWarning($"RECOVERY_CHECKPOINT_UNPROVEN entrant={Seat} revision={track.BuildRevision}");
                 return;
             }
@@ -310,7 +356,8 @@ namespace StarRacingPrototype
             Body.rotation = lastSafeRotation;
             ClearPreparedForces();
             chassis.enabled=true;
-            Frame = track.Route.Evaluate(lastSafeDistance);
+            if(graphRoute!=null)Distance=lastSafeDistance;
+            Frame = EvaluateRoad(lastSafeDistance);
             gravityDirection = -Frame.normal.normalized;
             Body.linearVelocity = Frame.tangent.normalized * (Drive == null ? 0f : Drive.BaseSpeed * .5f);
             Body.angularVelocity = Vector3.zero;
@@ -387,9 +434,22 @@ namespace StarRacingPrototype
             visual = StaticVehicleVisual.Create(presentationRoot, color, human);
         }
 
-        public void PrepareProjection(){if(initialized && !recovery.Falling && track!=null){Frame=track.Route.Project(Body.position,Distance,30f);Distance=Frame.distance;}}
-        bool RaycastRoad(Vector3 origin,Vector3 direction,float length,float progress,out RaycastHit hit)
+        public void PrepareProjection(){
+            if(initialized && graphRoute!=null && !HasRoute){Hold(true);return;}
+            if(!initialized || recovery.Falling || !HasRoute)return;
+            if(graphRoute==null){Frame=track.Route.Project(Body.position,Distance,30f);Distance=Frame.distance;}
+            else {
+                long tick=GraphFixedTick;
+                if(tick==graphObservationTick)return; // repeat query of the same immutable physics snapshot
+                graphObservationTick=tick;
+                graphRoute.Observe(new Pose(Body.position,Body.rotation),PositionRevision,tick,Body.linearVelocity,Time.fixedDeltaTime);
+                Distance=(float)graphRoute.Cursor.localPhysicalDistance;
+                Frame=FromGraph(graphRoute.ProjectPresentation(Body.position));
+            }
+        }
+        bool RaycastRoad(Vector3 origin,Vector3 direction,float length,float progress,out RaycastHit hit,GraphRuntimeProfile.SupportProbe probe=GraphRuntimeProfile.SupportProbe.Unspecified)
         {
+            if(graphRoute!=null)return graphRoute.RaycastWithOrigin(origin,direction,length,out hit,probe);
             return progress.Equals(Distance)
                 ?track.RaycastRoadWithNormal(origin,direction,length,progress,Frame.normal,out hit)
                 :track.RaycastRoad(origin,direction,length,progress,out hit);
@@ -398,7 +458,8 @@ namespace StarRacingPrototype
         void FixedUpdate()
         {
             ClearPreparedForces();roadProtection=false;
-            if (!initialized || track == null || track.Route == null || Body.isKinematic) { track?.TireMarks?.Break(Seat); return; }
+            if(initialized && graphRoute!=null && !HasRoute){Hold(true);return;}
+            if (!initialized || !HasRoute || Body.isKinematic) { track?.TireMarks?.Break(Seat); return; }
             float dt = Time.fixedDeltaTime;
             physicsInterval++;neutralContactRemaining=Mathf.Max(0,neutralContactRemaining-dt);
             if(Mathf.Abs(input.steer)>=.01f||input.drift||handling.driftIntentRemaining>0)neutralContactRemaining=0;
@@ -429,33 +490,37 @@ namespace StarRacingPrototype
             driveAcceleration=Drive==null?0:Drive.StepHuman(driveInput,(float)HandlingObserved.Speed,dt,raceActive && !FinishedCoasting,grounded && !IsGhosting,place,entrantCount,handling);
             acceptedBoost|=Drive!=null && Drive.Active;
             if(grounded) EndJump("landing");
-            else if(wasGrounded && lastRampSupport!=null && Time.time-rampContactTime<.1f &&
+            else if(graphRoute!=null && graphRoute.IsFlying && wasGrounded) {
+                handling.Reset();reconciliation.Invalidate("launch");unlandedJump=true;launchNormal=-gravityDirection;
+                airSteeringNormal=Frame.normal.normalized;airSteeringBlocked=false;flightStarted=Time.time;
+            }
+            else if(graphRoute==null && wasGrounded && lastRampSupport!=null && Time.time-rampContactTime<.1f &&
                     track.Route.CanLaunch(lastRampSupport,Body.position,Distance,Body.linearVelocity)) {
                 handling.Reset();reconciliation.Invalidate("launch"); // Source confirmed launch resets handling intent without writing the physical pose.
                 activeJump=lastRampSupport;unlandedJump=true;launchNormal=-gravityDirection;
                 airSteeringNormal=Frame.normal.normalized;airSteeringBlocked=false;
                 flightStarted=Time.time;
             }
-            if(activeJump!=null && (Time.time-flightStarted>=4 || !track.Route.InFlightCorridor(activeJump,Body.position,Distance)))EndJump("corridor-or-timeout");
+            if(Jumping && (Time.time-flightStarted>=4 || !FlightCorridor()))EndJump("corridor-or-timeout");
 
             ApplyGravity();
             if(grounded && contacts==4 && roadBelow && Vector3.Dot(transform.up,Frame.normal)>.7f)unlandedJump=false;
-            var protectedFrame=track.Route.Evaluate(Distance);
+            var protectedFrame=EvaluateRoad(Distance);
             float protectedLane=Vector3.Dot(Body.position-protectedFrame.position,protectedFrame.right);
-            roadProtection=AdditionalMagneticAdhesion && roadBelow && !Frame.gap && activeJump==null && !unlandedJump && !IsGhosting &&
-                track.Route.TryRoadBounds(Distance,protectedLane,out _,out _);
+            roadProtection=AdditionalMagneticAdhesion && roadBelow && !Frame.gap && !Jumping && !unlandedJump && !IsGhosting &&
+                (graphRoute==null ? track.Route.TryRoadBounds(Distance,protectedLane,out _,out _) : graphRoute.RaycastWithOrigin(Body.position,-protectedFrame.normal,2f,out _,GraphRuntimeProfile.SupportProbe.RoadProtection));
             protectedNormal=protectedFrame.normal;
-            if(activeJump!=null && !grounded && raceActive && !airSteeringBlocked && !IsGhosting && !FinishedCoasting && !recovery.Falling)
+            if(Jumping && !grounded && raceActive && !airSteeringBlocked && !IsGhosting && !FinishedCoasting && !recovery.Falling)
                 preparedAirSteer=float.IsNaN(input.steer)?0:Mathf.Clamp(input.steer,-1,1);
             // Contact loss on a crest must not switch off the force that counters
             // centrifugal separation. Authored ramp flight retains its ballistic arc.
             if (grounded && roadBelow && routeNear && AdditionalMagneticAdhesion &&
-                !Frame.gap && activeJump == null && !unlandedJump && !onRampSupport) {
+                !Frame.gap && !Jumping && !unlandedJump && !onRampSupport) {
                 // On supported road, supply signed centripetal acceleration directly.
                 // An unsigned inward pull doubles the suspension load in a concave
                 // loop, compressing the chassis onto the road and creating friction.
-                var before = track.Route.Evaluate(Distance - 1f);
-                var after = track.Route.Evaluate(Distance + 1f);
+                var before = EvaluateRoad(Distance - 1f);
+                var after = EvaluateRoad(Distance + 1f);
                 Vector3 roadNormal = -gravityDirection;
                 float arc = Vector3.Distance(before.position, after.position);
                 float curvature = arc > .001f ? Vector3.Dot(after.tangent-before.tangent,roadNormal)/arc : 0;
@@ -463,7 +528,7 @@ namespace StarRacingPrototype
                 AddForce(gravityDirection * 14f + roadNormal * (curvature * forwardSpeed * forwardSpeed),
                     ForceMode.Acceleration);
             }
-            else if (grounded || (roadBelow && activeJump == null && !unlandedJump && !onRampSupport))
+            else if (grounded || (roadBelow && !Jumping && !unlandedJump && !onRampSupport))
                 AddForce(MagneticAdhesionAcceleration, ForceMode.Acceleration);
             if (grounded)
             {
@@ -477,7 +542,7 @@ namespace StarRacingPrototype
                     if(Mathf.Abs(input.steer)<.01f && !input.drift)contactYawRemaining=.25f;
                 }
                 if(Mathf.Abs(input.steer)>=.01f || input.drift)contactYawRemaining=0;
-                if(separationRemaining>0 && strongContacts.Count==0 && !IsGhosting && activeJump==null && !unlandedJump && !onRampSupport) {
+                if(separationRemaining>0 && strongContacts.Count==0 && !IsGhosting && !Jumping && !unlandedJump && !onRampSupport) {
                     // The same contact assistance applies to every driver.
                     preparedContactSeparation=Frame.right*(4f*separationDirection);
                     AddForce(preparedContactSeparation,ForceMode.Acceleration);
@@ -491,7 +556,7 @@ namespace StarRacingPrototype
                         AddTorque(preparedContactYawTorque,ForceMode.Acceleration);
                     }
                 }
-                if (contacts >= (track.Route.Definition == null ? 3 : 4) && !Frame.gap && Vector3.Dot(transform.up, Frame.normal) > .7f)
+                if (contacts >= (graphRoute==null && track.Route.Definition == null ? 3 : 4) && !Frame.gap && Vector3.Dot(transform.up, Frame.normal) > .7f)
                     StoreSafePoint();
                 offRouteTime = routeNear ? 0f : offRouteTime + dt;
             }
@@ -504,8 +569,8 @@ namespace StarRacingPrototype
                 var suppression=(!raceActive?DrivingSuppression.Inactive:DrivingSuppression.None)
                     | (FinishedCoasting?DrivingSuppression.Finished:DrivingSuppression.None)
                     | (IsGhosting?DrivingSuppression.Ghost:DrivingSuppression.None)
-                    | (activeJump!=null?DrivingSuppression.Jumping:DrivingSuppression.None)
-                    | (!grounded && activeJump==null?DrivingSuppression.Falling:DrivingSuppression.None);
+                    | (Jumping?DrivingSuppression.Jumping:DrivingSuppression.None)
+                    | (!grounded && !Jumping?DrivingSuppression.Falling:DrivingSuppression.None);
                 HumanHandling.ObserveSkid(handling,HandlingObserved,suppression);
                 drivingIntent=new DrivingIntentSnapshot(Seat,handlingGeneration,PositionRevision,++handlingTick,handling,suppression);
             }
@@ -515,7 +580,7 @@ namespace StarRacingPrototype
             // Extra return force only above the working stroke. Signed damping eases
             // the return as the body descends, avoiding extra static suspension load.
             if(AdditionalMagneticAdhesion && roadBelow && routeNear && !Frame.gap &&
-                activeJump==null && !unlandedJump && !onRampSupport && !IsGhosting) {
+                !Jumping && !unlandedJump && !onRampSupport && !IsGhosting) {
                 float excess=Vector3.Dot(Body.position-Frame.position,Frame.normal)-RestBodyHeight-.04f;
                 if(excess>0) {
                     float outward=Vector3.Dot(Body.linearVelocity,-gravityDirection);
@@ -533,10 +598,10 @@ namespace StarRacingPrototype
             float headingCos=Mathf.Abs(Vector3.Dot(transform.forward,Frame.tangent));
             float headingSin=Mathf.Abs(Vector3.Dot(transform.forward,Frame.right));
             float footprintExtent=headingCos*1.38f+headingSin*2.1f;
-            bool unsupported = !grounded && !roadBelow && activeJump==null &&
+            bool unsupported = (graphRoute!=null && graphRoute.RequiresRecovery) || !grounded && !roadBelow && !Jumping &&
                 (Frame.gap || !routeNear || lateralFromSupportedSpan-footprintExtent>Frame.halfWidth || heightFromRoad< -2f);
             float along = Vector3.Dot(Body.linearVelocity,Frame.tangent);
-            if(recovery.Observe(dt,raceActive,raceElapsed,FinishedCoasting,activeJump!=null,unsupported,
+            if(recovery.Observe(dt,raceActive,raceElapsed,FinishedCoasting,Jumping,unsupported,
                 along,Mathf.Clamp01(input.throttle),Mathf.Clamp01(input.brake))) {
                 Drive?.StopBoost();handling.Reset();reconciliation.Invalidate("fall");
                 // A falling chassis still collides with every road face. Only
@@ -550,16 +615,20 @@ namespace StarRacingPrototype
 
             Telemetry.speedKmh = Body.linearVelocity.magnitude * 3.6f;
             Telemetry.nitro01 = Drive==null?0:Drive.Charge/Drive.Capacity;
-            Telemetry.progress01 = track.Route.Length > .01f ? Distance / track.Route.Length : 0f;
+            Telemetry.progress01 = graphRoute!=null ? (float)(graphRoute.CommonProgress/track.GraphSurface.Graph.CommonLength) : track.Route.Length > .01f ? Distance / track.Route.Length : 0f;
             Telemetry.grounded = grounded;
             Telemetry.compression = contacts == 0 ? 0f : Telemetry.compression / contacts;
             track.TireMarks?.Observe(Seat,PositionRevision,Body.linearVelocity,Body.rotation*Vector3.forward,Frame.normal,
                 suspensionSupports[2],suspensionSupports[3],track,
-                raceActive && grounded && activeJump==null && !Frame.gap && !IsGhosting && !recovery.Falling && Time.timeScale>0,Time.time);
+                raceActive && grounded && !Jumping && !Frame.gap && !IsGhosting && !recovery.Falling && Time.timeScale>0 && (graphRoute==null || graphRoute.RaceObservation.Tick==GraphFixedTick),Time.time,graphRoute);
         }
 
         void StoreSafePoint()
         {
+            if(graphRoute!=null) {
+                if(graphRoute.TryCaptureSafePose(new Pose(Body.position,Frame.Rotation),out var safe,RestBodyHeight))graphSafePose=safe;
+                return;
+            }
             if(track.Route.Definition != null) {
                 // A recovery must leave enough runway to accelerate again; a stationary
                 // reset on the lip would turn one missed jump into an endless failure loop.
@@ -576,7 +645,7 @@ namespace StarRacingPrototype
         void TryStoreSafePoint(Vector3 proposed,Quaternion rotation,float distance,bool initial,bool useHitPoint=false) {
             Vector3 centre=proposed-rotation*Vector3.up*RestBodyHeight;
             Vector3 up=rotation*Vector3.up;
-            if(!RaycastRoad(centre+up*2f,-up,4f,distance,out var hit) ||
+            if(!RaycastRoad(centre+up*2f,-up,4f,distance,out var hit,GraphRuntimeProfile.SupportProbe.VehicleSafePointCentre) ||
                 Vector3.Distance(hit.point,centre)>.5f || Vector3.Dot(hit.normal,up)<.7f)return;
             if(useHitPoint)proposed=hit.point+up*RestBodyHeight;
             var centreSupport=new CheckpointAdmission.Support(centre+up*2f,-up,4f,hit);
@@ -588,7 +657,7 @@ namespace StarRacingPrototype
                     float z=(i<2?1f:-1f)*Wheelbase*.5f;
                     Vector3 origin=proposed+rotation*(new Vector3(x,VehicleGeometry.SuspensionMountHeight,z));
                     float length=SuspensionTravel+WheelRadius+.25f;
-                    if(!RaycastRoad(origin,-up,length,distance,out var wheelHit))return;
+                    if(!RaycastRoad(origin,-up,length,distance,out var wheelHit,GraphRuntimeProfile.SupportProbe.VehicleSafePointWheel))return;
                     supports[i]=new CheckpointAdmission.Support(origin,-up,length,wheelHit);
                 }
             }
@@ -603,6 +672,7 @@ namespace StarRacingPrototype
 
         bool IsExpectedJump()
         {
+            if(graphRoute!=null)return graphRoute.IsJumpRegion;
             if (track.Route.Definition != null) return track.Route.IsJumpRegion(Distance);
             if (track.Route.JumpEnd <= track.Route.JumpStart + .01f) return false;
             float start = Mathf.Repeat(track.Route.JumpStart, track.Route.Length);
@@ -617,6 +687,7 @@ namespace StarRacingPrototype
 
         int ApplySuspension(float dt)
         {
+            using var graphSupportBatch = graphRoute == null ? default : graphRoute.Surface.BeginQueryBatch();
             int contacts = 0;
             suspensionNormal=Vector3.zero;onRampSupport=false;
             float totalCompression = 0f;
@@ -626,10 +697,11 @@ namespace StarRacingPrototype
                 bool previousContact = previousSuspensionContacts[i];
                 previousSuspensionContacts[i] = false;
                 Vector3 origin = transform.TransformPoint(SuspensionOffsets[i] + Vector3.up * VehicleGeometry.SuspensionMountHeight);
-                if (!RaycastRoad(origin, -transform.up, SuspensionTravel + WheelRadius + .25f, Distance, out RaycastHit hit)) continue;
+                if (!RaycastRoad(origin, -transform.up, SuspensionTravel + WheelRadius + .25f, Distance, out RaycastHit hit,GraphRuntimeProfile.SupportProbe.SuspensionWheel)) continue;
                 suspensionSupports[i]=new CheckpointAdmission.Support(origin,-transform.up,SuspensionTravel+WheelRadius+.25f,hit);
-                var supportedRamp=track.Route.RampAtContact(hit.point,Distance);
+                var supportedRamp=graphRoute==null ? track.Route.RampAtContact(hit.point,Distance) : null;
                 if(supportedRamp!=null){lastRampSupport=supportedRamp;rampContactTime=Time.time;onRampSupport=true;}
+                if(graphRoute!=null && graphRoute.RampAtContact(hit.point)!=null)onRampSupport=true;
                 float length = Mathf.Max(0f, hit.distance - WheelRadius);
                 float compression = Mathf.Clamp01((SuspensionTravel - length) / SuspensionTravel);
                 // Support follows the road, not the chassis' delayed pitch. Chassis-up
@@ -676,6 +748,10 @@ namespace StarRacingPrototype
 
         bool HasLongStraightAhead()
         {
+            if(graphRoute!=null) {
+                for(int at=5;at<=45;at+=5)if(Vector3.Angle(Frame.tangent,graphRoute.LookAhead(at).tangent.Float)>.01f)return false;
+                return true;
+            }
             var definition=track.Route.Definition;
             if(definition==null)return false;
             float sourceDistance=Distance-30;
@@ -686,7 +762,7 @@ namespace StarRacingPrototype
 
         float EstimateCurvature()
         {
-            TrackFrame ahead = track.Route.Evaluate(Distance + 3f);
+            TrackFrame ahead = EvaluateRoad(Distance + 3f);
             return Vector3.Angle(Frame.tangent, ahead.tangent) * Mathf.Deg2Rad / 3f;
         }
 
@@ -701,7 +777,7 @@ namespace StarRacingPrototype
             if (grounded && !IsExpectedJump()) {
                 // Track the road's angular motion. Damping toward zero angular speed
                 // makes the nose lag a loop, scrape the road and dissipate forward speed.
-                Vector3 aheadNormal = track.Route.Evaluate(Distance + 1f).normal;
+                Vector3 aheadNormal = EvaluateRoad(Distance + 1f).normal;
                 targetSwing = Vector3.Cross(desiredUp, aheadNormal) *
                     Vector3.Dot(Body.linearVelocity, Frame.tangent);
             }

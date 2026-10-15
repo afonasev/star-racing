@@ -11,11 +11,13 @@ namespace StarRacingPrototype {
   public string BalanceError {get;private set;}="";
   public MagneticVehicle[] Cars {get;private set;}
   public TrackBuilder Track {get;private set;}
+  public NativeTrackCourse Course {get;private set;}
   public LocalInputRouter Input {get;private set;}
   public RaceSession Session {get;private set;}
   public RaceRoster Roster {get;private set;}
   public AiDriver[] Drivers {get;private set;}
   public AiWorldSnapshot World {get;private set;}
+  public GraphAiWorldSnapshot GraphWorld {get;private set;}
   public bool Started {get;private set;}
   public bool InPreparationMenu=>!Started;
   public bool Paused {get;private set;}=true;
@@ -51,6 +53,7 @@ namespace StarRacingPrototype {
   public ChaseCamera CameraFor(int seat)=>cameras[seat];
   public Color EntrantColor(int i)=>i<HumanCount?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f);
   public void ConsumeRecoveryEvents(List<RecoveryEvent> destination){destination.AddRange(pendingRecoveryEvents);pendingRecoveryEvents.Clear();}
+  internal static bool StartupAudioDisabled(string[] arguments)=>SilentStartup.IsRequested(arguments);
   void Awake(){
    if(GetComponent<RacePhysicsStepper>()==null)gameObject.AddComponent<RacePhysicsStepper>();
    try {Balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config")?.text);}catch(Exception e){BalanceError=e.Message;Debug.LogError("BALANCE_ERROR "+e.Message);}
@@ -68,14 +71,19 @@ namespace StarRacingPrototype {
    ApplyLighting();
    var volume=new GameObject("Color and bloom").AddComponent<Volume>();volume.isGlobal=true;volume.profile=ScriptableObject.CreateInstance<VolumeProfile>();
    var bloom=volume.profile.Add<Bloom>();bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);
-   CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);gameObject.AddComponent<RaceAudioCoordinator>();
+   CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);if(!StartupAudioDisabled(Environment.GetCommandLineArgs()))gameObject.AddComponent<RaceAudioCoordinator>();
   }
   void ApplyLighting(){if(sun!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);}}
+  NativeTrackCourse GenerateCourse(LocalRaceConfig config,string theme,bool replay)=>NativeTrackGenerator.Generate(config.Seed,new Procedural.GraphCourseSettings(theme,config.rails,config.jumps),config.generatorRevision,replay&&config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback);
+  static void BuildDecor(TrackEnvironmentBuilder decor,TrackBuilder track,NativeTrackCourse course,uint seed,string theme){if(course.IsIndependent)decor.BuildIndependent(track.GraphSurface,seed,theme);else decor.Build(track.Route,track.transform,seed);}
+  static float GridDistance(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?course.Start-(slot/2)*10:RaceRoster.GridDistance(track.Route,slot);
+  static float GridLateral(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?(slot%2==0?-3.5f:3.5f):RaceRoster.GridLateral(track.Route,slot);
+  static void ResetCar(MagneticVehicle car,NativeTrackCourse course,TrackBuilder track,float distance,float lane){if(course.IsIndependent)car.ResetOnGraph(course.Graph.Cursor(0,distance),lane);else car.ResetAt(distance,lane);}
+  static void InitializeCar(MagneticVehicle car,NativeTrackCourse course,TrackBuilder track,int seat,Color color,ReleaseBalance balance,bool human,float distance){if(course.IsIndependent)car.InitializeIndependent(track,course.Graph.Cursor(0,distance),seat,color,balance,human);else car.Initialize(track,seat,color,balance,human);}
   void BuildTrack(){
    string theme=TrackThemePreference=="random"?(TrackSeed%2==0?"cloud-city":"space-station"):TrackThemePreference;
-   var definition=Procedural.Generator.Generate(TrackSeed,TrackRailMode,theme,TrackJumps,true);
-   environment.Clear();Track.Build(new TrackRoute(definition));environment.Build(Track.Route,Track.transform,TrackSeed);ApplyLighting();
-   TrackSummary=$"SEED {TrackSeed} · {theme} · {definition.totalLength:0} м";
+   Course=GenerateCourse(AppliedConfig,theme,false);environment.Clear();Track.BuildNativeCourse(Course);BuildDecor(environment,Track,Course,TrackSeed,theme);ApplyLighting();
+   TrackSummary=$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
   }
   void CreateRoster(){
    if(Cars!=null)foreach(var car in Cars){car.gameObject.SetActive(false);Destroy(car.gameObject);}
@@ -83,11 +91,11 @@ namespace StarRacingPrototype {
    decisionTimers=new float[EntrantCount];lastDecisionTimes=new double[EntrantCount];decisionRevisions=new int[EntrantCount];botCommands=new DrivingInput[EntrantCount];
    contactObservations=new DrivingContactObservation[EntrantCount];contactPolicy=new DrivingContactPolicy();
    for(int i=0;i<EntrantCount;i++){
-    var e=Roster.Entrants[i];Cars[i]=new GameObject(e.Name).AddComponent<MagneticVehicle>();Cars[i].Initialize(Track,i,EntrantColor(i),Balance,e.HumanSeat>=0);
+    var e=Roster.Entrants[i];Cars[i]=new GameObject(e.Name).AddComponent<MagneticVehicle>();InitializeCar(Cars[i],Course,Track,i,EntrantColor(i),Balance,e.HumanSeat>=0,GridDistance(Course,Track,e.GridSlot));
     int index=i;Cars[i].ContactObserved+=collision=>ObserveContact(index,collision);
     if(Balance!=null){Cars[i].Drive.ConfigureHandicap(e.Profile,Handicap);if(e.HumanSeat<0)Drivers[i]=new AiDriver(i,e.Profile,e.Seed,Balance);}
    }
-   Session=new RaceSession(Track.Route.StartDistance,Track.Route.FinishDistance,EntrantCount,HumanCount);
+   Session=CreateSessionForTrack(Track,Course.Start,Course.Finish,EntrantCount,HumanCount);
    for(int i=0;i<4;i++){cameras[i].target=i<HumanCount?Cars[i]:null;cameras[i].enabled=i<HumanCount;cameras[i].GetComponent<Camera>().enabled=Started&&i<HumanCount;if(i<HumanCount)cameras[i].GetComponent<Camera>().rect=RaceViewports.For(HumanCount,i);}
   }
   void ApplyValues(LocalRaceConfig config){
@@ -102,44 +110,58 @@ namespace StarRacingPrototype {
    try{
     var snapshot=config.Copy();snapshot.handicap=false;int count=snapshot.entrants,humans=snapshot.humans,generation=RaceGeneration+1;
     string theme=snapshot.theme=="random"?(snapshot.Seed%2==0?"cloud-city":"space-station"):snapshot.theme;
-    var route=new TrackRoute(Procedural.Generator.Generate(snapshot.Seed,snapshot.rails,theme,snapshot.jumps,true));
+    var course=GenerateCourse(snapshot,theme,true);
     var roster=new RaceRoster(count,humans,snapshot.Seed);roster.Shuffle(unchecked(snapshot.Seed+(uint)generation*7919));
+    var route=course.IsIndependent?null:new TrackRoute(course.Single);
     var distances=new float[count];var lanes=new float[count];
-    for(int i=0;i<count;i++){distances[i]=RaceRoster.GridDistance(route,roster.Entrants[i].GridSlot);lanes[i]=RaceRoster.GridLateral(route,roster.Entrants[i].GridSlot);}
+    for(int i=0;i<count;i++){distances[i]=course.IsIndependent?course.Start-(roster.Entrants[i].GridSlot/2)*10:RaceRoster.GridDistance(route,roster.Entrants[i].GridSlot);lanes[i]=course.IsIndependent?(roster.Entrants[i].GridSlot%2==0?-3.5f:3.5f):RaceRoster.GridLateral(route,roster.Entrants[i].GridSlot);}
     // Build the road inventory synchronously while active (its contract requires active colliders).
-    // No frame/physics step occurs before the staging root is disabled and published.
+    // No frame/physics step occurs before publication; graph admission requires active colliders.
     root=new GameObject("Prepared race");
-    var trackObject=new GameObject("Track");trackObject.transform.SetParent(root.transform);var track=trackObject.AddComponent<TrackBuilder>();track.Build(route);
-    decor=new TrackEnvironmentBuilder();decor.Build(route,track.transform,snapshot.Seed);decor.Root.SetParent(root.transform,true);root.SetActive(false);
+    var trackObject=new GameObject("Track");trackObject.transform.SetParent(root.transform);var track=trackObject.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);
+    decor=new TrackEnvironmentBuilder();BuildDecor(decor,track,course,snapshot.Seed,theme);decor.Root.SetParent(root.transform,true);
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
     for(int i=0;i<count;i++){
      var entrant=roster.Entrants[i];var go=new GameObject(entrant.Name);go.transform.SetParent(root.transform);
-     cars[i]=go.AddComponent<MagneticVehicle>();cars[i].Initialize(track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),Balance,entrant.HumanSeat>=0);
-     cars[i].Drive.ConfigureHandicap(entrant.Profile,snapshot.handicap);cars[i].SetDrivingGeneration(generation);cars[i].ResetAt(distances[i],lanes[i]);cars[i].Hold(true);
+     cars[i]=go.AddComponent<MagneticVehicle>();InitializeCar(cars[i],course,track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),Balance,entrant.HumanSeat>=0,distances[i]);
+     cars[i].Drive.ConfigureHandicap(entrant.Profile,snapshot.handicap);cars[i].SetDrivingGeneration(generation);ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);
      if(entrant.HumanSeat<0)drivers[i]=new AiDriver(i,entrant.Profile,entrant.Seed,Balance);
-     int index=i;cars[i].ContactObserved+=collision=>ObserveContact(index,collision);seen[i]=new RaceObservation(distances[i],cars[i].PositionRevision,true);
+     int index=i;cars[i].ContactObserved+=collision=>ObserveContact(index,collision);seen[i]=ObserveVehicle(cars[i]);
     }
-    var session=new RaceSession(route.StartDistance,route.FinishDistance,count,humans);session.Reset(seen);
+    var session=CreateSessionForTrack(track,course.Start,course.Finish,count,humans);session.Reset(seen);
     var timers=new float[count];var revisions=new int[count];for(int i=0;i<count;i++){timers[i]=i<humans?0:AiDecisionInterval*(i-humans)/Mathf.Max(1,count-humans);revisions[i]=cars[i].PositionRevision;}
     var world=new AiWorldSnapshot(count);var contacts=new DrivingContactObservation[count];var policy=new DrivingContactPolicy();
     var times=new double[count];var commands=new DrivingInput[count];
+    if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
     var oldTrack=Track;var oldCars=Cars;var oldDecor=environment;var oldRoot=activeRaceRoot;
     // Publish only after generation, bindings, placement and resource construction succeeded.
-    ApplyValues(snapshot);Track=track;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
+    ApplyValues(snapshot);Course=course;Track=track;GraphWorld=null;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
     observations=seen;decisionTimers=timers;decisionRevisions=revisions;lastDecisionTimes=times;botCommands=commands;contactObservations=contacts;contactPolicy=policy;
     RaceGeneration=generation;activeRaceRoot=root;root=null;decor=null;
     oldTrack.gameObject.SetActive(false);foreach(var car in oldCars)car.gameObject.SetActive(false);
     activeRaceRoot.SetActive(true);Physics.SyncTransforms();
-    for(int i=0;i<count;i++){cars[i].ResetAt(distances[i],lanes[i]);cars[i].Hold(true);observations[i]=Observation(i);decisionRevisions[i]=cars[i].PositionRevision;}
+    for(int i=0;i<count;i++){ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);observations[i]=Observation(i);decisionRevisions[i]=cars[i].PositionRevision;}
     Session.Reset(observations);Session.Begin();Input.PrepareStart();Started=true;Paused=false;Time.timeScale=1;
     pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
-    ApplyLighting();TrackSummary=$"SEED {TrackSeed} · {theme} · {route.Definition.totalLength:0} м";
+    ApplyLighting();TrackSummary=$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
     oldDecor.Clear();if(oldRoot!=null)Destroy(oldRoot);else{Destroy(oldTrack.gameObject);foreach(var car in oldCars)Destroy(car.gameObject);}
     StartError="";return true;
    }catch(Exception e){if(root!=null)root.SetActive(false);if(decor!=null)decor.Clear();if(root!=null)Destroy(root);error="Не удалось подготовить гонку. Измените параметры трассы.";StartError=error;Debug.LogException(e);return false;}
   }
-  public RaceObservation Observation(int entrant){var car=Cars[entrant];return new RaceObservation(car.Distance,car.PositionRevision,Vector3.Distance(car.Body.position,car.Frame.position)<car.Frame.halfWidth+3f);}
+  // Experimental graph callers supply common start/finish; normal Generator11
+  // still selects the exact legacy session and never activates independent roads.
+  public static RaceSession CreateSessionForTrack(TrackBuilder track,float start,float finish,int count,int humans) =>
+   track.GraphSurface!=null?new RaceSession(track.GraphSurface,start,finish,count,humans):new RaceSession(start,finish,count,humans);
+  public RaceObservation Observation(int entrant)=>ObserveVehicle(Cars[entrant]);
+  public static RaceObservation ObserveVehicle(MagneticVehicle car) {
+   if(car.GraphRoute!=null) {
+    var observation=car.GraphRoute.RaceObservation;
+    return new RaceObservation(observation.Tick==MagneticVehicle.GraphFixedTick &&
+     observation.PositionRevision==car.PositionRevision && !car.IsFalling ? observation : default);
+   }
+   return new RaceObservation(car.Distance,car.PositionRevision,Vector3.Distance(car.Body.position,car.Frame.position)<car.Frame.halfWidth+3f);
+  }
   public void Restart(bool start=true){
    Track.TireMarks?.Clear();
    GetComponent<RaceMenu>()?.ResetPauseSettings();
@@ -148,7 +170,7 @@ namespace StarRacingPrototype {
    Roster.Shuffle(unchecked(TrackSeed+(uint)RaceGeneration*7919));
    for(int i=0;i<Cars.Length;i++){
     Cars[i].SetDrivingGeneration(RaceGeneration);int slot=Roster.Entrants[i].GridSlot;
-    Cars[i].ResetAt(RaceRoster.GridDistance(Track.Route,slot),RaceRoster.GridLateral(Track.Route,slot));Cars[i].Hold(true);Drivers[i]?.Reset();observations[i]=Observation(i);
+    ResetCar(Cars[i],Course,Track,GridDistance(Course,Track,slot),GridLateral(Course,Track,slot));Cars[i].Hold(true);Drivers[i]?.Reset();observations[i]=Observation(i);
     decisionTimers[i]=i<HumanCount?0:AiDecisionInterval*(i-HumanCount)/Mathf.Max(1,Cars.Length-HumanCount);decisionRevisions[i]=Cars[i].PositionRevision;lastDecisionTimes[i]=0;botCommands[i]=default;
    }
    Session.Reset(observations);for(int i=0;i<4;i++){cameras[i].GetComponent<Camera>().enabled=start&&i<HumanCount;if(i<HumanCount)cameras[i].Snap();}
@@ -180,19 +202,25 @@ namespace StarRacingPrototype {
   }
   void FixedUpdate(){
    if(Paused||Cars==null)return;
-   for(int i=0;i<Cars.Length;i++){Cars[i].PrepareProjection();observations[i]=Observation(i);}Session.Tick(Time.fixedDeltaTime,observations);World.Capture(Cars,Track.Route,Session.Elapsed);
+   for(int i=0;i<Cars.Length;i++){Cars[i].PrepareProjection();observations[i]=Observation(i);}Session.Tick(Time.fixedDeltaTime,observations);
+   if(Track.GraphSurface!=null) {
+    if(GraphWorld==null || !ReferenceEquals(GraphWorld.Navigation.Surface,Track.GraphSurface) || !GraphWorld.Navigation.Current)GraphWorld=new GraphAiWorldSnapshot(Track.GraphSurface,Cars.Length,Balance);
+    GraphWorld.Capture(Cars,Drivers,Session.Elapsed);
+   }else World.Capture(Cars,Track.Route,Session.Elapsed);
    for(int i=0;i<Cars.Length;i++){
     var car=Cars[i];car.SetRaceContext(Balance!=null&&Session.CanDrive(i),Session.Racers[i].Place,Cars.Length,Session.Elapsed);
     if(Session.Racers[i].Finished){if(!car.FinishedCoasting){car.BeginFinishCoast();if(i<HumanCount)cameras[i].LockAtFinish();}}else car.Hold(!Session.CanDrive(i));
     if(Drivers[i]!=null){
      if(Session.CanDrive(i)){
       decisionTimers[i]+=Time.fixedDeltaTime;
-      if(decisionTimers[i]>=AiDecisionInterval || decisionRevisions[i]!=car.PositionRevision){
-       botCommands[i]=Drivers[i].Step(World,Track.Route,Mathf.Max(Time.fixedDeltaTime,(float)(Session.Elapsed-lastDecisionTimes[i])));
+      if(decisionTimers[i]>=AiDecisionInterval || decisionRevisions[i]!=car.PositionRevision || Track.GraphSurface!=null&&!GraphWorld[i].Valid){
+       float decisionDt=Mathf.Max(Time.fixedDeltaTime,(float)(Session.Elapsed-lastDecisionTimes[i]));
+       botCommands[i]=Track.GraphSurface!=null?Drivers[i].StepGraph(GraphWorld,decisionDt):Drivers[i].Step(World,Track.Route,decisionDt);
        lastDecisionTimes[i]=Session.Elapsed;
        decisionTimers[i]=0;decisionRevisions[i]=car.PositionRevision;
       }
-      car.SetInput(botCommands[i]);
+      var applied=Track.GraphSurface!=null?Drivers[i].ApplyGraphControl(car,botCommands[i],Time.fixedDeltaTime):botCommands[i];
+      car.SetInput(applied);
      }else car.SetInput(default);
      car.SetPresentationInput(botCommands[i].throttle,Session.CanDrive(i)&&!Paused);
     }
@@ -203,6 +231,7 @@ namespace StarRacingPrototype {
   void CaptureContacts() {
    for(int i=0;i<Cars.Length;i++) {
     var car=Cars[i];var frame=car.Frame;
+    if(car.GraphRoute!=null){contactObservations[i]=GraphContactObservation(car,Roster.Entrants[i].Id,RaceGeneration,Session.CanDrive(i));continue;}
     // TrackRoute flips source right; retain the source sign for score/tie/rail rules.
     Vector3 sourceRight=-frame.right;
     float lateral=Vector3.Dot(car.Body.position-frame.position,sourceRight);
@@ -218,6 +247,15 @@ namespace StarRacingPrototype {
      Suppressed=!Session.CanDrive(i)||car.IsGhosting||car.FinishedCoasting||car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f||selected<0||error>VehicleGeometry.HalfWidth};
    }
    contactPolicy.BeginStep(contactObservations);
+  }
+  public static DrivingContactObservation GraphContactObservation(MagneticVehicle car,int id,int generation,bool driving) {
+   var frame=car.Frame;var right=-frame.right;float lateral=Vector3.Dot(car.Body.position-frame.position,right);
+   float heading=Mathf.Atan2(Vector3.Dot(car.transform.forward,right),Vector3.Dot(car.transform.forward,frame.tangent));
+   float room=Mathf.Max(.2f,frame.halfWidth-VehicleGeometry.LateralExtent(heading)-.08f);var route=ObserveVehicle(car).graph;
+   return new DrivingContactObservation{Id=id,Generation=generation,Revision=car.PositionRevision,Span=-1,GraphMode=true,Graph=route,Position=car.Body.position,
+    Distance=car.Distance,Lateral=lateral,Heading=heading,Velocity=car.Body.linearVelocity,Right=right,Tangent=frame.tangent,Normal=frame.normal,
+    LeftClearance=room+lateral,RightClearance=room-lateral,LeftRail=car.GraphRoute.Frame.railLeft,RightRail=car.GraphRoute.Frame.railRight,
+    Suppressed=!driving||!route.Valid||car.IsGhosting||car.FinishedCoasting||car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f};
   }
   void ObserveContact(int index,Collision collision) {
    if(Paused||Session==null||contactPolicy==null)return;

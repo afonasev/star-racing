@@ -56,17 +56,22 @@ namespace StarRacingPrototype {
    return active?Mathf.Lerp(.28f,.88f,Mathf.InverseLerp(5,35,angle)):0;
   }
   public void Observe(int car,int revision,Vector3 velocity,Vector3 forward,Vector3 normal,
-   CheckpointAdmission.Support left,CheckpointAdmission.Support right,TrackBuilder track,bool allowed,float now) {
+   CheckpointAdmission.Support left,CheckpointAdmission.Support right,TrackBuilder track,bool allowed,float now,GraphVehicleRoute graphRoute=null) {
    if(car<0||car>=MaxCars)return;
    if(revisions[car]!=revision){Break(car);revisions[car]=revision;}
    float intensity=allowed?SlipIntensity(velocity,forward,normal,ref skidding[car]):0;
    if(intensity<=0){Break(car);return;}
-   Contact(car*2,left,track,intensity,now);Contact(car*2+1,right,track,intensity,now);
+   Contact(car*2,left,track,intensity,now,graphRoute);Contact(car*2+1,right,track,intensity,now,graphRoute);
   }
-  void Contact(int stream,CheckpointAdmission.Support support,TrackBuilder track,float intensity,float now) {
+  void Contact(int stream,CheckpointAdmission.Support support,TrackBuilder track,float intensity,float now,GraphVehicleRoute graphRoute) {
    var hit=support.hit;var surface=hit.collider==null?null:hit.collider.GetComponent<TrackSurface>();
    // The suspension ray has a safety margin. A distant hit is not tyre contact.
-   if(surface==null||surface.owner!=track||surface.buildRevision!=track.BuildRevision||hit.distance>=1.12f||hit.normal.sqrMagnitude<.5f){trails[stream]=default;return;}
+   bool current=graphRoute==null?surface!=null&&surface.owner==track&&surface.buildRevision==track.BuildRevision:
+    surface!=null&&graphRoute.Current&&!graphRoute.RequiresRecovery&&graphRoute.RaceObservation.Valid&&graphRoute.LastObservationContinuous&&graphRoute.Surface==track.GraphSurface&&graphRoute.PositionRevision==revisions[stream/2]&&
+    graphRoute.Surface.isActiveAndEnabled&&surface.GetComponentInParent<GraphRoadSurface>()==graphRoute.Surface&&surface.graphIdentity==graphRoute.Surface.Graph.Identity&&surface.graphBuildRevision==graphRoute.Surface.BuildRevision&&
+    hit.triangleIndex>=0&&hit.triangleIndex<surface.triangleFaces.Length&&
+    graphRoute.Raycast(hit.point+hit.normal*.5f,-hit.normal,1,out var proven)&&proven.collider==hit.collider&&(proven.point-hit.point).sqrMagnitude<.0004f;
+   if(!current||hit.distance>=1.12f||hit.normal.sqrMagnitude<.5f){trails[stream]=default;return;}
    Sample(stream,hit.point,hit.normal,intensity,now);
   }
   // Geometry fixture entry; production only samples validated current road contacts.

@@ -6,6 +6,7 @@ namespace StarRacingPrototype {
     /// <summary>Builds procedural surfaces. Route data remains usable without this component.</summary>
     public sealed class TrackBuilder : MonoBehaviour {
         public TrackRoute Route;
+        public GraphRoadSurface GraphSurface { get; private set; }
         public const int RoadCollisionLayer=9;
         public const int BarrierCollisionLayer=10;
 
@@ -29,6 +30,7 @@ namespace StarRacingPrototype {
             buildRevision++;
             Route = route ?? throw new System.ArgumentNullException(nameof(route));
             ClearGenerated();
+            GraphSurface=null;
             roadMaterial = CreateMaterial(new Color(.055f, .07f, .11f), .18f);
             railMaterial = CreateMaterial(new Color(.18f, .7f, .85f), .4f, "Hull");
             // Driving forces own traction and braking. Chassis contact must not
@@ -93,7 +95,9 @@ namespace StarRacingPrototype {
         }
 
         void BuildLine(float distance, string label, Color color) {
-            var frame = Route.Evaluate(distance);
+            BuildFrameLine(Route.Evaluate(distance),label,color);
+        }
+        void BuildFrameLine(TrackFrame frame,string label,Color color) {
             var material = CreateMaterial(color, 0);
             for (int i = 0; i < 16; i++) {
                 var mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -105,6 +109,46 @@ namespace StarRacingPrototype {
                 var markerCollider=mark.GetComponent<Collider>();markerCollider.enabled=false;
                 if (Application.isPlaying) Destroy(markerCollider); else DestroyImmediate(markerCollider);
             }
+        }
+
+        public void BuildNativeCourse(NativeTrackCourse course) {
+            if(!course.IsIndependent){Build(new TrackRoute(course.Single));return;}
+            BuildIndependentCommonCatalog(course.Graph);
+            TrackFrame Frame(Procedural.GraphFrame f)=>new TrackFrame{distance=(float)f.distance,position=f.position.Float,tangent=f.tangent.Float,normal=f.normal.Float,right=-f.right.Float,halfWidth=(float)f.halfWidth};
+            BuildFrameLine(Frame(course.Graph.Road(0).Evaluate(course.Start)),"START",Color.cyan);
+            var exit=course.Graph.Road(5);BuildFrameLine(Frame(exit.Evaluate(exit.PhysicalDistance(course.Finish))),"FINISH",Color.white);
+            var end=Frame(exit.samples[exit.samples.Count-1]);var wall=GameObject.CreatePrimitive(PrimitiveType.Cube);wall.name="Finish wall";wall.transform.SetParent(transform,false);wall.transform.position=end.position+end.normal*1.5f+end.tangent*.5f;wall.transform.rotation=end.Rotation;wall.transform.localScale=new Vector3(end.halfWidth*2,3,1);wall.GetComponent<Renderer>().sharedMaterial=railMaterial;wall.GetComponent<Collider>().sharedMaterial=barrierContactMaterial;
+        }
+
+        // Explicit experimental entry point; active Generator11 never calls this.
+        public void BuildIndependent(Procedural.IndependentGraph graph)=>BuildIndependent(graph,(marks,bounds)=>marks.Initialize(bounds));
+        public void BuildIndependentCommonVertical(Procedural.IndependentGraph graph)=>BuildIndependentCore(graph,(marks,bounds)=>marks.Initialize(bounds),true);
+        public void BuildIndependentCommonCatalog(Procedural.IndependentGraph graph)=>BuildIndependentCore(graph,(marks,bounds)=>marks.Initialize(bounds),true,true);
+        void BuildIndependent(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks)=>BuildIndependentCore(graph,initializeMarks,false);
+        void BuildIndependentCore(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks,bool commonVertical,bool commonCatalog=false) {
+            buildRevision++;ClearGenerated();Route=null;GraphSurface=null;
+            roadMaterial=CreateMaterial(new Color(.055f,.07f,.11f),.18f);
+            railMaterial=CreateMaterial(new Color(.18f,.7f,.85f),.4f,"Hull");
+            roadContactMaterial=new PhysicsMaterial("Road contact") {
+                staticFriction=0,dynamicFriction=0,bounciness=0,
+                frictionCombine=PhysicsMaterialCombine.Minimum,bounceCombine=PhysicsMaterialCombine.Minimum
+            };
+            barrierContactMaterial=new PhysicsMaterial("Sliding barriers") {
+                staticFriction=.02f,dynamicFriction=.02f,bounciness=0,
+                frictionCombine=PhysicsMaterialCombine.Minimum,bounceCombine=PhysicsMaterialCombine.Minimum
+            };
+            var root=new GameObject("Independent road build");root.transform.SetParent(transform,false);
+            try {
+                GraphSurface=commonCatalog?IndependentTrackMesh.BuildCommonCatalog(root.transform,graph,buildRevision,roadMaterial,railMaterial):commonVertical?IndependentTrackMesh.BuildCommonVertical(root.transform,graph,buildRevision,roadMaterial,railMaterial):IndependentTrackMesh.Build(root.transform,graph,buildRevision,roadMaterial,railMaterial);
+                var marks=new GameObject("Graph drift tire marks");marks.transform.SetParent(transform,false);TireMarks=marks.AddComponent<DriftTireMarks>();
+                initializeMarks(TireMarks,new GraphEnvironmentGeometry(graph).Bounds);
+                foreach(var collider in root.GetComponentsInChildren<MeshCollider>()) {
+                    bool rail=collider.sharedMesh!=null && collider.sharedMesh.name=="Independent guard rails";
+                    collider.sharedMaterial=rail?barrierContactMaterial:roadContactMaterial;
+                    collider.gameObject.layer=rail?BarrierCollisionLayer:RoadCollisionLayer;
+                    if(rail)barriers.Add(collider);
+                }
+            } catch { ClearGenerated();GraphSurface=null;Route=null;throw; }
         }
 
         public bool RaycastRoad(Vector3 origin, Vector3 direction, float maxDistance, float progress, out RaycastHit hit) {
@@ -173,6 +217,7 @@ namespace StarRacingPrototype {
         }
         void OnDestroy()=>DisposeResources();
         void ClearGenerated() {
+            TireMarks=null;
             DisposeResources();
             for (int i = transform.childCount - 1; i >= 0; i--) {
                 GameObject child = transform.GetChild(i).gameObject;

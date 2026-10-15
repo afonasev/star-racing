@@ -8,7 +8,7 @@ namespace StarRacingPrototype
 // opposite vehicle-right, so spans are converted at the vertex boundary only.
 public static class ProceduralTrackMesh
 {
-    sealed class Geometry
+    internal sealed class Geometry
     {
         public readonly List<Vector3> vertices = new List<Vector3>();
         public readonly List<Vector3> smoothNormals = new List<Vector3>();
