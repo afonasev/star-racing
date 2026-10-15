@@ -58,7 +58,7 @@ namespace StarRacingPrototype {
     int generation=director.RaceGeneration;menu.StartSelected();while(menu.Loading)yield return null;Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
     Check(director.HumanCount==humans&&director.Cars.Length==8,"applied-roster-"+humans);
     Check(director.Course.GeneratorRevision==12&&(director.Course.IsIndependent?director.Track.GraphSurface!=null&&director.Track.GetComponentsInChildren<MeshCollider>().Length>0:director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0),"staged-road-inventory-"+humans);
-    foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
+    foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(director.Course.IsIndependent?surface.graphIdentity==director.Course.Graph.Identity&&surface.graphBuildRevision==director.Track.GraphSurface.BuildRevision:surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
     Check(director.Cars[0].HasProvenCheckpoint,"initial-checkpoint-"+humans);
     for(int seat=0;seat<4;seat++)Check(director.CameraFor(seat).GetComponent<Camera>().enabled==(seat<humans),"camera-enabled-"+humans+"-"+seat);
     yield return Shot("countdown-"+humans);yield return new WaitForSecondsRealtime(3.6f);
