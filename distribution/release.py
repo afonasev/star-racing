@@ -118,7 +118,11 @@ def upload(tag,file,name=None):
             target=Path(tmp)/name;shutil.copyfile(file,target);run(['gh','release','upload',tag,target,'-R',REPO])
     else:run(['gh','release','upload',tag,file,'-R',REPO])
 def wizard(tag,source,folder,evidence):
-    portable=next(folder.glob('*Portable.zip'));upload(tag,portable)
+    portable=next(folder.glob('*Portable.zip'));draft=optional_release(tag)
+    existing=next((x for x in draft['assets'] if x['name']==portable.name),None)
+    if existing:
+        if existing['size']!=portable.stat().st_size or existing.get('digest')!='sha256:'+sha(portable):raise ValueError('Draft portable differs')
+    else:upload(tag,portable)
     started=time.time()
     run(['gh','workflow','run','windows-wizard.yml','-R',REPO,'-f','tag='+tag,'-f','source='+source,'-f','portable='+portable.name,'-f','sha256='+sha(portable)])
     deadline=time.monotonic()+1800
@@ -139,8 +143,27 @@ def wizard(tag,source,folder,evidence):
     report=json.loads(policy.read_text())
     if report['sourceRevision']!=source or report['portableSHA256']!=sha(portable) or report['installerSHA256']!=sha(folder/setup):raise ValueError('CI wizard readback mismatch')
     policy.rename(folder/'installer-policy.json')
+def verify_prepared(output,version,sequence):
+    sources=set()
+    for channel in ['osx-universal','win-x64']:
+        folder=output/channel/version;identity=json.loads((folder/'identity.json').read_text())
+        if identity['version']!=version or identity['channel']!=channel or identity['sequence']!=sequence or identity['sourceStatus']:raise ValueError('Prepared identity mismatch')
+        sources.add(identity['sourceRevision'])
+        for item in identity['files']:
+            name=item['name']
+            if name!=Path(name).name:raise ValueError('Unsafe prepared filename')
+            file=folder/name
+            if file.stat().st_size!=item['size'] or sha(file)!=item['sha256']:raise ValueError('Prepared bytes changed')
+    if len(sources)!=1:raise ValueError('Prepared sources differ')
+    source=sources.pop()
+    # Only release-controller/test changes can be admitted without a rebuild.
+    changed=subprocess.check_output(['git','diff','--name-only',source,'HEAD'],cwd=ROOT,text=True).splitlines()
+    if any(p not in ['distribution/release.py','distribution/tests/test_release.py','docs/PUBLISHING.md','distribution/windows/installer.nsi','docs/releases/source-'+version+'.json'] for p in changed):raise ValueError('Prepared game or packaging source differs')
+    return source
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--resume-prepared',action='store_true',help='Reuse verified exact packages; permit only controller/installer tooling changes')
     p.add_argument('--smoke-scope',choices=['menu','race'],default='menu',help='Affected packaged smoke; race only when its behavior is in scope')
     p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
     p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
@@ -161,7 +184,16 @@ def main():
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     api('commits/'+source) # Commit must already be published to this repository.
     tag='v'+a.version
-    if optional_release(tag):raise ValueError('Version already exists, including draft. Inspect it; never overwrite a release')
+    a.resume_draft=None
+    if a.resume_prepared:
+        a.package_source=verify_prepared(ROOT/'.local/releases'/a.version,a.version,a.sequence)
+    existing=optional_release(tag)
+    if existing:
+        if not a.resume_prepared or not existing['draft'] or existing['prerelease']!=(a.track=='test') or existing['target_commitish']!=a.package_source:raise ValueError('Existing immutable release is not this prepared draft')
+        owner=json.loads((ROOT/'.local/releases'/a.version/'evidence/draft-owner.json').read_text())
+        if owner['id']!=existing['id'] or owner['target_commitish']!=a.package_source:raise ValueError('Draft ownership mismatch')
+        if any(x['name']!=next((ROOT/'.local/releases'/a.version/'win-x64'/a.version).glob('*Portable.zip')).name for x in existing['assets']):raise ValueError('Unexpected draft assets; inspect before resume')
+        a.resume_draft=existing
     previous=optional_release('channel-'+a.track)
     if previous:
         catalog=json.loads(previous['body'])
@@ -171,6 +203,7 @@ def main():
     baseline=json.loads(previous['body']).get('sourceRevision') if previous else None
     if previous and not re.fullmatch(r'[0-9a-f]{40}',baseline or ''):raise ValueError('Previous channel lacks immutable sourceRevision; review source mapping before publishing')
     a.notes=generate_changelog(ROOT,baseline,source,json.loads(a.changelog_review.read_text()))
+    if a.resume_draft and a.resume_draft['body']!=a.notes:raise ValueError('Prepared draft release notes changed')
     lock='git/refs/tags/_publishing-'+a.track
     # Atomic ref creation serializes publishers across release Macs/hosts.
     # Never steal an existing reservation; inspect its owner after a crashed run.
@@ -211,21 +244,30 @@ def recovery_baseline(previous,platform,track,key):
 
 def publish_candidate(a,key,source,tag,previous):
     output=ROOT/'.local/releases'/a.version
-    output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
-    dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
-    if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
-    directories=[]
-    for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
-        args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
-        if a.unsigned_production:args+=['--unsigned-production']
-        else:args+=['--key',key]
-        if channel=='win-x64':args+=['--defer-windows-installer']
-        run(args);directories.append(output/channel/a.version)
-        # Signed portable/full packages are the retained acceptance candidates.
-        # Native build staging is reproducible and can otherwise exhaust the release Mac.
-        if player.is_dir():shutil.rmtree(player)
-    (smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
-    draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
+    if a.resume_prepared:
+        if verify_prepared(output,a.version,a.sequence)!=a.package_source:raise ValueError('Prepared source changed')
+        evidence=output/'evidence';directories=[output/channel/a.version for channel in ['osx-universal','win-x64']]
+        (evidence/'resume-source.json').write_text(json.dumps(dict(packageSource=a.package_source,controllerSource=source,rebuilt=False),indent=2)+'\n')
+    else:
+        output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
+        dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
+        if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
+        directories=[]
+        for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
+            args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
+            if a.unsigned_production:args+=['--unsigned-production']
+            else:args+=['--key',key]
+            if channel=='win-x64':args+=['--defer-windows-installer']
+            run(args);directories.append(output/channel/a.version)
+            # Signed portable/full packages are the retained acceptance candidates.
+            # Native build staging is reproducible and can otherwise exhaust the release Mac.
+            if player.is_dir():shutil.rmtree(player)
+    proof=evidence/'macos-menu-smoke'
+    if a.resume_prepared and a.smoke_scope=='menu' and (proof/'success.json').is_file():
+        result=json.loads((proof/'success.json').read_text());candidate=json.loads((proof/'candidate.json').read_text())
+        if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True or result.get('version')!=a.version or candidate['sha256']!=sha(next(directories[0].glob('*Portable.zip'))):raise ValueError('Prepared menu receipt mismatch')
+    else:(smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
+    draft=a.resume_draft or api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
     for folder in directories:
         baseline=recovery_baseline(previous,folder.parent.name,a.track,key)
@@ -244,7 +286,7 @@ def publish_candidate(a,key,source,tag,previous):
             expected[name]=dict(size=file.stat().st_size,sha256=sha(file),local=str(file))
             if name not in remote:upload(tag,file,name)
             elif remote[name]['size']!=file.stat().st_size or remote[name].get('digest')!='sha256:'+sha(file):raise ValueError('Draft asset conflict')
-    manifest=output/'manifest.json';manifest.write_text(json.dumps(dict(version=a.version,track=a.track,sourceRevision=source,assets=expected),indent=2)+'\n');upload(tag,manifest)
+    manifest=output/'manifest.json';manifest.write_text(json.dumps(dict(version=a.version,track=a.track,sourceRevision=source,packageSourceRevision=getattr(a,'package_source',source),assets=expected),indent=2)+'\n');upload(tag,manifest)
     expected[manifest.name]=dict(size=manifest.stat().st_size,sha256=sha(manifest),local=str(manifest))
     assets={x['name']:x for x in api('releases/'+str(draft['id']))['assets']}
     if set(assets)!=set(expected):raise ValueError('Incomplete or unexpected draft assets')
@@ -263,7 +305,7 @@ def publish_candidate(a,key,source,tag,previous):
     # Detect a concurrent channel publisher before changing public state.
     fresh=optional_release('channel-'+a.track)
     if (fresh or {}).get('body')!=(previous or {}).get('body'):raise ValueError('Channel changed during build; draft left for review')
-    api('releases/'+str(draft['id']),'PATCH',dict(draft=False,prerelease=a.track=='test',make_latest='true' if a.track=='production' else 'false'))
+    api('releases/'+str(draft['id']),'PATCH',dict(draft=False,prerelease=a.track=='test',make_latest='true' if a.track=='production' else 'false',target_commitish=source))
     pointer=dict(body=json.dumps(catalog,separators=(',',':')),prerelease=a.track=='test',draft=False,make_latest='false',name='Star Racing '+a.track+' channel')
     if previous:api('releases/'+str(previous['id']),'PATCH',pointer)
     else:api('releases','POST',dict(pointer,tag_name='channel-'+a.track,target_commitish=source))

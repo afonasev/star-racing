@@ -57,3 +57,7 @@ python3 distribution/release.py --show-policy
 
 ## Affected menu smoke
 Для изменений меню выпуск запускается с `--smoke-scope menu` (default). Он проверяет упакованный Player, старт меню и checking/current/available с синтетическими состояниями; сохранённый пакет пользователя не открывает и не применяет. Все автоматические Editor/Player-запуски используют `-noaudio`. Это не доказательство реального обновления Windows, физической или игровой приёмки. `--smoke-scope race` сохраняет отдельный существующий natural-match контракт и выбирается по затронутому поведению; full suite требует отдельной команды человека.
+
+## Продолжение подготовленного кандидата
+
+`--resume-prepared` повторно проверяет версии, sequence, чистую исходную ревизию и размер/SHA каждого файла обеих платформ. Без пересборки разрешены только изменения release controller/tests/docs и NSIS-скрипта. Изменения игры или упаковки запрещают продолжение. Уже загруженный portable используется только при точном совпадении API digest; ни один существующий asset не перезаписывается. Продолжение draft требует сохранённого evidence/draft-owner.json с тем же id/source и неизменного release body. Published release этим путём не изменяется. Manifest и resume-source.json сохраняют отдельно source пакетов и controller/installer revision.

@@ -108,3 +108,23 @@ class MenuSmokeContract(unittest.TestCase):
     if '--menu-release-smoke-dir' in args:
      proof=Path(args[args.index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'race','natural_ai_finish':True}))
    with patch.object(release,'run',side_effect=fake_run),self.assertRaises(ValueError):release.smoke_menu_macos(folder,evidence)
+
+class PreparedIdentityContract(unittest.TestCase):
+ def test_resume_preserves_bytes_and_rejects_game_source_changes(self):
+  import tempfile,json,hashlib,subprocess
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   def git(*args):return subprocess.check_output(['git','-C',str(root),*args],text=True).strip()
+   git('init','-q');git('config','user.name','fixture');git('config','user.email','fixture@example.invalid')
+   installer=root/'distribution/windows/installer.nsi';installer.parent.mkdir(parents=True);installer.write_text('old')
+   game=root/'unity-prototype/game.cs';game.parent.mkdir();game.write_text('game');git('add','.');git('commit','-qm','source');base=git('rev-parse','HEAD')
+   for channel in ['osx-universal','win-x64']:
+    folder=root/'output'/channel/'1.0.0';folder.mkdir(parents=True);(folder/'package').write_bytes(b'exact')
+    (folder/'identity.json').write_text(json.dumps(dict(version='1.0.0',channel=channel,sequence=7,sourceStatus='',sourceRevision=base,files=[dict(name='package',size=5,sha256=hashlib.sha256(b'exact').hexdigest())])))
+   installer.write_text('fixed');git('add','distribution');git('commit','-qm','installer tooling')
+   with patch.object(release,'ROOT',root):
+    self.assertEqual(release.verify_prepared(root/'output','1.0.0',7),base)
+    package=root/'output/osx-universal/1.0.0/package';package.write_bytes(b'tampered')
+    with self.assertRaises(ValueError):release.verify_prepared(root/'output','1.0.0',7)
+    package.write_bytes(b'exact');game.write_text('different game');git('add','unity-prototype');git('commit','-qm','game changed')
+    with self.assertRaises(ValueError):release.verify_prepared(root/'output','1.0.0',7)

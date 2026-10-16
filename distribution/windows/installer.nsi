@@ -29,6 +29,7 @@ Var Helper
 Var PreviousDesktop
 Var Prepared
 
+!define MUI_CUSTOMFUNCTION_ABORT RollbackWorker
 !insertmacro MUI_PAGE_WELCOME
 Page custom ExistingPage ExistingLeave
 !define MUI_PAGE_CUSTOMFUNCTION_PRE DirectoryPre
@@ -274,9 +275,6 @@ Function RollbackWorker
       MessageBox MB_ICONSTOP "Восстановление не завершено: $3. Сохранены журнал и резервные файлы; закройте игру и повторите установку."
     ${EndIf}
   ${EndIf}
-FunctionEnd
-Function .onUserAbort
-  Call RollbackWorker
 FunctionEnd
 
 Function un.onInit
