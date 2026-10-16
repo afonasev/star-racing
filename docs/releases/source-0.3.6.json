@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "sourceRevision": "e480326a7901fc48a842726aa341bb840a6a91bf",
+  "sourceRevision": "959b653410e1e7135044dde7877c0f8de2f70142",
   "gameBaseline": "e7d04a32188273e8a93784f973963a16fed3cf5a",
   "purpose": "Approved menu/settings/design-lab/desktop delivery and isolated release menu smoke",
   "files": {
@@ -8,7 +8,7 @@
     "design-lab/557df012-9318-4207-9366-a77a124bea21/1.json": "f69bcce78035d2c42e3e0f406e09ea9d4cff7ba60081b4d0cfa7937d2ed6f8d9",
     "design-lab/README.md": "e5b1c3dccfa82c8f72bcc0799afde2be13651a51aea5134cf07fda1f210a2959",
     "design-lab/index.json": "696f2b5b3e8dfa94ebf34b8d9730d4cd044ac276be1609c4158acd0e561710b4",
-    "distribution/README.md": "62890399f329050e758d0f485eec937513a768abffd8a8e772ffa07c4b2b4d57",
+    "distribution/README.md": "7e329ee0364d7a2f9debea3f65974c5d1a09b4b374035a2f59c3bcdff4fe6b4a",
     "distribution/changelog.py": "b887f5a07bd0729113ff107953ba37545af2803ccd95c859af554fa43d033743",
     "distribution/dependencies.json": "aafe41389e39cce1449b2389fe8275328d157320d41b9e2d7eb2f7e024c6e5b8",
     "distribution/github_publish.py": "d482500b768fbb054c1249f4ce68dd0a60b646c4b6bc945738843b86a7e09f61",
