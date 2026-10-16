@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "sourceRevision": "959b653410e1e7135044dde7877c0f8de2f70142",
+  "sourceRevision": "d9f46d9f96ff9f1f21ec297612e74166222d96f0",
   "gameBaseline": "e7d04a32188273e8a93784f973963a16fed3cf5a",
   "purpose": "Approved menu/settings/design-lab/desktop delivery and isolated release menu smoke",
   "files": {
@@ -23,7 +23,7 @@
     "distribution/recovery/Program.cs": "331f8017087c54681c1f10dd68c7f4dfa22cb1eb3fcf6a0c117d81aba163624c",
     "distribution/recovery/RecoveryAgent.csproj": "212475ff327586bd65293b74c62ba846d01e29f9f97ac9ee44383f50b71fdde4",
     "distribution/recovery/WindowsInstall.cs": "2cea15110f58f2152754cb2195346fd3a07e3e5d8eaaa9eba7f30511944573b1",
-    "distribution/release.py": "e176816419f5703f43993863313f4fc11219b33486529c3557f2e14ecba3b457",
+    "distribution/release.py": "4fa9d18f8ef972fb10f37fede1c00566e6661c5dd56ef6d021e4cd746d60fb74",
     "distribution/run_packaged_qa.py": "186b93c24a943b8e1f33cd6ace8f7be4dd9cc22c02a6ea053680e582cc7e6e1c",
     "distribution/tests/ApplyPathChecks.cs": "71d70b8de43775158743b6e5b415728f87ee2570a206a2c5953dbb1e6e34badd",
     "distribution/tests/DownloadChecks.cs": "e74dfd5513dc165f677417d07aa7f46f7c2e4abaffcce27eb951412a2dcc4959",

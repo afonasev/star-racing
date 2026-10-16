@@ -221,6 +221,9 @@ def publish_candidate(a,key,source,tag,previous):
         else:args+=['--key',key]
         if channel=='win-x64':args+=['--defer-windows-installer']
         run(args);directories.append(output/channel/a.version)
+        # Signed portable/full packages are the retained acceptance candidates.
+        # Native build staging is reproducible and can otherwise exhaust the release Mac.
+        if player.is_dir():shutil.rmtree(player)
     (smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
