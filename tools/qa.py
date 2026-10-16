@@ -170,7 +170,7 @@ def main():
     if selection['scope'] == 'full':
         env['STAR_RACING_CONFIRM_FULL_TESTS'] = 'yes'
     log = out/'editor.log'
-    command = [str(REPO/'tools/unity.sh'), 'shared', '-batchmode', '-nographics', '-quit',
+    command = [str(REPO/'tools/unity.sh'), 'shared', '-batchmode', '-noaudio', '-nographics', '-quit',
                '-executeMethod', check_method(selection['scope']), '-logFile', str(log)]
     # Unity may serialize these generated/import settings during an otherwise
     # read-only QA run. Keep their pre-run bytes so the receipt can reject real

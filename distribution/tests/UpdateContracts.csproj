@@ -5,6 +5,12 @@
     <PackageReference Include="Velopack" Version="1.2.158" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <Compile Include="Program.cs" />
+    <Compile Include="HistoryChecks.cs" />
+    <Compile Include="RecoveryChecks.cs" />
+    <Compile Include="InstallChecks.cs" />
+    <Compile Include="../recovery/WindowsInstall.cs" />
+    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/RecoveryTransaction.cs" />
+    <Compile Include="../../unity-prototype/Assets/StarRacing/Runtime/DesktopReleaseHistory.cs" />
     <Compile Include="DownloadChecks.cs" />
     <Compile Include="PublicationChecks.cs" />
     <Compile Include="ApplyPathChecks.cs" />

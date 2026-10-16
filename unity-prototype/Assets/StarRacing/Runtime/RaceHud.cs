@@ -78,6 +78,7 @@ namespace StarRacingPrototype {
    menu.OverlayButton("settings",new Rect(534,388,532,70),"Настройки",menu.OpenPauseSettings);
    menu.OverlayButton("restart",new Rect(534,476,532,70),"Повторить",menu.RepeatRace,false,!director.Input.MissingDevice);
    menu.OverlayButton("menu",new Rect(534,564,532,70),"В меню",()=>director.ExitToMenu());
+   if(!director.Input.MissingDevice)ui.Text(new Rect(534,650,532,56),"Баланс: "+(director.RaceBalanceSnapshot?.Label??"Default"),17,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
    if(director.Input.MissingDevice)ui.Text(new Rect(534,650,532,56),"Подключите устройство или измените состав в меню.",17,false,CloudlineSkin.Muted,TextAnchor.MiddleLeft,true);
   }
   void DrawResults(CloudlineSkin ui,RaceMenu menu){

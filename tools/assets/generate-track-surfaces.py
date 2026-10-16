@@ -8,6 +8,7 @@ Atlases repeat every 288 m with three 96 m sections; alpha is not used.
 import math
 import struct
 import zlib
+import argparse
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parents[2] / 'unity-prototype/Assets/StarRacing/Resources/Environment/Textures'
@@ -78,7 +79,7 @@ def blend(pattern, distance, other, is_rail=False):
     return tuple(u * (1 - t) + v * t for u, v in zip(ca, cb))
 
 
-def png(name, width, height, pixel):
+def png(name, width, height, pixel, alpha=False):
     def chunk(tag, data):
         return struct.pack('!I', len(data)) + tag + data + struct.pack('!I', zlib.crc32(tag + data))
     raw = bytearray()
@@ -88,13 +89,78 @@ def png(name, width, height, pixel):
             # PNG is top-down; Unity texture coordinates are bottom-up.
             rgb = pixel((col + .5) / width, 1 - (row + .5) / height)
             raw.extend(round(max(0, min(1, c)) * 255) for c in rgb)
-    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 2, 0, 0, 0))
+    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 6 if alpha else 2, 0, 0, 0))
     data += chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
     (OUT / (name + '.png')).write_bytes(data)
 
 
+def groove(value, period, width):
+    """Rounded shallow joint; derivatives fade rather than making hard normal edges."""
+    distance = min(value % period, period - value % period)
+    t = max(0, 1 - distance / width)
+    return t * t * (3 - 2 * t)
+
+
+def road_finish(kind, x, distance):
+    y = distance % 8
+    joint = groove(y, 8 if kind != 1 else 4, .18)
+    if kind == 1:
+        joint = max(joint, groove(x + (2 if y >= 4 else 0), 4, .16))
+    elif kind == 2:
+        joint = max(joint, groove(x, 2, .20))
+    # R=metallic, G=height in metres (normal source only), B=unused, A=smoothness.
+    return ((.04, .14, .22)[kind] * (1 - .6 * joint), -.012 * joint,
+            0, (.20, .32, .26)[kind] - .10 * joint)
+
+
+def rail_finish(kind, distance, height):
+    y = height / 1.3
+    color = rail(kind, distance, height)
+    # Existing dark recesses stay matte; broad silver housings carry satin highlights.
+    brightness = sum(color) / 3
+    metal = .28 if brightness < .32 else .62
+    smooth = .22 if brightness < .32 else .42
+    joint = max(groove(distance, (6, 8, 6)[kind], .22), groove(y - .13, .73, .04))
+    return (metal * (1 - .35 * joint), -.010 * joint, 0, smooth - .10 * joint)
+
+
+def surface_sample(is_rail, u, v):
+    if is_rail:
+        return blend(lambda k, d, h: rail_finish(2 - k, d, h), u * CYCLE + 72, v * 1.3, True)
+    return blend(road_finish, v * CYCLE, u * 32)
+
+
+def finish_pixel(is_rail, u, v):
+    m, _, _, s = surface_sample(is_rail, u, v)
+    return (m, 0, 0, s)
+
+
+def normal_pixel(is_rail, u, v):
+    width, height = (CYCLE, 1.3) if is_rail else (32, CYCLE)
+    step = .04
+    dx = (surface_sample(is_rail, u + step / width, v)[1] -
+          surface_sample(is_rail, u - step / width, v)[1]) / (2 * step)
+    dy = (surface_sample(is_rail, u, v + step / height)[1] -
+          surface_sample(is_rail, u, v - step / height)[1]) / (2 * step)
+    length = math.sqrt(dx * dx + dy * dy + 1)
+    return (.5 - dx / length * .5, .5 - dy / length * .5, .5 + .5 / length)
+
+
+def generate_finish():
+    for is_rail, name, width, height in [(False, 'RoadBlend', 512, 4096), (True, 'RailBlend', 4096, 128)]:
+        png(name + 'Finish', width, height, lambda u, v: finish_pixel(is_rail, u, v), alpha=True)
+        png(name + 'Normal', width, height, lambda u, v: normal_pixel(is_rail, u, v))
+    print('TRACK_FINISH_ASSETS_OK road=512x4096 rail=4096x128 cycle=288m shallowJoints=true')
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--finish-only', action='store_true', help='Preserve all existing albedo sources')
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    if args.finish_only:
+        generate_finish()
+        raise SystemExit(0)
     for kind, name in enumerate(('Ceramic', 'Panels', 'Ribbed')):
         png('Road' + name, 512, 128, lambda u, v, k=kind: road(k, u * 32, v * 8))
         png('Rail' + name, 512, 128, lambda u, v, k=kind: rail(k, u * 24, v * 1.3))
@@ -106,3 +172,4 @@ if __name__ == '__main__':
     for pattern, side, is_rail in ((road, 3.3, False), (rail, .7, True)):
         assert blend(pattern, 0, side, is_rail) == blend(pattern, CYCLE, side, is_rail)
     print('TRACK_SURFACE_ASSETS_OK variants=3 road=1024x8192 rail=8192x256 cycle=288m blend=20m')
+    generate_finish()

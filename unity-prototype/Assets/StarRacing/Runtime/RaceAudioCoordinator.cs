@@ -6,7 +6,11 @@ namespace StarRacingPrototype {
  [DefaultExecutionOrder(200)]
  public sealed class RaceAudioCoordinator : MonoBehaviour {
   public RaceDirector Director {get;private set;}
-  public bool Muted {get;private set;}
+  public bool Muted=>MasterVolume==0;
+  public float MasterVolume=>UserSettingsStore.Current.master;
+  public float MusicGain=>MasterVolume*MusicVolume;
+  public float EnginesGain=>MasterVolume*EnginesVolume;
+  public float EffectsGain=>MasterVolume*EffectsVolume;
   public float MusicVolume {get;private set;}=1;
   public float EnginesVolume {get;private set;}=1;
   public float EffectsVolume {get;private set;}=1;
@@ -48,10 +52,7 @@ namespace StarRacingPrototype {
    if(SilentStartup.Enabled||SilentStartup.IsRequested(Environment.GetCommandLineArgs())){forceMuted=true;return;}
    Director=GetComponent<RaceDirector>();
    Director.DrivingContact+=OnDrivingContact;
-   Muted=PlayerPrefs.GetInt(Preference+"Muted",0)!=0;
-   MusicVolume=Mathf.Clamp01(PlayerPrefs.GetFloat(Preference+"Music",1));
-   EnginesVolume=Mathf.Clamp01(PlayerPrefs.GetFloat(Preference+"Engines",1));
-   EffectsVolume=Mathf.Clamp01(PlayerPrefs.GetFloat(Preference+"Effects",1));
+   RefreshPreferences();
    var args=Environment.GetCommandLineArgs();
    forceMuted=Array.IndexOf(args,"-muted")>=0||Array.IndexOf(args,"--muted")>=0;
    if(FindAnyObjectByType<AudioListener>()==null)ownedListener=gameObject.AddComponent<AudioListener>();
@@ -102,7 +103,7 @@ namespace StarRacingPrototype {
    float presence=local?1:.32f*RaceAudioPolicy.RivalGain(distance);
    Emit(contact.Kind==DrivingContactKind.Vehicle?RaceSound.VehicleImpact:RaceSound.BarrierImpact,0,contact.Strength,presence);
   }
-  bool Silent=>Muted||forceMuted;
+  bool Silent=>Muted||forceMuted||MasterVolume==0;
   void TickMenuMusic(){
    if(menuMusic==null){
     var clip=Resources.Load<AudioClip>("Audio/menu-cloudline");
@@ -174,7 +175,7 @@ namespace StarRacingPrototype {
      engines[i].gameObject.AddComponent<EngineAudioOutput>().Bind(dsp[i]);engines[i].volume=1;engines[i].Play();
     }
     if(engines[i]!=null){
-     engines[i].mute=Silent;dsp[i].SetPresentation(voice.Speed,voice.Throttle,voice.Boost,engineGains[i]*EnginesVolume);
+     engines[i].mute=Silent;dsp[i].SetPresentation(voice.Speed,voice.Throttle,voice.Boost,engineGains[i]*EnginesGain);
      if(target==0&&engineGains[i]<RaceAudioPolicy.EngineVoiceThreshold)DisposeEngine(i);
      else ActiveEngineCount++;
     }
@@ -214,20 +215,23 @@ namespace StarRacingPrototype {
    shots[slot].pitch=impact?Mathf.Lerp(1.08f,.94f,Mathf.Clamp01(strength)):1;
    float eventGain=impact?RaceAudioPolicy.ImpactGain(strength)*Mathf.Clamp01(presence):policy.Gain;
    shotGains[slot]=eventGain;shotPriorities[slot]=policy.Priority;shotTimes[slot]=now;lastPlayed[key]=now;
-   if(shotTempo[slot]!=null){shotTempo[slot].Gain=eventGain*EffectsVolume;shots[slot].volume=1;}
-   else shots[slot].volume=Mathf.Min(1,eventGain*EffectsVolume);if(shotTempo[slot]!=null)shotTempo[slot].Arm();shots[slot].Play();
+   if(shotTempo[slot]!=null){shotTempo[slot].Gain=eventGain*EffectsGain;shots[slot].volume=1;}
+   else shots[slot].volume=Mathf.Min(1,eventGain*EffectsGain);if(shotTempo[slot]!=null)shotTempo[slot].Arm();shots[slot].Play();
    return true;
   }
   void SyncMix(){
-   if(menuMusic!=null){menuMusic.mute=Silent;menuMusic.volume=Silent?0:menuGain*MusicVolume;}
-   if(music!=null){music.mute=false;music.volume=1;musicTempo.Gain=Silent?0:RaceAudioPolicy.MusicGain*MusicVolume/musicAssetGain*(Time.realtimeSinceStartupAsDouble<duckUntil?RaceAudioPolicy.CountdownDuck:1);if(!Silent&&!musicStartIssued&&music.clip!=null){musicStartIssued=true;musicTempo.Arm();music.Play();}}
+   if(menuMusic!=null){menuMusic.mute=Silent;menuMusic.volume=Silent?0:menuGain*MusicGain;}
+   if(music!=null){music.mute=false;music.volume=1;musicTempo.Gain=Silent?0:RaceAudioPolicy.MusicGain*MusicGain/musicAssetGain*(Time.realtimeSinceStartupAsDouble<duckUntil?RaceAudioPolicy.CountdownDuck:1);if(!Silent&&!musicStartIssued&&music.clip!=null){musicStartIssued=true;musicTempo.Arm();music.Play();}}
    MixLoop(wind,windGain);MixLoop(skid,skidGain);
-   for(int i=0;i<shots.Length;i++)if(shots[i]!=null){if(shotTempo[i]!=null){shots[i].mute=false;shots[i].volume=1;shotTempo[i].Gain=Silent?0:shotGains[i]*EffectsVolume;}else{shots[i].mute=Silent;shots[i].volume=Mathf.Min(1,shotGains[i]*EffectsVolume);}}
+   for(int i=0;i<shots.Length;i++)if(shots[i]!=null){if(shotTempo[i]!=null){shots[i].mute=false;shots[i].volume=1;shotTempo[i].Gain=Silent?0:shotGains[i]*EffectsGain;}else{shots[i].mute=Silent;shots[i].volume=Mathf.Min(1,shotGains[i]*EffectsGain);}}
   }
-  void MixLoop(AudioSource source,float gain){if(source==null)return;source.mute=Silent;source.volume=Mathf.Min(1,gain*EffectsVolume);if(!Silent&&gain>.004f&&!source.isPlaying)source.Play();if(gain<.004f&&source.isPlaying){source.Stop();}}
+  void MixLoop(AudioSource source,float gain){if(source==null)return;source.mute=Silent;source.volume=Mathf.Min(1,gain*EffectsGain);if(!Silent&&gain>.004f&&!source.isPlaying)source.Play();if(gain<.004f&&source.isPlaying){source.Stop();}}
+  public void RefreshPreferences(){
+   var value=UserSettingsStore.Current;MusicVolume=value.music;EnginesVolume=value.engines;EffectsVolume=value.effects;SyncMix();
+  }
   public void SetMix(bool mute,float musicLevel,float engineLevel,float effectsLevel){
-   Muted=mute;MusicVolume=Mathf.Clamp01(musicLevel);EnginesVolume=Mathf.Clamp01(engineLevel);EffectsVolume=Mathf.Clamp01(effectsLevel);
-   PlayerPrefs.SetInt(Preference+"Muted",mute?1:0);PlayerPrefs.SetFloat(Preference+"Music",MusicVolume);PlayerPrefs.SetFloat(Preference+"Engines",EnginesVolume);PlayerPrefs.SetFloat(Preference+"Effects",EffectsVolume);PlayerPrefs.Save();SyncMix();
+   var value=UserSettingsStore.Current;value.master=mute?0:1;value.music=Mathf.Clamp01(musicLevel);value.engines=Mathf.Clamp01(engineLevel);value.effects=Mathf.Clamp01(effectsLevel);
+   UserSettingsStore.Save();RefreshPreferences();
   }
   void DisposeVoice(AudioSource source){if(source==null)return;source.Stop();Destroy(source.gameObject);}
   void DisposeEngine(int i){DisposeVoice(engines[i]);engines[i]=null;dsp[i]=null;engineGains[i]=0;engineSpeeds[i]=engineThrottle[i]=0;engineBoost[i]=0;}

@@ -12,6 +12,7 @@ namespace StarRacingPrototype {
   public string Hash {get;}
   public float this[string key] => values[key];
   public int Count => values.Count;
+  public static (double min,double max) AllowedRange(string key)=>ranges[key];
   ReleaseBalance(Dictionary<string,float> values,string json) {
    this.values=values;
    using(var hash=SHA256.Create()) Hash=BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(json))).Replace("-","").ToLowerInvariant();

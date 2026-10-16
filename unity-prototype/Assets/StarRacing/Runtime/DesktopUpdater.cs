@@ -11,7 +11,7 @@ using Velopack.Locators;
 using Velopack.NuGet;
 
 namespace StarRacingPrototype.Distribution {
- public sealed class DesktopUpdater:MonoBehaviour {
+ public sealed partial class DesktopUpdater:MonoBehaviour {
   public const string PreparedStatus="Обновление готово. Можно продолжить играть; новая версия установится при следующем запуске. Или нажмите «Перезапустить».";
   public static DesktopUpdater Instance {get;private set;}
   public string InstalledVersion {get;private set;}
@@ -29,10 +29,32 @@ namespace StarRacingPrototype.Distribution {
   public bool ShowUpdateBlock=>CanUpdate&&(!CurrentVersionConfirmed||Busy||Staged||StartupApplying);
   public bool StartupApplying {get;private set;}
   string journal;
+  bool discoveryStarted,raceNetworkSuspended,resumeSelected,raceObserved;
+  Task discoveryTask=Task.CompletedTask,downloadTask=Task.CompletedTask,dateTask=Task.CompletedTask,historyTask=Task.CompletedTask;
+  public ReleaseHistoryEntry[] HistoryEntries {get;private set;}=new ReleaseHistoryEntry[0];
+  public string HistoryStatus {get;private set;}="";
+  public Task LoadHistory(){if(raceNetworkSuspended||!GetMenuState()||!historyTask.IsCompleted)return historyTask;return historyTask=ReadHistory();}
+  async Task ReadHistory(){
+   if(source==null){HistoryStatus="История доступна в установленной игре";return;}
+   HistoryStatus="Загрузка истории…";
+   try{HistoryEntries=await source.History(InstalledVersion);HistoryStatus="";}
+   catch(OperationCanceledException){HistoryStatus="История приостановлена на время гонки";}
+   catch(Exception e){HistoryStatus="История недоступна. Проверьте подключение.";Debug.LogWarning("DESKTOP_HISTORY "+e);}
+  }
+  public async Task SuspendForRace(){
+   raceNetworkSuspended=true;resumeSelected|=Downloading;source?.SuspendNetwork();download?.Cancel();
+   try{await Task.WhenAll(discoveryTask,downloadTask,dateTask,historyTask).ConfigureAwait(false);}catch(OperationCanceledException){}
+  }
+  public void ResumeInMenu(){
+   if(!raceNetworkSuspended)return;raceNetworkSuspended=false;raceObserved=false;source?.ResumeNetwork();
+   if(resumeSelected){resumeSelected=false;_=Download();}
+  }
+  void Update(){if(!raceNetworkSuspended)return;if(!GetMenuState())raceObserved=true;else if(raceObserved)ResumeInMenu();}
+
   readonly string track=DesktopReleaseChannel.Track;
   int progress;
   public int Progress=>Volatile.Read(ref progress);
-  public string ButtonLabel=>StartupApplying?"Установка обновления…":Downloading?"Скачивание · "+Progress+"%":Busy?"Проверка обновлений…":Staged?"Установить и перезапустить":Available?"Обновить до "+NewVersion:"Проверить обновления";
+  public string ButtonLabel=>StartupApplying?"Установка обновления…":Downloading?"Скачивание · "+Progress+"%":Busy?"Проверка обновлений…":Staged?"Установить и перезапустить":Available?"Обновить до "+NewVersion:"Обновления недоступны";
   public string VisibleStatus=>Downloading&&Progress<100?Status+" · "+Progress+"% из "+SizeMB.ToString("F1")+" МБ":Status;
   UpdateManager manager;AuthenticatedUpdateSource source;UpdateInfo update;CancellationTokenSource download;
   string receipt,channel,appId;long minimumSequence;
@@ -58,18 +80,12 @@ namespace StarRacingPrototype.Distribution {
     if(!CanUpdate){Status="Обновления доступны после установки игры";return;}
     InstalledVersion=manager.CurrentVersion.ToNormalizedString();
     PublishedDate=PlayerPrefs.GetString("StarRacing.Published."+InstalledVersion,"");
-    _=ReadPublicationDate();
+    if(ResumeRecovery())return;
+    dateTask=ReadPublicationDate();
     Debug.Log("DESKTOP_UPDATE_READY version="+InstalledVersion+" track="+track+" installed="+CanUpdate);
-    if(File.Exists(receipt)){
-     source.Restore(File.ReadAllText(receipt));
-     if(SemanticVersion.Parse(source.Release.version)>manager.CurrentVersion){
-      ReleaseAuthentication.VerifyFile(source.Release,PackagePath(source.Release));
-      update=new UpdateInfo(source.Release.Asset,false);Staged=true;Available=true;Status=PreparedStatus;
-      TryApplyAtStartup();return;
-     }
-     File.Delete(receipt);if(File.Exists(journal))File.Delete(journal);
-    }
-    _=Check();
+    // Legacy receipts do not constitute a health/recovery transaction. Keep them for
+    // diagnosis; normal discovery offers a fresh signed preparation with recovery.
+    discoveryTask=Check();
    }catch(Exception e){Status="Обновление недоступно: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_INIT "+e);}
   }
   async Task ReadPublicationDate(){
@@ -79,22 +95,25 @@ namespace StarRacingPrototype.Distribution {
   }
   string PackagePath(DesktopRelease release)=>Path.Combine(VelopackLocator.Current.PackagesDir,release.fileName);
   public async Task Check(){
-   if(!CanUpdate||Busy||Staged)return;CurrentVersionConfirmed=false;Busy=true;Status="Проверка обновлений…";
+   if(discoveryStarted||raceNetworkSuspended||!CanUpdate||Busy||Staged)return;discoveryStarted=true;CurrentVersionConfirmed=false;Busy=true;Status="Проверка обновлений…";
    try{
     source.MinimumSequence=minimumSequence;
     update=await manager.CheckForUpdatesAsync();
     Available=update!=null;CurrentVersionConfirmed=!Available;
+    if(Available&&recovery?.state=="recovery-required"&&NewVersion==recovery.targetVersion){Available=false;Status=recovery.restored?"Обновление не запустилось. Восстановлена предыдущая версия.":"Требуется восстановление игры. Переустановите её; данные сохранятся.";return;}
     if(Available){Status="Доступна версия "+NewVersion+". Нажмите «Обновить», чтобы скачать изменения.";minimumSequence=Math.Max(minimumSequence,source.Release.sequence);PlayerPrefs.SetInt("StarRacing.UpdateSequence."+track,checked((int)minimumSequence));PlayerPrefs.Save();}
     else Status="Установлена актуальная версия";
    }catch(Exception e){Available=false;Status="Не удалось проверить обновление. Можно играть офлайн.";Debug.LogWarning("DESKTOP_UPDATE_CHECK "+e);}
    finally{Busy=false;}
   }
-  public async Task Download(){
+  public Task Download(){if(raceNetworkSuspended||Busy||Staged)return downloadTask;return downloadTask=DownloadSelected();}
+  async Task DownloadSelected(){
    if(!CanUpdate||Busy||!Available||Staged||update==null)return;
    Busy=true;Interlocked.Exchange(ref progress,0);Status="Подключение к серверу…";download=new CancellationTokenSource();
    var cancellation=download;
    try{
     Debug.Log("DESKTOP_UPDATE_DOWNLOAD_BEGIN version="+NewVersion);
+    Status="Подготовка пакета восстановления…";await PrepareBaseline(cancellation.Token);
     source.DownloadConsent=true;
     string cached=PackagePath(source.Release);
     if(File.Exists(cached)){
@@ -106,20 +125,20 @@ namespace StarRacingPrototype.Distribution {
     cancellation.Token.ThrowIfCancellationRequested();Interlocked.Exchange(ref progress,100);Status="Проверка обновления…";
     await Task.Run(()=>ReleaseAuthentication.VerifyFile(source.Release,PackagePath(source.Release)));
     cancellation.Token.ThrowIfCancellationRequested();
+    PrepareRecovery();
     UpdateAttemptJournal.Save(receipt,source.Envelope);
     if(File.Exists(journal))File.Delete(journal);
     Debug.Log("DESKTOP_UPDATE_STAGED version="+NewVersion);
     Staged=true;Status=PreparedStatus;
-   }catch(OperationCanceledException){Status="Загрузка отменена. Текущая версия доступна.";}
+   }catch(OperationCanceledException){Status=raceNetworkSuspended?"Загрузка приостановлена на время гонки":"Загрузка отменена. Текущая версия доступна.";}
    catch(Exception e){Status="Не удалось загрузить обновление: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_DOWNLOAD "+e);}
    finally{source.DownloadConsent=false;Busy=false;cancellation.Dispose();download=null;}
   }
-  public void Cancel(){download?.Cancel();}
-  public void InstallAndRestart(){Apply(false);}
-  void TryApplyAtStartup(){Apply(true);}
-  void Apply(bool startup){
+  public void Cancel(){resumeSelected=false;download?.Cancel();}
+  public void InstallAndRestart(){var menu=FindFirstObjectByType<RaceMenu>();if(menu!=null)menu.GuardExit(Apply);else Apply();}
+  void Apply(){
    if(!Staged||Busy||StartupApplying||!CanUpdate)return;
-   if(!startup&&!GetMenuState()){Status="Вернитесь в главное меню для установки обновления";return;}
+   if(!GetMenuState()){Status="Вернитесь в главное меню для установки обновления";return;}
    try{
     // A separate receipt is authenticated again immediately before activation.
     var expectedVersion=NewVersion;
@@ -131,7 +150,6 @@ namespace StarRacingPrototype.Distribution {
     using(var mutex=new Mutex(false,"StarRacing-Apply-"+channel+"-"+track)){
      if(!mutex.WaitOne(0)){Status="Обновление применяется другой копией игры";return;}
      try{
-      if(startup&&UpdateAttemptJournal.AlreadyAttempted(journal,envelope,InstalledVersion,release.version)){Status="Предыдущая установка не завершилась. Можно играть или повторить вручную.";return;}
       if(Application.platform==RuntimePlatform.OSXPlayer){
        // User-scope package supports atomic bundle swap; never invoke non-atomic elevated fallback.
        var parent=Directory.GetParent(Application.dataPath)?.Parent?.FullName;
@@ -140,9 +158,8 @@ namespace StarRacingPrototype.Distribution {
       }
       UpdateAttemptJournal.Begin(journal,envelope,InstalledVersion,release.version);
       PlayerPrefs.Save();StartupApplying=true;Status="Установка обновления. Игра перезапустится…";
-      var args=RestartArguments(Environment.GetCommandLineArgs().Skip(1),release.version);
-      Debug.Log("DESKTOP_UPDATE_APPLY_WAIT from="+InstalledVersion+" target="+release.version+" startup="+startup);
-      manager.WaitExitThenApplyUpdates(release.Asset,false,true,args);
+      Debug.Log("DESKTOP_UPDATE_APPLY_WAIT from="+InstalledVersion+" target="+release.version+" startup=false");
+      recovery=RecoveryTransaction.Read(RecoveryPath);if(recovery.root!=VelopackLocator.Current.RootAppDir||recovery.previousVersion!=InstalledVersion||UpdateAttemptJournal.Digest(recovery.targetEnvelope)!=UpdateAttemptJournal.Digest(envelope))throw new InvalidDataException("Подготовленная версия или установка изменилась");RecoveryTransaction.Verified(recovery,true);RecoveryTransaction.Verified(recovery,false);StartRecoveryAgent();
      }finally{mutex.ReleaseMutex();}
     }
     Application.Quit();

@@ -47,7 +47,7 @@ namespace StarRacingPrototype
                 if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_CELL_DIAGNOSTIC")=="1" || Environment.GetEnvironmentVariable("STAR_RACING_ROAD_CELL_BOUND_DIAGNOSTIC")=="1") {RoadCellCertificationChecks.Run();Finish(false);return;}
                 if(Environment.GetEnvironmentVariable("STAR_RACING_SHIPPING_CONTACT_TRACE")=="1") {RoadSmoothnessChecks.DiagnoseShippingLoop();Finish(false);return;}
                 if(Environment.GetEnvironmentVariable("STAR_RACING_FORCE_CALIBRATION")=="1") {PhysicsSubstepCalibrationChecks.Run();Finish(false);return;}
-                if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_PRODUCTION")=="1") {Debug.Log("ROAD_QA_ROUTE production-exterior-supports");RoadVolumeChecks.Run();Finish(false);return;}
+                if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_PRODUCTION")=="1") {Debug.Log("ROAD_QA_ROUTE production-exterior-supports");if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_FLAT_ONLY")=="1")RoadVolumeChecks.RunFlat();else RoadVolumeChecks.Run();Finish(false);return;}
                 if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_PRODUCTION_GENERATED")=="1") {Debug.Log("ROAD_QA_ROUTE production-generated-supports");RoadVolumeChecks.RunGenerated();Finish(false);return;}
                 if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_PROFILE64")=="1") {Debug.Log("ROAD_QA_ROUTE production-64-car-cost");RoadVolumeChecks.ProfileProduction64();Finish(false);return;}
                 if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_PROFILE_CANDIDATE64")=="1") {Debug.Log("ROAD_QA_ROUTE candidate-64-car-cost");RoadVolumeChecks.ProfileCandidate64();Finish(false);return;}

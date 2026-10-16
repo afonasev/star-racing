@@ -8,6 +8,21 @@ namespace StarRacingPrototype {
  [DefaultExecutionOrder(-100)]
  public sealed class RaceDirector : MonoBehaviour {
   public ReleaseBalance Balance {get;private set;}
+  public LabSnapshot RaceBalanceSnapshot {get;private set;}
+  public RaceGraphicsSettings Graphics {get;private set;}
+  RaceGraphicsBindings.Lease graphicsLease;Bloom graphicsBloom;Volume graphicsVolume;VolumeProfile graphicsVolumeProfile;
+  public bool ContactShadowsActive=>graphicsLease!=null&&graphicsLease.Active;
+  public bool ShadowsActive=>sun!=null&&sun.shadows!=LightShadows.None;
+  public bool BloomActive=>graphicsBloom!=null&&graphicsBloom.active;
+  public bool MistActive=>environment.Sky!=null&&environment.Sky.MistEnabled;
+  public void SaveGraphics(){UserSettingsStore.Current.graphics=Graphics;UserSettingsStore.Save();ApplyGraphicsSettings();}
+  public int DefaultMsaaSamples=>(UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset)?.msaaSampleCount??1;
+  public void ApplyUserSettings(){
+   var preferences=UserSettingsStore.Current;Application.targetFrameRate=preferences.frameLimit==0?-1:preferences.frameLimit;
+   Graphics=preferences.graphics;ApplyGraphicsSettings();
+   foreach(var camera in cameras)if(camera!=null){var renderCamera=camera.GetComponent<Camera>();renderCamera.allowMSAA=preferences.antiAliasing<0;var data=renderCamera.GetUniversalAdditionalCameraData();data.antialiasing=preferences.antiAliasing==1?AntialiasingMode.FastApproximateAntialiasing:preferences.antiAliasing==2?AntialiasingMode.SubpixelMorphologicalAntiAliasing:AntialiasingMode.None;}
+  }
+  void ApplyGraphicsSettings(){if(Graphics==null)return;graphicsLease?.Apply(Graphics.contactShadows);if(sun!=null)sun.shadows=Graphics.shadows?LightShadows.Soft:LightShadows.None;if(graphicsBloom!=null)graphicsBloom.active=Graphics.bloom;environment.Sky?.SetMistEnabled(Graphics.mist);}
   public string BalanceError {get;private set;}="";
   public MagneticVehicle[] Cars {get;private set;}
   public TrackBuilder Track {get;private set;}
@@ -56,8 +71,9 @@ namespace StarRacingPrototype {
   internal static bool StartupAudioDisabled(string[] arguments)=>SilentStartup.IsRequested(arguments);
   void Awake(){
    if(GetComponent<RacePhysicsStepper>()==null)gameObject.AddComponent<RacePhysicsStepper>();
-   try {Balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config")?.text);}catch(Exception e){BalanceError=e.Message;Debug.LogError("BALANCE_ERROR "+e.Message);}
-   Application.targetFrameRate=120;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
+   try {var active=DesignLabRuntime.Current.Active;Balance=ReleaseBalance.Parse(active?.Json??Resources.Load<TextAsset>("balance-config")?.text);if(active==null)BalanceError=DesignLabRuntime.Current.Warning;}catch(Exception e){BalanceError=e.Message;Debug.LogError("BALANCE_ERROR "+e.Message);}
+   Application.targetFrameRate=UserSettingsStore.Current.frameLimit==0?-1:UserSettingsStore.Current.frameLimit;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
+   Graphics=UserSettingsStore.Current.graphics;var bindings=Resources.Load<RaceGraphicsBindings>("GraphicsRuntimeBindings");if(bindings==null)throw new InvalidOperationException("GraphicsRuntimeBindings resource missing");graphicsLease=bindings.Acquire();graphicsLease.Apply(Graphics.contactShadows);
    var initial=LocalRaceConfig.Load();initial.humans=Mathf.Max(1,initial.humans);ApplyValues(initial);
    Track=new GameObject("Track").AddComponent<TrackBuilder>();BuildTrack();
    for(int i=0;i<4;i++){
@@ -70,10 +86,10 @@ namespace StarRacingPrototype {
    spaceFill=new GameObject("Space fill").AddComponent<Light>();spaceFill.type=LightType.Directional;spaceFill.shadows=LightShadows.None;
    ApplyLighting();
    var volume=new GameObject("Color and bloom").AddComponent<Volume>();volume.isGlobal=true;volume.profile=ScriptableObject.CreateInstance<VolumeProfile>();
-   var bloom=volume.profile.Add<Bloom>();bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);
-   CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);if(!StartupAudioDisabled(Environment.GetCommandLineArgs()))gameObject.AddComponent<RaceAudioCoordinator>();
+   graphicsVolume=volume;graphicsVolumeProfile=volume.profile;var bloom=volume.profile.Add<Bloom>();graphicsBloom=bloom;bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);ApplyGraphicsSettings();
+   ApplyUserSettings();CreateRoster();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);if(!StartupAudioDisabled(Environment.GetCommandLineArgs()))gameObject.AddComponent<RaceAudioCoordinator>();
   }
-  void ApplyLighting(){if(sun!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);}}
+  void ApplyLighting(){if(sun!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);foreach(var camera in cameras)if(camera!=null)camera.SetSkyline(environment.Plan);ApplyGraphicsSettings();}}
   NativeTrackCourse GenerateCourse(LocalRaceConfig config,string theme,bool replay)=>NativeTrackGenerator.Generate(config.Seed,new Procedural.GraphCourseSettings(theme,config.rails,config.jumps),config.generatorRevision,replay&&config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback);
   static void BuildDecor(TrackEnvironmentBuilder decor,TrackBuilder track,NativeTrackCourse course,uint seed,string theme){if(course.IsIndependent)decor.BuildIndependent(track.GraphSurface,seed,theme);else decor.Build(track.Route,track.transform,seed);}
   static float GridDistance(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?course.Start-(slot/2)*10:RaceRoster.GridDistance(track.Route,slot);
@@ -104,7 +120,8 @@ namespace StarRacingPrototype {
   }
   public bool TryStartSelected(LocalRaceConfig config,out string error){
    error="";if(Started){error="Гонка уже идёт";return false;}
-   if(Balance==null){error=BalanceError;return false;}
+   LabSnapshot balanceSnapshot;ReleaseBalance nextBalance;
+   try{balanceSnapshot=DesignLabRuntime.Current.Capture();nextBalance=ReleaseBalance.Parse(balanceSnapshot.Json);}catch(Exception e){error=e.Message;return false;}
    var input=new LocalInputRouter();if(!input.TryBind(config,out error))return false;
    GameObject root=null;TrackEnvironmentBuilder decor=null;
    try{
@@ -123,9 +140,9 @@ namespace StarRacingPrototype {
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
     for(int i=0;i<count;i++){
      var entrant=roster.Entrants[i];var go=new GameObject(entrant.Name);go.transform.SetParent(root.transform);
-     cars[i]=go.AddComponent<MagneticVehicle>();InitializeCar(cars[i],course,track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),Balance,entrant.HumanSeat>=0,distances[i]);
+     cars[i]=go.AddComponent<MagneticVehicle>();InitializeCar(cars[i],course,track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),nextBalance,entrant.HumanSeat>=0,distances[i]);
      cars[i].Drive.ConfigureHandicap(entrant.Profile,snapshot.handicap);cars[i].SetDrivingGeneration(generation);ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);
-     if(entrant.HumanSeat<0)drivers[i]=new AiDriver(i,entrant.Profile,entrant.Seed,Balance);
+     if(entrant.HumanSeat<0)drivers[i]=new AiDriver(i,entrant.Profile,entrant.Seed,nextBalance);
      int index=i;cars[i].ContactObserved+=collision=>ObserveContact(index,collision);seen[i]=ObserveVehicle(cars[i]);
     }
     var session=CreateSessionForTrack(track,course.Start,course.Finish,count,humans);session.Reset(seen);
@@ -135,7 +152,7 @@ namespace StarRacingPrototype {
     if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
     var oldTrack=Track;var oldCars=Cars;var oldDecor=environment;var oldRoot=activeRaceRoot;
     // Publish only after generation, bindings, placement and resource construction succeeded.
-    ApplyValues(snapshot);Course=course;Track=track;GraphWorld=null;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
+    Balance=nextBalance;RaceBalanceSnapshot=balanceSnapshot;ApplyValues(snapshot);Course=course;Track=track;GraphWorld=null;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
     observations=seen;decisionTimers=timers;decisionRevisions=revisions;lastDecisionTimes=times;botCommands=commands;contactObservations=contacts;contactPolicy=policy;
     RaceGeneration=generation;activeRaceRoot=root;root=null;decor=null;
     oldTrack.gameObject.SetActive(false);foreach(var car in oldCars)car.gameObject.SetActive(false);
@@ -244,6 +261,7 @@ namespace StarRacingPrototype {
      Distance=car.Distance,Lateral=lateral,Heading=heading,Velocity=car.Body.linearVelocity,Right=sourceRight,Tangent=frame.tangent,Normal=frame.normal,
      Span=spans.Length>1?selected:-1,LeftRail=Track.Route.Definition==null||span.railLeft,RightRail=Track.Route.Definition==null||span.railRight,
      LeftClearance=limit+local,RightClearance=limit-local,
+     SolidSuppressed=!Session.CanDrive(i)||car.IsGhosting||car.FinishedCoasting,
      Suppressed=!Session.CanDrive(i)||car.IsGhosting||car.FinishedCoasting||car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f||selected<0||error>VehicleGeometry.HalfWidth};
    }
    contactPolicy.BeginStep(contactObservations);
@@ -255,23 +273,24 @@ namespace StarRacingPrototype {
    return new DrivingContactObservation{Id=id,Generation=generation,Revision=car.PositionRevision,Span=-1,GraphMode=true,Graph=route,Position=car.Body.position,
     Distance=car.Distance,Lateral=lateral,Heading=heading,Velocity=car.Body.linearVelocity,Right=right,Tangent=frame.tangent,Normal=frame.normal,
     LeftClearance=room+lateral,RightClearance=room-lateral,LeftRail=car.GraphRoute.Frame.railLeft,RightRail=car.GraphRoute.Frame.railRight,
+    SolidSuppressed=!driving||car.IsGhosting||car.FinishedCoasting,
     Suppressed=!driving||!route.Valid||car.IsGhosting||car.FinishedCoasting||car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f};
   }
   void ObserveContact(int index,Collision collision) {
    if(Paused||Session==null||contactPolicy==null)return;
    var car=Cars[index];var snapshot=contactObservations[index];
-   if(snapshot.Generation!=RaceGeneration||snapshot.Revision!=car.PositionRevision||car.IsGhosting||car.FinishedCoasting||car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f)return;
+   if(snapshot.Generation!=RaceGeneration||snapshot.Revision!=car.PositionRevision||car.IsGhosting||car.FinishedCoasting)return;
    var other=collision.rigidbody==null?null:collision.rigidbody.GetComponent<MagneticVehicle>();
    DrivingContactEvent contact;
    if(other!=null){
+    if(car.ActiveJumpId.Length>0||car.OffRouteSeconds>.05f)return;
     int otherIndex=System.Array.IndexOf(Cars,other);if(otherIndex<0||contactObservations[otherIndex].Revision!=other.PositionRevision||other.IsGhosting||other.FinishedCoasting||other.ActiveJumpId.Length>0||other.OffRouteSeconds>.05f)return;
     if(contactPolicy.Vehicle(snapshot.Id,Roster.Entrants[otherIndex].Id,out contact))DrivingContact?.Invoke(contact);
    }else{
-    string label=collision.gameObject.name.ToLowerInvariant();if(!label.Contains("rail")&&!label.Contains("barrier"))return;
-    int side=collision.contactCount==0?0:(Vector3.Dot(collision.GetContact(0).point-car.Body.position,snapshot.Right)<0?-1:1);
-    if(contactPolicy.Barrier(snapshot.Id,side,out contact))DrivingContact?.Invoke(contact);
+    float speed=DrivingContactPolicy.SolidNormalSpeed(collision,snapshot.Normal);
+    if(speed>=0&&contactPolicy.Solid(snapshot.Id,speed,out contact))DrivingContact?.Invoke(contact);
    }
   }
-  void OnDestroy(){Time.timeScale=1;environment.Clear();}
+  void OnDestroy(){Time.timeScale=1;graphicsLease?.Dispose();graphicsLease=null;if(graphicsVolume!=null)Destroy(graphicsVolume.gameObject);if(graphicsVolumeProfile!=null)Destroy(graphicsVolumeProfile);environment.Clear();}
  }
 }

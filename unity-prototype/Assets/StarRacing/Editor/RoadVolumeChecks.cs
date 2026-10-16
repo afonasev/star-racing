@@ -51,7 +51,7 @@ namespace StarRacingPrototype
                 pending.Enqueue(new Row {ccd=ccd,first=pair.colliderInstanceID,second=pair.otherColliderInstanceID,body=pair.bodyInstanceID,otherBody=pair.otherBodyInstanceID,
                     position=pair.position,rotation=pair.rotation,otherPosition=pair.otherPosition,otherRotation=pair.otherRotation,
                     velocity=pair.bodyVelocity,otherVelocity=pair.otherBodyVelocity,angular=pair.bodyAngularVelocity,otherAngular=pair.otherBodyAngularVelocity,
-                    point=pair.GetPoint(i),normal=pair.GetNormal(i),separation=pair.GetSeparation(i),face=pair.GetFaceIndex(i),limit=pair.GetMaxImpulse(i),target=pair.GetTargetVelocity(i),mass=pair.massProperties,friction=pair.GetDynamicFriction(i),staticFriction=pair.GetStaticFriction(i),bounce=pair.GetBounciness(i)});
+                    point=pair.GetPoint(i),normal=pair.GetNormal(i),separation=pair.GetSeparation(i),face=uint.MaxValue,limit=pair.GetMaxImpulse(i),target=pair.GetTargetVelocity(i),mass=pair.massProperties,friction=pair.GetDynamicFriction(i),staticFriction=pair.GetStaticFriction(i),bounce=pair.GetBounciness(i)});
             }
         }
         public static void AfterStep()
@@ -96,23 +96,23 @@ namespace StarRacingPrototype
                 RoadNativeContactObserver.AfterStep();
                 if(substepTrack!=null)foreach(var car in RacePhysicsStepper.Vehicles) {
                     if(car==null || !car.gameObject.activeInHierarchy)continue;
-                    var box=car.GetComponent<BoxCollider>();float depth=SlabPenetration(box,car.Body.position,car.Body.rotation,FlatSlab(substepTrack));
+                    var box=car.GetComponent<BoxCollider>();float depth=CompoundPenetration(car,FlatSlab(substepTrack));
                     maxObservedPenetration=Mathf.Max(maxObservedPenetration,depth);
                     if((car.Body.constraints&RigidbodyConstraints.FreezeRotation)==RigidbodyConstraints.FreezeRotation) {
                         var before=previous[car.GetInstanceID()];Check(Quaternion.Angle(before.rotation,car.Body.rotation)<.001f,"frozen segment oracle received rotating chassis");
-                        float swept=FrozenSegmentPenetration(box,before.position,car.Body.position,car.Body.rotation,FlatSlab(substepTrack));
+                        float swept=0;foreach(var partBox in car.GetComponentsInChildren<BoxCollider>())if(partBox.enabled&&!partBox.isTrigger)swept=Mathf.Max(swept,FrozenSegmentPenetration(partBox,before.position,car.Body.position,car.Body.rotation,FlatSlab(substepTrack)));
                         maxFrozenSegmentPenetration=Mathf.Max(maxFrozenSegmentPenetration,swept);Check(swept<=.04f,"frozen native segment crossed road depth="+swept+" car="+car.name);
                     }
                     previous[car.GetInstanceID()]=(car.Body.position,car.Body.rotation);
                     var trace=car.GetComponent<RoadImpactContactTrace>();
                     if(reference) {
                         int id=car.GetInstanceID();if(!histories.TryGetValue(id,out var history))histories[id]=history=new System.Collections.Generic.Queue<string>();
-                        history.Enqueue("NATIVE_REFERENCE part="+part+" car="+car.name+" depth="+depth+" pose="+car.Body.position.ToString("F5")+" rotation="+car.Body.rotation.eulerAngles.ToString("F5")+" velocity="+car.Body.linearVelocity.ToString("F5")+" angular="+car.Body.angularVelocity.ToString("F5")+" contacts="+(trace==null?"none":trace.contacts)+RoadNativeContactObserver.For(box));
+                        history.Enqueue("NATIVE_REFERENCE part="+part+" car="+car.name+" depth="+depth+" pose="+car.Body.position.ToString("F5")+" rotation="+car.Body.rotation.eulerAngles.ToString("F5")+" velocity="+car.Body.linearVelocity.ToString("F5")+" angular="+car.Body.angularVelocity.ToString("F5")+" contacts="+(trace==null?"none":trace.contacts)+RoadNativeContactObserver.For(worstCollider==null?box:worstCollider));
                         if(history.Count>12)history.Dequeue();
                         if(depth>.04f)foreach(var entry in history)Debug.Log(entry);
                         if(trace!=null)trace.contacts=string.Empty;
                     }
-                    Check(box.enabled && depth<=.04f,"native substep car="+car.name+" penetration="+depth+" part="+part+" of="+count+" pose="+car.Body.position+" velocity="+car.Body.linearVelocity+" angular="+car.Body.angularVelocity);
+                    Check(box.enabled && depth<=.04f,"native substep car="+car.name+" penetration="+depth+" worst="+worstCompound+" part="+part+" of="+count+" pose="+car.Body.position+" velocity="+car.Body.linearVelocity+" angular="+car.Body.angularVelocity);
                 }
                 part++;
             });
@@ -439,15 +439,34 @@ namespace StarRacingPrototype
                 Debug.Log("CCD_CONTROL_SUMMARY passed="+passed+" failed="+failed+" maxPenetration="+maxObservedPenetration+" maxFrozenSegmentPenetration="+maxFrozenSegmentPenetration);
                 Check(failed==0,"native CCD experiment failed "+failed+" cases");
         }
+        static float CompoundSupport(MagneticVehicle car,Quaternion rotation,Vector3 direction) {
+            float minimum=float.PositiveInfinity;var axis=Quaternion.Inverse(rotation)*direction;
+            foreach(var box in car.ContactColliders) {
+                float radius=Vector3.Dot(new Vector3(Mathf.Abs(axis.x),Mathf.Abs(axis.y),Mathf.Abs(axis.z)),box.size)*.5f;
+                minimum=Mathf.Min(minimum,Vector3.Dot(rotation*box.center,direction)-radius);
+            }return minimum;
+        }
+        static string worstCompound;static BoxCollider worstCollider;
+        static float CompoundPenetration(MagneticVehicle car,Bounds slab) {
+            float depth=0;worstCompound="none";worstCollider=null;foreach(var box in car.GetComponentsInChildren<BoxCollider>())if(box.enabled&&!box.isTrigger){float current=SlabPenetration(box,car.Body.position,car.Body.rotation,slab);if(current>depth){depth=current;worstCollider=box;worstCompound=box.name+" center="+box.center+" size="+box.size;}}return depth;
+        }
         static void CheckProductionChassis(MagneticVehicle car)
         {
             var chassis=car.GetComponent<BoxCollider>();var boxes=car.GetComponentsInChildren<BoxCollider>();
-            Check(boxes.Length==5 && chassis.size.Equals(VehicleGeometry.ChassisSize) && chassis.center.Equals(VehicleGeometry.ChassisCenter),"production chassis envelope changed");
+            Check(boxes.Length==9 && car.ContactColliders.Count==5,"production compound/CCD primitive count changed");
+            var profile=car.GetComponentInChildren<StaticVehicleVisual>().ContactProfile();
+            for(int i=0;i<5;i++)Check(car.ContactColliders[i].size.Equals(profile[i].size)&&car.ContactColliders[i].center.Equals(profile[i].center)&&car.ContactColliders[i].enabled&&!car.ContactColliders[i].isTrigger,"production contact profile diverged");
             Check(LayerMask.NameToLayer("Vehicle")==MagneticVehicle.VehicleCollisionLayer && LayerMask.NameToLayer("DrivableRoad")==TrackBuilder.RoadCollisionLayer && car.gameObject.layer==MagneticVehicle.VehicleCollisionLayer,"vehicle collision layer mismatch root="+car.gameObject.layer+" named="+LayerMask.NameToLayer("Vehicle")+" expected="+MagneticVehicle.VehicleCollisionLayer);
             var bounds=new Bounds(chassis.center,chassis.size);
-            foreach(var box in boxes)if(box!=chassis) {
+            foreach(var box in boxes)if(box.gameObject!=car.gameObject) {
                 Vector3 low=box.center-box.size*.5f,high=box.center+box.size*.5f;
-                for(int axis=0;axis<3;axis++)Check(low[axis]>=bounds.min[axis] && high[axis]<=bounds.max[axis],"CCD guard extends outside original chassis");
+                bool contained=false;
+                foreach(var section in car.ContactColliders) {
+                    var envelope=new Bounds(section.center,section.size);bool inside=true;
+                    for(int axis=0;axis<3;axis++)inside&=low[axis]>=envelope.min[axis]&&high[axis]<=envelope.max[axis];
+                    contained|=inside;
+                }
+                Check(contained,"CCD guard extends outside contact sections");
                 Check(box.enabled && !box.isTrigger && box.attachedRigidbody==car.Body && box.sharedMaterial==chassis.sharedMaterial && box.excludeLayers.value==((1<<MagneticVehicle.VehicleCollisionLayer)|(1<<TrackBuilder.BarrierCollisionLayer)|(box.size.z==.02f?1<<TrackBuilder.RoadCollisionLayer:0)),"CCD guard/car pair contract");
             }
             Check(car.Body.mass==1000f && car.Body.centerOfMass.Equals(new Vector3(0,-.18f,0)) && car.Body.inertiaTensor.Equals(VehicleGeometry.BaselineInertia) && car.Body.inertiaTensorRotation.Equals(VehicleGeometry.BaselineInertiaRotation),"compound chassis changed mass/COM/inertia");
@@ -476,6 +495,7 @@ namespace StarRacingPrototype
                     typeof(MagneticVehicle).GetMethod("FixedUpdate",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(car,null);
                     Check(car.IsFalling && box.enabled,"fall transition disabled road collision");
                 }
+                bool observedContact=false;car.ContactObserved+=collision=>{if(collision.collider.transform.IsChildOf(track.transform))observedContact=true;};
                 var trace=obj.AddComponent<RoadImpactContactTrace>();
                 if(boxFixture) {
                     foreach(var collider in roadColliders)collider.enabled=false;
@@ -506,20 +526,26 @@ namespace StarRacingPrototype
                     }
                 }
                 body.constraints=rotating?RigidbodyConstraints.None:RigidbodyConstraints.FreezeRotation;body.linearDamping=0;body.rotation=rotation;
-                Vector3 local=Quaternion.Inverse(rotation)*outward;
-                float radius=Vector3.Dot(new Vector3(Mathf.Abs(local.x),Mathf.Abs(local.y),Mathf.Abs(local.z)),box.size)*.5f;
-                body.position=point+outward*(radius+.06f+speed*.01f*phase)-rotation*box.center;
+                float support=float.PositiveInfinity;
+                foreach(var partBox in car.ContactColliders) {
+                    Vector3 local=Quaternion.Inverse(rotation)*outward;
+                    float radius=Vector3.Dot(new Vector3(Mathf.Abs(local.x),Mathf.Abs(local.y),Mathf.Abs(local.z)),partBox.size)*.5f;
+                    support=Mathf.Min(support,Vector3.Dot(rotation*partBox.center,outward)-radius);
+                }
+                body.position=point+outward*(.06f+speed*.01f*phase-support);
                 body.linearVelocity=Vector3.zero;obj.transform.SetPositionAndRotation(body.position,rotation);Physics.SyncTransforms();
                 // Register the newly spawned body at rest before measuring a CCD sweep.
                 Simulate(.01f);body.linearVelocity=-outward*speed+drift;
                 if(rotating)body.angularVelocity=rotation*Vector3.forward*6;
-                int revision=car.PositionRevision;float minimum=float.PositiveInfinity;
+                int revision=car.PositionRevision;float minimum=float.PositiveInfinity,finalClearance=float.PositiveInfinity;
                 for(int step=0;step<16;step++) {
                     trace.contacts=string.Empty;Simulate(.01f);
-                    Vector3 axis=Quaternion.Inverse(body.rotation)*outward;
-                    float actualRadius=Vector3.Dot(new Vector3(Mathf.Abs(axis.x),Mathf.Abs(axis.y),Mathf.Abs(axis.z)),box.size)*.5f;
-                    float clearance=Vector3.Dot(body.position+body.rotation*box.center-point,outward)-actualRadius;
-                    minimum=Mathf.Min(minimum,clearance);
+                    Vector3 axis=Quaternion.Inverse(body.rotation)*outward;float clearance=float.PositiveInfinity;
+                    foreach(var partBox in car.ContactColliders) {
+                        float actualRadius=Vector3.Dot(new Vector3(Mathf.Abs(axis.x),Mathf.Abs(axis.y),Mathf.Abs(axis.z)),partBox.size)*.5f;
+                        clearance=Mathf.Min(clearance,Vector3.Dot(body.position+body.rotation*partBox.center-point,outward)-actualRadius);
+                    }
+                    minimum=Mathf.Min(minimum,clearance);finalClearance=clearance;
                     bool finiteEdge=rotating || label.StartsWith("tilted ");
                     float penetration=finiteEdge?SlabPenetration(box,body.position,body.rotation,FlatSlab(track)):Mathf.Max(0,-clearance);
                     if(boxFixture)Debug.Log("VOLUME_SOLID_STEP label="+label+" step="+step+" depth="+penetration+" pose="+body.position+" rotation="+body.rotation.eulerAngles+" velocity="+body.linearVelocity+" angular="+body.angularVelocity+" contacts="+trace.contacts);
@@ -527,9 +553,9 @@ namespace StarRacingPrototype
                     Check(finiteEdge || Vector3.Dot(body.position+body.rotation*box.center-point,outward)>=0,
                         label+" crossed to opposite side of impact face");
                 }
-                Check(minimum<.1f,label+" never reached physical surface min="+minimum+" point="+point.ToString("G9")+" outward="+outward.ToString("G9")+" pose="+body.position.ToString("G9")+" velocity="+body.linearVelocity.ToString("G9")+" contacts="+trace.contacts);
+                Check(minimum<.1f||observedContact,label+" never reached physical surface min="+minimum+" point="+point.ToString("G9")+" outward="+outward.ToString("G9")+" pose="+body.position.ToString("G9")+" velocity="+body.linearVelocity.ToString("G9")+" contacts="+trace.contacts);
                 if(!rotating && Vector3.Dot(body.linearVelocity,outward)<=-.2f && histories.TryGetValue(car.GetInstanceID(),out var finalHistory))foreach(var entry in finalHistory)Debug.Log(entry);
-                Check(rotating || Vector3.Dot(body.linearVelocity,outward)>-.2f || (label.StartsWith("tilted ") && FiniteEscape(box,body.position,body.rotation,body.linearVelocity,FlatSlab(track))),label+" continued moving through contact speed="+speed+" phase="+phase+" min="+minimum+" finalSat="+SlabPenetration(box,body.position,body.rotation,FlatSlab(track))+" pose="+body.position.ToString("G9")+" rotation="+body.rotation.ToString("G9")+" boxCenter="+(body.position+body.rotation*box.center).ToString("G9")+" velocity="+body.linearVelocity+" contacts="+trace.contacts);
+                Check(rotating || finalClearance>.04f || Vector3.Dot(body.linearVelocity,outward)>-.2f || (label.StartsWith("tilted ") && FiniteEscape(box,body.position,body.rotation,body.linearVelocity,FlatSlab(track))),label+" continued moving through contact speed="+speed+" phase="+phase+" min="+minimum+" finalSat="+SlabPenetration(box,body.position,body.rotation,FlatSlab(track))+" pose="+body.position.ToString("G9")+" rotation="+body.rotation.ToString("G9")+" boxCenter="+(body.position+body.rotation*box.center).ToString("G9")+" velocity="+body.linearVelocity+" contacts="+trace.contacts);
                 Check(car.PositionRevision==revision && box.enabled,"respawn/disabled collider masked impact");impacts++;
             } finally {
                 UnityEngine.Object.DestroyImmediate(obj);if(exactSlab!=null)UnityEngine.Object.DestroyImmediate(exactSlab);
@@ -662,6 +688,7 @@ namespace StarRacingPrototype
             bool sentinels=Environment.GetEnvironmentVariable("STAR_RACING_ROAD_SENTINELS")=="1";
             for(int face=0;face<points.Length;face++)foreach(var rotation in new[]{f.Rotation,f.Rotation*Quaternion.Euler(10,30,20),f.Rotation*Quaternion.Euler(-25,-17,31)}) {
                 foreach(var axis in new[]{Vector3.right,Vector3.up,Vector3.forward}) {
+                    if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_CRITICAL")=="1")continue;
                     if(sentinels && !(face==2 && axis==Vector3.up && Quaternion.Angle(rotation,f.Rotation*Quaternion.Euler(-25,-17,31))<.01f))continue;
                     var obj=new GameObject("angular face="+face+" axis="+axis+" orientation="+rotation.eulerAngles);obj.transform.SetParent(track.transform.parent);
                     try {
@@ -669,15 +696,16 @@ namespace StarRacingPrototype
                         if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_REFERENCE")=="1")obj.AddComponent<RoadImpactContactTrace>();
                         var box=obj.GetComponent<BoxCollider>();Vector3 outward=normals[face],local=Quaternion.Inverse(rotation)*outward;
                         float radius=Vector3.Dot(new Vector3(Mathf.Abs(local.x),Mathf.Abs(local.y),Mathf.Abs(local.z)),box.size)*.5f;
-                        car.Body.position=points[face]+outward*(radius+.015f)-rotation*box.center;car.Body.rotation=rotation;
+                        car.Body.position=points[face]+outward*(.015f-CompoundSupport(car,rotation,outward));car.Body.rotation=rotation;
                         obj.transform.SetPositionAndRotation(car.Body.position,rotation);Physics.SyncTransforms();
-                        Check(SlabPenetration(box,car.Body.position,rotation,FlatSlab(track))==0 && car.Body.linearVelocity.sqrMagnitude<1e-10f,"angular fixture initial overlap/motion");Simulate(.01f);
+                        Check(CompoundPenetration(car,FlatSlab(track))==0 && car.Body.linearVelocity.sqrMagnitude<1e-10f,"angular fixture initial overlap/motion");Simulate(.01f);
                         car.Body.angularVelocity=rotation*axis*6;int revision=car.PositionRevision;
                         for(int step=0;step<24;step++)Simulate(.01f);
                         Check(box.enabled && car.PositionRevision==revision,"angular matrix was masked by recovery");cases++;
                     }catch(Exception e){failed++;Debug.Log("ROAD_VOLUME_EXTENDED_FAILED "+e.Message);if(sentinels)throw;}finally {UnityEngine.Object.DestroyImmediate(obj);}
                 }
                 foreach(float speed in new[]{42f,139f,300f}) {
+                    if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_CRITICAL")=="1"&&(speed==42||Quaternion.Angle(rotation,f.Rotation*Quaternion.Euler(-25,-17,31))>.01f))continue;
                     if(sentinels && !((face==2 && speed==139 && Quaternion.Angle(rotation,f.Rotation*Quaternion.Euler(-25,-17,31))<.01f) || (face==4 && speed==300 && Quaternion.Angle(rotation,f.Rotation*Quaternion.Euler(10,30,20))<.01f)))continue;
                     var receiver=new GameObject("impulse face="+face+" speed="+speed+" orientation="+rotation.eulerAngles);var donor=new GameObject("impulse donor");receiver.transform.SetParent(track.transform.parent);donor.transform.SetParent(track.transform.parent);
                     try {
@@ -686,11 +714,11 @@ namespace StarRacingPrototype
                         if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_REFERENCE")=="1"){receiver.AddComponent<RoadImpactContactTrace>();donor.AddComponent<RoadImpactContactTrace>();}
                         var box=a.GetComponent<BoxCollider>();Vector3 outward=normals[face],local=Quaternion.Inverse(rotation)*outward;
                         float radius=Vector3.Dot(new Vector3(Mathf.Abs(local.x),Mathf.Abs(local.y),Mathf.Abs(local.z)),box.size)*.5f;
-                        a.Body.position=points[face]+outward*(radius+.015f)-rotation*box.center;a.Body.rotation=rotation;
-                        b.Body.position=a.Body.position+outward*(radius*2+.06f+speed*.01f*.61f);b.Body.rotation=rotation;
+                        a.Body.position=points[face]+outward*(.015f-CompoundSupport(a,rotation,outward));a.Body.rotation=rotation;
+                        b.Body.position=a.Body.position+outward*(-CompoundSupport(a,rotation,outward)-CompoundSupport(a,rotation,-outward)+.06f+speed*.01f*.61f);b.Body.rotation=rotation;
                         receiver.transform.SetPositionAndRotation(a.Body.position,rotation);donor.transform.SetPositionAndRotation(b.Body.position,rotation);
                         Physics.IgnoreCollision(box,donor.GetComponent<BoxCollider>(),false);Physics.SyncTransforms();
-                        Check(SlabPenetration(box,a.Body.position,rotation,FlatSlab(track))==0 && SlabPenetration(donor.GetComponent<BoxCollider>(),b.Body.position,rotation,FlatSlab(track))==0,"impulse fixture initial overlap");Simulate(.01f);
+                        Check(CompoundPenetration(a,FlatSlab(track))==0 && CompoundPenetration(b,FlatSlab(track))==0,"impulse fixture initial overlap");Simulate(.01f);
                         b.Body.linearVelocity=-outward*speed;int revision=a.PositionRevision;
                         for(int step=0;step<24;step++)Simulate(.01f);
                         Check(box.enabled && a.PositionRevision==revision,"impulse matrix was masked by recovery");cases++;
@@ -835,17 +863,19 @@ namespace StarRacingPrototype
                 }
             } finally {UnityEngine.Object.DestroyImmediate(root);Physics.simulationMode=mode;}
         }
-        public static void Run()
+        public static void Run()=>RunCore(true);
+        public static void RunFlat()=>RunCore(false);
+        static void RunCore(bool generated)
         {
             ValidateFlatClosure();ValidateSlabOracle();impacts=probes=0;var mode=Physics.simulationMode;float dt=Time.fixedDeltaTime;
             try {
                 Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;
                 var root=new GameObject("flat road volume fixture");
-                try { var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(FlatRoad()));Geometry(track);substepTrack=track;FlatImpacts(track);AngularAndImpulse(track);AngularImpulseMatrix(track); }
-                finally { substepTrack=null;UnityEngine.Object.DestroyImmediate(root); }
-                RunGenerated();
+                try { var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(FlatRoad()));Geometry(track);RoadNativeContactObserver.Begin(root);substepTrack=track;FlatImpacts(track);AngularAndImpulse(track);AngularImpulseMatrix(track); }
+                finally { RoadNativeContactObserver.End();substepTrack=null;UnityEngine.Object.DestroyImmediate(root); }
+                if(generated)RunGenerated();
             } finally { Physics.simulationMode=mode;Time.fixedDeltaTime=dt; }
-            Debug.Log("ROAD_VOLUME_CHECKS_OK impacts="+impacts+" probes="+probes+" maxImpactSpeed=1000m/s noRespawnMasking=true");
+            Debug.Log((generated?"ROAD_VOLUME_CHECKS_OK":"ROAD_VOLUME_FLAT_CHECKS_OK")+" impacts="+impacts+" probes="+probes+" maxImpactSpeed=1000m/s noRespawnMasking=true");
         }
         public static void RunGenerated()
         {

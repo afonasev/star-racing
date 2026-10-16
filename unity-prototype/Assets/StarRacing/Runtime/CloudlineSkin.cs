@@ -20,8 +20,10 @@ namespace StarRacingPrototype {
   }
   public static void Box(Rect rect,Color color,float radius=12){GUI.DrawTexture(rect,Texture2D.whiteTexture,ScaleMode.StretchToFill,true,0,color,0,radius);}
   public static Color Alpha(Color color,float alpha){color.a=alpha;return color;}
-  public void Panel(Rect r,float opacity=.94f){Box(new Rect(r.x,r.y+5,r.width,r.height),new Color(.12f,.23f,.42f,.08f));Box(r,new Color(1,1,1,opacity));}
+  public void Panel(Rect r,float opacity=.94f){Box(new Rect(r.x,r.y+5,r.width,r.height),new Color(.12f,.23f,.42f,.08f));Box(r,new Color(1,1,1,UserSettingsStore.Current.highContrast?1:opacity));}
   public void Text(Rect r,string value,int size=22,bool heavy=false,Color? color=null,TextAnchor align=TextAnchor.MiddleLeft,bool wrap=false){
+   size=Mathf.RoundToInt(size*UserSettingsStore.Current.textScale);
+   if(UserSettingsStore.Current.highContrast&&color.HasValue&&color.Value==Muted)color=Ink;
    var style=heavy?bold:normal;style.fontSize=size;style.normal.textColor=color??Ink;style.alignment=align;style.wordWrap=wrap;
    if(scrollTexts.Count>0){
     if(Event.current.type==EventType.Repaint)scrollTexts.Peek().labels.Add(new ScrollLabel{skin=this,rect=r,value=value,size=size,heavy=heavy,color=color??Ink,align=align,wrap=wrap,fontStyle=style.fontStyle});
@@ -70,6 +72,8 @@ namespace StarRacingPrototype {
    Box(r,color);Text(r,value,size,true,!enabled?Muted:primary?Color.white:Ink,TextAnchor.MiddleCenter);
    bool old=GUI.enabled;GUI.enabled=old&&enabled;bool clicked=GUI.Button(r,GUIContent.none,GUIStyle.none);GUI.enabled=old;return clicked;
   }
+  public float TextHeight(string value,int size,float width){var style=new GUIStyle(normal){fontSize=Mathf.RoundToInt(size*UserSettingsStore.Current.textScale),wordWrap=true};return style.CalcHeight(new GUIContent(value),width);}
+  public float LabelWidth(string value,int size){bold.fontSize=Mathf.RoundToInt(size*UserSettingsStore.Current.textScale);return bold.CalcSize(new GUIContent(value)).x;}
   public float NameWidth(string value){bold.fontSize=17;return bold.CalcSize(new GUIContent(value)).x;}
   public string FitName(string value){value=LocalRaceConfig.CleanName(value);while(value.Length>0&&(NameWidth(value)>190||field.CalcSize(new GUIContent(value)).x>239))value=value.Substring(0,value.Length-1);return value;}
   public string Ellipsis(string value,float width,int size=16){bold.fontSize=size;if(bold.CalcSize(new GUIContent(value)).x<=width)return value;while(value.Length>0&&bold.CalcSize(new GUIContent(value+"…")).x>width)value=value.Substring(0,value.Length-1);return value+"…";}
@@ -82,8 +86,8 @@ namespace StarRacingPrototype {
    Box(new Rect(r.x+inset,r.y+inset,r.width-2*inset,r.height-2*inset),editing?Color.white:new Color(.96f,.975f,.995f),7);
    var settings=GUI.skin.settings;Color oldCursor=settings.cursorColor,oldSelection=settings.selectionColor;settings.cursorColor=Blue;settings.selectionColor=Alpha(Blue,.26f);
    var matrix=GUI.matrix;float scale=TextScale(matrix);int padding=Mathf.RoundToInt(14*scale);
-   field.fontSize=Mathf.RoundToInt(23*scale);field.padding.left=field.padding.right=padding;
-   try{var rasterRect=BeginRasterText(r,matrix,scale);GUI.SetNextControlName(name);return GUI.TextField(rasterRect,value,maxLength,field);}
+   field.fontSize=Mathf.RoundToInt(23*scale*UserSettingsStore.Current.textScale);field.padding.left=field.padding.right=padding;
+   try{if(scrollTexts.Count>0){field.fontSize=Mathf.RoundToInt(23*UserSettingsStore.Current.textScale);field.padding.left=field.padding.right=14;GUI.SetNextControlName(name);return GUI.TextField(r,value,maxLength,field);}var rasterRect=BeginRasterText(r,matrix,scale);GUI.SetNextControlName(name);return GUI.TextField(rasterRect,value,maxLength,field);}
    finally{GUI.matrix=matrix;field.fontSize=23;field.padding.left=field.padding.right=14;settings.cursorColor=oldCursor;settings.selectionColor=oldSelection;}
   }
   public void Toggle(Rect r,bool enabled){Box(r,enabled?Blue:new Color(.78f,.81f,.86f),r.height/2);float d=r.height-8;Box(new Rect(enabled?r.xMax-d-4:r.x+4,r.y+4,d,d),Color.white,d/2);}

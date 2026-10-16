@@ -2,8 +2,9 @@
 """One-command exact-source build, signed draft/readback, and channel promotion."""
 import argparse,base64,json,os,re,shutil,subprocess,tempfile,time,urllib.request,tarfile
 from pathlib import Path
-from metadata import REPO,sha,verify,finalize,tls_context
+from metadata import REPO,sha,verify,sign,finalize,tls_context
 from publish import validate_identity
+from changelog import generate as generate_changelog
 ROOT=Path(__file__).resolve().parents[1]
 def publication_policy():
     """Read-only summary; automated guards and human gates are separate."""
@@ -11,12 +12,12 @@ def publication_policy():
         tracks={'test':'prerelease SemVer; channel-test', 'production':'stable SemVer; channel-production'},
         platforms=['win-x64','osx-universal'],
         enforced=['clean source committed and available on GitHub',
-                  'RSA private key outside repository for signed test/legacy routes; --unsigned-production is production-only',
+                  'RSA private key outside repository; new clients and both channels require signed metadata',
                   'positive Int32 sequence, increasing version/sequence within track',
                   'reject existing versions including drafts; no asset overwrite',
                   'exclusive per-track publisher reservation',
                   'build both platforms; exact-source Windows compiler in GitHub Actions',
-                  'sign signed-route metadata or emit the explicit unsigned-production marker with platform/version/size/SHA256',
+                  'sign platform/version/size/SHA256 and verified recovery baselines for legacy migration',
                   'upload draft; check exact asset set, API digest and real download SHA256',
                   'publish complete version first; switch requested channel pointer last'],
         manualGates=['review appropriate checks before committing/pushing source',
@@ -72,15 +73,15 @@ def build_players(version,track,evidence,unsigned_production=False):
     # them even on failure so an exact-source release stays clean after building.
     paths=list((ROOT/'unity-prototype/ProjectSettings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing/Generated').rglob('*'))
-    paths+=list((ROOT/'unity-prototype/Assets/Settings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets').rglob('*.meta'))
+    paths += [ROOT/'unity-prototype/Assets/Settings/UniversalRenderPipelineGlobalSettings.asset',ROOT/'unity-prototype/Assets/StarRacing/Resources/DesignLabCatalog.json']
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')
     if unsigned_production:env['STAR_RACING_UNSIGNED_PRODUCTION']='1'
     try:
         for platform,method in [('mac','BuildMac'),('windows','BuildWindows')]:
             log=evidence/('build-'+platform+'.log')
-            run([ROOT/'tools/unity.sh','shared','-noaudio','-batchmode','-nographics','-disableManagedDebugger','-quit','-executeMethod','StarRacingPrototype.PrototypeBuilder.'+method,'-logFile',log],env=env)
+            run([ROOT/'tools/unity.sh','shared','-batchmode','-nographics','-disableManagedDebugger','-quit','-executeMethod','StarRacingPrototype.PrototypeBuilder.'+method,'-logFile',log],env=env)
             if 'PROTOTYPE_BUILD_OK' not in log.read_text():raise ValueError('Native build receipt missing')
     finally:
         for p,data in original.items():p.write_bytes(data)
@@ -91,7 +92,7 @@ def smoke_macos(folder,evidence):
         run(['ditto','-x','-k',portable,tmp])
         app=Path(tmp)/'Star Racing.app'
         env=dict(os.environ,UNITY_RUN_MODE='shared')
-        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-muted','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--muted','--cloudline-proof-dir',proof,'-logFile',proof/'player.log'],env=env)
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-batchmode','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--muted','--cloudline-proof-dir',proof,'-logFile',proof/'player.log'],env=env)
         result=json.loads((proof/'success.json').read_text())
         if result.get('success') is not True or result.get('natural_ai_finish') is not True:raise ValueError('Packaged macOS smoke failed')
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
@@ -104,7 +105,7 @@ def smoke_menu_macos(folder,evidence):
     with tempfile.TemporaryDirectory(prefix='star-racing-menu-smoke-') as tmp:
         run(['ditto','-x','-k',portable,tmp]);app=Path(tmp)/'Star Racing.app'
         env=dict(os.environ,UNITY_RUN_MODE='shared')
-        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
+        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-muted','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
         result=json.loads((proof/'success.json').read_text())
         if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True:raise ValueError('Packaged menu smoke failed')
         (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
@@ -138,44 +139,26 @@ def wizard(tag,source,folder,evidence):
     report=json.loads(policy.read_text())
     if report['sourceRevision']!=source or report['portableSHA256']!=sha(portable) or report['installerSHA256']!=sha(folder/setup):raise ValueError('CI wizard readback mismatch')
     policy.rename(folder/'installer-policy.json')
-def verify_prepared(output,version,sequence):
-    sources=set()
-    for channel in ['osx-universal','win-x64']:
-        folder=output/channel/version;identity=json.loads((folder/'identity.json').read_text())
-        if identity['version']!=version or identity['channel']!=channel or identity['sequence']!=sequence or identity['sourceStatus']:raise ValueError('Prepared identity mismatch')
-        sources.add(identity['sourceRevision'])
-        for item in identity['files']:
-            name=item['name']
-            if name!=Path(name).name:raise ValueError('Unsafe prepared filename')
-            file=folder/name
-            if file.stat().st_size!=item['size'] or sha(file)!=item['sha256']:raise ValueError('Prepared bytes changed')
-    if len(sources)!=1:raise ValueError('Prepared sources differ')
-    source=sources.pop()
-    # Only release-controller/test changes can be admitted without a rebuild.
-    changed=subprocess.check_output(['git','diff','--name-only',source,'HEAD'],cwd=ROOT,text=True).splitlines()
-    if any(p not in ['distribution/release.py','distribution/tests/test_release.py','docs/PUBLISHING.md'] for p in changed):raise ValueError('Prepared game or packaging source differs')
-    return source
-
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--resume-prepared',action='store_true',help='Resume exact existing packages after validating source, size and hashes; never rebuild or overwrite them')
-    p.add_argument('--smoke-scope',choices=['menu','race'],default='menu',help='Choose affected native smoke; race preserves the existing natural-match contract')
+    p.add_argument('--smoke-scope',choices=['menu','race'],default='menu',help='Affected packaged smoke; race only when its behavior is in scope')
     p.add_argument('--show-policy',action='store_true',help='Print publication rules without building or contacting GitHub')
     p.add_argument('--track',choices=['production','test']);p.add_argument('--version');p.add_argument('--sequence',type=int)
-    p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--unsigned-production',action='store_true');p.add_argument('--notes',default='Desktop updater candidate; physical platform acceptance pending.')
+    p.add_argument('--key',type=Path,default=os.environ.get('STAR_RACING_SIGNING_KEY'));p.add_argument('--unsigned-production',action='store_true');p.add_argument('--notes',help='Deprecated: use reviewed Git changelog');p.add_argument('--changelog-review',type=Path)
     a=p.parse_args()
     if a.show_policy:
         print(json.dumps(publication_policy(),indent=2,ensure_ascii=False));return
     if a.track is None or a.version is None or a.sequence is None:p.error('--track, --version and --sequence are required for publication')
     validate_track(a.track,a.version)
-    if a.unsigned_production and a.track!='production':p.error('Unsigned metadata is production-only')
+    if a.unsigned_production:p.error('New clients require signed metadata; use the signed bridge for legacy production clients')
+    if a.notes:p.error('Free-form notes are replaced by --changelog-review with bilingual Git-range coverage')
+    if not a.changelog_review or not a.changelog_review.is_file():p.error('--changelog-review must name a reviewed bilingual Git change map')
     if not a.unsigned_production and (not a.key or not a.key.is_file()):p.error('Set STAR_RACING_SIGNING_KEY to the private key outside the repository')
     key=a.key.resolve() if a.key else None
     if key and key.is_relative_to(ROOT):p.error('Private key must stay outside the repository')
     if not 0<a.sequence<2147483648:p.error('Sequence must be a positive Int32')
     if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Commit and verify source before publication')
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    if a.resume_prepared:source=verify_prepared(ROOT/'.local/releases'/a.version,a.version,a.sequence)
     api('commits/'+source) # Commit must already be published to this repository.
     tag='v'+a.version
     if optional_release(tag):raise ValueError('Version already exists, including draft. Inspect it; never overwrite a release')
@@ -185,34 +168,66 @@ def main():
         for envelope in catalog['platforms'].values():
             old=envelope if catalog.get('unsignedProductionCatalog') else verify(envelope)
             if old['releaseTrack']!=a.track or old['sequence']>=a.sequence or version_key(old['version'])>=version_key(a.version):raise ValueError('Non-monotonic channel sequence')
+    baseline=json.loads(previous['body']).get('sourceRevision') if previous else None
+    if previous and not re.fullmatch(r'[0-9a-f]{40}',baseline or ''):raise ValueError('Previous channel lacks immutable sourceRevision; review source mapping before publishing')
+    a.notes=generate_changelog(ROOT,baseline,source,json.loads(a.changelog_review.read_text()))
     lock='git/refs/tags/_publishing-'+a.track
     # Atomic ref creation serializes publishers across release Macs/hosts.
     # Never steal an existing reservation; inspect its owner after a crashed run.
     api('git/refs','POST',dict(ref='refs/tags/_publishing-'+a.track,sha=source))
     try:publish_candidate(a,key,source,tag,previous)
     finally:api(lock,'DELETE')
+def recovery_baseline(previous,platform,track,key):
+    if not previous:return None
+    catalog=json.loads(previous['body'])
+    raw=catalog['platforms'][platform]
+    old=raw if catalog.get('unsignedProductionCatalog') else verify(raw)
+    fields=('schema','appId','channel','releaseTrack','version','sequence','fileName','size','sha256','url','notes')
+    old={field:old[field] for field in fields}
+    validate_track(track,old['version'])
+    name=old['fileName']
+    if (old['schema']!=2 or old['appId']!='tech.afonasev.star-racing.'+platform or old['channel']!=platform
+        or old['releaseTrack']!=track or type(old['sequence']) is not int or not 0<old['sequence']<2147483648
+        or type(old['size']) is not int or not 0<old['size']<=8589934592 or not re.fullmatch(r'[0-9a-fA-F]{64}',old['sha256'])
+        or Path(name).name!=name or '..' in name or '\\' in name or not name.endswith('-full.nupkg')
+        or old['url']!=f"https://github.com/{REPO}/releases/download/v{old['version']}/{name}"):
+        raise ValueError('Previous recovery identity is invalid')
+    # Before signing a formerly unsigned baseline, read back exact bytes from its immutable GitHub asset.
+    import hashlib
+    digest=hashlib.sha256();size=0
+    with urllib.request.urlopen(old['url'],timeout=60,context=tls_context()) as response:
+        final=response.geturl()
+        from urllib.parse import urlparse
+        target=urlparse(final)
+        if target.scheme!='https' or target.hostname not in ('github.com','release-assets.githubusercontent.com','objects.githubusercontent.com') or target.username or target.port not in (None,443):raise ValueError('Untrusted baseline redirect')
+        while True:
+            block=response.read(1024*1024)
+            if not block:break
+            size+=len(block)
+            if size>old['size']:raise ValueError('Oversized recovery baseline')
+            digest.update(block)
+    if size!=old['size'] or digest.hexdigest().lower()!=old['sha256'].lower():raise ValueError('Recovery baseline readback failed')
+    return sign(old,key)
+
 def publish_candidate(a,key,source,tag,previous):
     output=ROOT/'.local/releases'/a.version
+    output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
+    dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
+    if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
     directories=[]
-    if a.resume_prepared:
-        if verify_prepared(output,a.version,a.sequence)!=source:raise ValueError('Resume source changed')
-        evidence=output/'evidence';directories=[output/channel/a.version for channel in ['osx-universal','win-x64']]
-        (evidence/'resume-source.json').write_text(json.dumps(dict(packageSource=source,controllerSource=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),rebuilt=False),indent=2)+'\n')
-    else:
-        output.mkdir(parents=True,exist_ok=False);evidence=output/'evidence';evidence.mkdir()
-        dotnet,vpk=toolchain();build_players(a.version,a.track,evidence,a.unsigned_production)
-        if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():raise ValueError('Build changed source; publication aborted')
-        directories=[]
-        for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
-            args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
-            if a.unsigned_production:args+=['--unsigned-production']
-            else:args+=['--key',key]
-            if channel=='win-x64':args+=['--defer-windows-installer']
-            run(args);directories.append(output/channel/a.version)
+    for channel,player in [('osx-universal',ROOT/'unity-prototype/Builds/macOS/Star Racing.app'),('win-x64',ROOT/'unity-prototype/Builds/Windows')]:
+        args=['python3',ROOT/'distribution/package.py','--track',a.track,'--channel',channel,'--version',a.version,'--sequence',a.sequence,'--player',player,'--output',output,'--dotnet',dotnet,'--vpk',vpk,'--notes',a.notes]
+        if a.unsigned_production:args+=['--unsigned-production']
+        else:args+=['--key',key]
+        if channel=='win-x64':args+=['--defer-windows-installer']
+        run(args);directories.append(output/channel/a.version)
     (smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
     draft=api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     wizard(tag,source,directories[1],evidence)
-    for folder in directories:finalize(folder,a.track,key,unsigned_production=a.unsigned_production)
+    for folder in directories:
+        baseline=recovery_baseline(previous,folder.parent.name,a.track,key)
+        if baseline:(folder/'recovery-baseline.json').write_text(json.dumps(baseline)+'\n')
+        finalize(folder,a.track,key,unsigned_production=a.unsigned_production)
     remote={x['name']:x for x in api('releases/'+str(draft['id']))['assets']}
     expected={};catalog=dict(schema=2 if a.unsigned_production else 1,track=a.track,version=a.version,sourceRevision=source,platforms={})
     if a.unsigned_production:catalog['unsignedProductionCatalog']=True
@@ -221,7 +236,7 @@ def publish_candidate(a,key,source,tag,previous):
         for file in sorted(folder.iterdir()):
             if not file.is_file():continue
             name=file.name
-            if name in ('signed.json','unsigned.json','legacy-signed.json','identity.json','notes.md','installer-policy.json'):
+            if name in ('signed.json','unsigned.json','legacy-signed.json','identity.json','notes.md','installer-policy.json','recovery-baseline.json'):
                 name=file.stem+'-'+channel+file.suffix
             expected[name]=dict(size=file.stat().st_size,sha256=sha(file),local=str(file))
             if name not in remote:upload(tag,file,name)

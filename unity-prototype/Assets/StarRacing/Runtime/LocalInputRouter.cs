@@ -48,9 +48,11 @@ namespace StarRacingPrototype {
    if(k!=null&&devices[seat]==-2)x=new DrivingInput{throttle=(k.wKey.wasPressedThisFrame||k.wKey.isPressed)?1:0,brake=k.sKey.isPressed?1:0,steer=(k.dKey.isPressed?1:0)-(k.aKey.isPressed?1:0),drift=k.spaceKey.isPressed,nitro=k.leftShiftKey.wasPressedThisFrame||k.leftShiftKey.isPressed};
    else if(k!=null&&devices[seat]==-1)x=new DrivingInput{throttle=(k.upArrowKey.wasPressedThisFrame||k.upArrowKey.isPressed)?1:0,brake=k.downArrowKey.isPressed?1:0,steer=(k.rightArrowKey.isPressed?1:0)-(k.leftArrowKey.isPressed?1:0),drift=k.rightAltKey.isPressed,nitro=k.rightShiftKey.wasPressedThisFrame||k.rightShiftKey.isPressed};
    var p=pads[seat];if(p==null||!p.added)return x;
-   float stick=p.leftStick.x.ReadValue();if(Mathf.Abs(stick)<.18f)stick=0;float d=p.dpad.x.ReadValue();
+   var preferences=UserSettingsStore.Current;
+   float stick=ApplyStickPreference(p.leftStick.x.ReadValue(),preferences.stickSensitivity,preferences.stickDeadzone);float d=p.dpad.x.ReadValue();
    return new DrivingInput{throttle=Mathf.Max(p.rightTrigger.ReadValue(),(p.rightShoulder.wasPressedThisFrame||p.rightShoulder.isPressed)?1:0),brake=p.buttonSouth.isPressed?1:0,steer=d!=0?d:stick,drift=p.leftShoulder.isPressed||p.leftTrigger.ReadValue()>.5f,nitro=p.buttonEast.wasPressedThisFrame||p.buttonEast.isPressed};
   }
+  public static float ApplyStickPreference(float value,float sensitivity,float deadzone)=>Mathf.Abs(value)<deadzone?0:Mathf.Clamp(value*sensitivity,-1,1);
  }
  public static class RaceViewports {
   public static Rect For(int humans,int seat){

@@ -68,8 +68,9 @@ namespace StarRacingPrototype {
                         Mathf.Approximately(RenderSettings.fogDensity,profile.fogDensity)&&SameColor(RenderSettings.fogColor,profile.fogColor),"fog binding/theme reset");
                     if(theme=="cloud-city") {
                         float near=Mathf.Exp(-Mathf.Pow(profile.fogDensity*100,2));
-                        float far=Mathf.Exp(-Mathf.Pow(profile.fogDensity*600,2));
-                        Check(near>.97f&&far<.5f&&near>far,"near road legibility / distant skyline attenuation");
+                        // Metropolis request extends visible atmospheric depth to the surrounding districts.
+                        float far=Mathf.Exp(-Mathf.Pow(profile.fogDensity*1800,2));
+                        Check(near>.97f&&far<.5f&&near>far,"near road legibility / metropolis horizon attenuation at 1800m");
                     } else Check(Mathf.Approximately(profile.fogDensity,.00007f)&&SameColor(profile.fogColor,profile.skyColor),"space fog unchanged");
                     Check(RenderSettings.ambientMode==AmbientMode.Trilight,"ambient mode");
                     Check(SameColor(RenderSettings.ambientSkyColor,profile.ambientColor)&&

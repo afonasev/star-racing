@@ -14,6 +14,7 @@ namespace StarRacingPrototype {
   const BindingFlags Private=BindingFlags.Instance|BindingFlags.NonPublic;
   static readonly string[] AudioKeys={"Muted","Music","Engines","Effects"};
   static readonly Dictionary<string,(bool exists,float value)> saved=new Dictionary<string,(bool,float)>();
+  static string previousSettingsPath;static UserSettings previousSettings;
   static bool hadConfig;static string config;static float listenerVolume,timeScale;
   static int ticks,assertions,menuPosition;static double started,nextTick;
   static GameObject root;static RaceDirector director;static RaceAudioCoordinator audio;static AudioSource menu,race;
@@ -44,6 +45,7 @@ namespace StarRacingPrototype {
     nextTick=EditorApplication.timeSinceStartup+.05;
     ticks++;
     if(ticks==1){
+     previousSettingsPath=UserSettingsStore.OverridePath;previousSettings=UserSettingsStore.Current;UserSettingsStore.OverridePath=Path.Combine(Output,"preferences.json");UserSettingsStore.Replace(new UserSettings());
      hadConfig=PlayerPrefs.HasKey(LocalRaceConfig.PreferenceKey);config=PlayerPrefs.GetString(LocalRaceConfig.PreferenceKey);
      listenerVolume=AudioListener.volume;timeScale=Time.timeScale;AudioListener.volume=0;saved.Clear();
      foreach(string suffix in AudioKeys){string key="StarRacing.Audio."+suffix;saved[key]=(PlayerPrefs.HasKey(key),suffix=="Muted"?PlayerPrefs.GetInt(key):PlayerPrefs.GetFloat(key));}
@@ -112,6 +114,7 @@ namespace StarRacingPrototype {
    EditorApplication.update-=Tick;SessionState.SetBool(Key+"Failed",failed);
    if(hadConfig)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,config);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);
    foreach(var row in saved){if(!row.Value.exists)PlayerPrefs.DeleteKey(row.Key);else if(row.Key.EndsWith("Muted"))PlayerPrefs.SetInt(row.Key,(int)row.Value.value);else PlayerPrefs.SetFloat(row.Key,row.Value.value);}
+   UserSettingsStore.OverridePath=previousSettingsPath;if(previousSettings!=null)UserSettingsStore.Replace(previousSettings);
    PlayerPrefs.Save();AudioListener.volume=listenerVolume;Time.timeScale=timeScale;EditorApplication.isPlaying=false;
   }
  }

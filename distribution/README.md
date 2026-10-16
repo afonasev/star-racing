@@ -1,8 +1,10 @@
 # Star Racing desktop delivery
 
-The game uses Unity Mono and pinned Velopack 1.2.158. Updates are offered in the main menu. Startup checks signed metadata only. Download starts after a click; activation requires a separate **Перезапустить и установить** click in the preparation menu. A normal exit or launch does not activate a staged update. Settings remain in Unity's persistent user directory.
+Актуальный срез стандартизации, recovery и формат Git changelog: [DESKTOP-DELIVERY.md](../docs/template-standards/DESKTOP-DELIVERY.md). До завершения standardize-desktop-delivery это исходники ветки, а не новая опубликованная поставка.
 
-`AuthenticatedUpdateSource` verifies RSA/SHA-256 metadata before exposing an asset to Velopack. It checks channel, app ID, monotonic sequence, exact immutable HTTPS URL, size and SHA-256. The full package is verified before Velopack receives it and immediately before activation. First releases use full packages, without manual reinstallation; incremental binary deltas and recovery from a successfully installed broken Player are outside this release.
+The game uses Unity Mono and pinned Velopack 1.2.158. Updates are offered in the main menu. Startup discovers signed metadata once, without a manual retry. Download starts after a click and suspends before a race. A verified prepared update is applied by the external recovery agent after **Перезапустить**, or at the next ordinary launch after exit; both use the Lab dirty guard. Settings remain in Unity's persistent user directory.
+
+`AuthenticatedUpdateSource` verifies RSA/SHA-256 metadata before exposing an asset to Velopack. It checks channel, app ID, monotonic sequence, exact immutable HTTPS URL, size and SHA-256. The full package is verified before Velopack receives it and immediately before activation. Full packages are used. A separately retained signed previous package supports external recovery until health ack; binary deltas remain outside scope. Installed A→B→A is a separate open platform gate.
 
 ## Toolchain and builds
 
@@ -31,7 +33,7 @@ For an existing exact Player release, build only its wizard with `python3 distri
 
 ## Verification and acceptance
 
-Run `distribution/tests/UpdateContracts.csproj` with .NET 8, `python3 -m unittest discover -s distribution/tests -p 'test_*.py'`, repository tooling tests, strict OpenSpec validation and the full `tools/qa.py checks` receipt against the reviewed baseline. Probe results do not replace an installed Player.
+Select affected C#/Python/Unity fixtures against a recorded baseline; commands and actual results for this change are in its QA plan. Full tests require separate human authorization. Run strict OpenSpec validation for changed planning artifacts. Probe results do not replace an installed Player.
 
 Launch macOS UI QA through `tools/unity.sh player python3 distribution/run_packaged_qa.py --app /absolute/Star\ Racing.app --log /absolute/evidence/player.log` so the exclusive Unity guard covers helper-driven restart too. Record the exact package identity, native build exit, main menu and offline behavior, A→B download/activation, preserved settings and ordinary restart without activation. Physical Windows acceptance is performed by the user on Windows with the same A→B candidate pair. Keep the exact candidates until acceptance; do not archive the change while these gates remain open.
 

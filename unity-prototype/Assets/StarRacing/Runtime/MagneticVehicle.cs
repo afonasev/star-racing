@@ -42,27 +42,59 @@ namespace StarRacingPrototype
             float angle=Mathf.Atan2(Vector3.Dot(Vector3.Cross(from,to),Frame.normal),Vector3.Dot(from,to));
             return Mathf.Clamp(angle*4f,-1.8f,1.8f);
         }
+        float impactRemaining;
+        bool impactResolutionActive,pendingAngularImpact;
+        float impactResolutionHold,impactQuietSeconds,contactRadius=2.5f;
+        Vector3 preparedAdhesion,preparedAlignment;
+        bool ImpactResponse=>impactRemaining>0;
+        static float ContactNormalSpeed(Collision collision) {
+            float speed=0;for(int i=0;i<collision.contactCount;i++)speed=Mathf.Max(speed,Mathf.Abs(Vector3.Dot(collision.relativeVelocity,collision.GetContact(i).normal)));
+            return speed;
+        }
         void ObserveRoadContact(Collision collision) {
             var other=collision.rigidbody==null?null:collision.rigidbody.GetComponent<MagneticVehicle>();
-            if(!roadProtection || (other==null&&!RacePhysicsStepper.IsBarrier(collision.collider)))return;
-            if(neutralContactRemaining<=0)contactTravelSign=Vector3.Dot(Body.rotation*Vector3.forward,Frame.tangent)<0?-1:1;
-            neutralContactRemaining=.6f;
-            bool strong=false;
-            for(int i=0;i<collision.contactCount;i++)if(Mathf.Abs(Vector3.Dot(collision.relativeVelocity,collision.GetContact(i).normal))>WeakContactRelativeSpeed){strong=true;break;}
-            if(!strong)return;
-            // A target calculated before the hit must not restore lost kinetic energy
-            // during remaining CCD steps. Preserve ordinary engine force and input yaw.
-            preparedForces.acceleration-=preparedHandlingCorrection;preparedHandlingCorrection=Vector3.zero;
-            if(Mathf.Abs(input.steer)<.01f&&!input.drift&&handling.driftIntentRemaining<=0){preparedForces.angularAcceleration-=preparedHandlingAngular;preparedHandlingAngular=Vector3.zero;}
-            reconciliation.Invalidate("strong-road-contact");
+            bool solid=other!=null;
+            for(int i=0;i<collision.contactCount&&!solid;i++)solid=Mathf.Abs(Vector3.Dot(collision.GetContact(i).normal,Frame.normal))<.65f;
+            if(!solid)return;
+            float speed=ContactNormalSpeed(collision);
+            if(speed>WeakContactRelativeSpeed) {
+                impactRemaining=.2f;neutralContactRemaining=0;roadProtection=false;
+                pendingAngularImpact=true;
+                CancelSideAssist();
+                // Revoke stabilization already queued for the remaining native substeps.
+                preparedForces.acceleration-=preparedHandlingCorrection+preparedAdhesion;
+                preparedHandlingCorrection=preparedAdhesion=Vector3.zero;
+                preparedForces.angularAcceleration-=preparedAlignment;preparedAlignment=Vector3.zero;
+                reconciliation.Invalidate("strong-solid-contact");
+            } else if(!ImpactResponse&&roadProtection) {
+                if(neutralContactRemaining<=0)contactTravelSign=Vector3.Dot(Body.rotation*Vector3.forward,Frame.tangent)<0?-1:1;
+                neutralContactRemaining=.6f;
+            }
         }
+        void AddAdhesion(Vector3 acceleration){preparedAdhesion+=acceleration;AddForce(acceleration,ForceMode.Acceleration);}
 
         Vector3 airSteeringNormal;float preparedAirSteer;bool airSteeringBlocked;
         public long AirSteeringSteps {get;private set;}
         public bool AirSteeringActive=>Mathf.Abs(preparedAirSteer)>=AirSteeringForces.Deadzone;
+        // Sweep CCD misses angular-only motion. Refine time only after a severe
+        // contact, keeping the same shapes, forces, velocities and CCD mode.
+        internal float ContactRadius=>contactRadius;
+        internal float LimitNativeStep(float maximum) {
+            if(pendingAngularImpact){impactResolutionActive=true;impactResolutionHold=.2f;impactQuietSeconds=0;pendingAngularImpact=false;}
+            if(!impactResolutionActive)return maximum;
+            float speed=Body.angularVelocity.magnitude*contactRadius;
+            return speed>0?Mathf.Min(maximum,.02f/speed):maximum;
+        }
+        internal void AdvanceImpactResolution(float step,float baseStep) {
+            if(!impactResolutionActive)return;
+            impactResolutionHold=Mathf.Max(0,impactResolutionHold-step);
+            impactQuietSeconds=impactResolutionHold<=0&&Body.angularVelocity.magnitude*contactRadius*baseStep<.01f?impactQuietSeconds+step:0;
+            if(impactQuietSeconds>=.005f)ResetImpactResolution();
+        }
+        void ResetImpactResolution(){impactResolutionActive=pendingAngularImpact=false;impactResolutionHold=impactQuietSeconds=0;}
         internal void ApplyPreparedForces(float step){preparedForces.Apply(Body,step);if(AirSteeringActive){AirSteeringForces.Apply(Body,airSteeringNormal,preparedAirSteer,step);AirSteeringSteps++;}}
         void CancelAirSteering(){preparedAirSteer=0;if(Jumping)airSteeringBlocked=true;}
-        internal void ClearPreparedForces(){preparedForces=default;preparedHandlingCorrection=preparedHandlingAngular=Vector3.zero;preparedAirSteer=0;preparedContactYawTorque=preparedContactSeparation=Vector3.zero;}
+        internal void ClearPreparedForces(){preparedForces=default;preparedHandlingCorrection=preparedHandlingAngular=preparedAdhesion=preparedAlignment=Vector3.zero;preparedAirSteer=0;preparedContactYawTorque=preparedContactSeparation=Vector3.zero;}
         void AddForce(Vector3 value,ForceMode mode)=>preparedForces.AddForce(value,mode);
         void AddTorque(Vector3 value,ForceMode mode)=>preparedForces.AddTorque(value,mode);
         void AddForceAtPosition(Vector3 value,Vector3 position,ForceMode mode)
@@ -128,6 +160,9 @@ namespace StarRacingPrototype
         public float OffRouteSeconds => offRouteTime;
         public bool IsGhosting => FinishedCoasting || recovery.GhostSeconds > 0;
         BoxCollider chassis;
+        readonly BoxCollider[] contactColliders=new BoxCollider[5];
+        public System.Collections.Generic.IReadOnlyList<BoxCollider> ContactColliders=>contactColliders;
+        PhysicsMaterial chassisMaterial;
         float sideContactNormal; int sideContactSamples, sideContactRevision; long sideContactInterval=-2;
         internal const float WeakContactRelativeSpeed=12f;
         internal bool RearContactSteeringRequested => HandlingContinuous && !Jumping
@@ -144,7 +179,7 @@ namespace StarRacingPrototype
             preparedForces.acceleration-=preparedContactSeparation;
             preparedContactYawTorque=preparedContactSeparation=Vector3.zero;
         }
-        void ClearSideContacts(){neutralContactRemaining=0;CancelSideAssist();strongContacts.Clear();}
+        void ClearSideContacts(){ResetImpactResolution();impactRemaining=0;neutralContactRemaining=0;CancelSideAssist();strongContacts.Clear();}
         readonly BoxCollider[] roadCcdFaces=new BoxCollider[4];
         public const int VehicleCollisionLayer=8;
         Vector3 lastSafePosition;
@@ -394,14 +429,15 @@ namespace StarRacingPrototype
             Body.inertiaTensor = VehicleGeometry.BaselineInertia;
             Body.inertiaTensorRotation = VehicleGeometry.BaselineInertiaRotation;
             RacePhysicsStepper.Register(this);
-            PhysicsMaterial roadSafeMaterial = new PhysicsMaterial("MagneticCarChassis") {
+            PhysicsMaterial roadSafeMaterial = chassisMaterial = new PhysicsMaterial("MagneticCarChassis") {
                 dynamicFriction = .12f,
                 staticFriction = .12f,
                 bounciness = 0f,
                 frictionCombine = PhysicsMaterialCombine.Minimum,
                 bounceCombine = PhysicsMaterialCombine.Minimum
             };
-            chassis.material = roadSafeMaterial;
+            chassis.sharedMaterial = roadSafeMaterial;
+            chassis.contactOffset=.005f;contactColliders[0]=chassis;
             gameObject.layer=VehicleCollisionLayer;
             float mass=Body.mass;var centre=Body.centerOfMass;
             for(int i=0;i<roadCcdFaces.Length;i++) {
@@ -417,10 +453,10 @@ namespace StarRacingPrototype
                 size.y-=.01f;origin.y+=.005f;
                 var guard=roadCcdFaces[i];guard.size=size;guard.center=origin;
                 guard.sharedMaterial=roadSafeMaterial;
-                // The original chassis alone owns car pairs, including ghost/fall.
-                // Every guard remains inside it. Side faces retain top CCD; end
+                // The fitted body sections own car pairs, including ghost/fall.
+                // Every guard remains inside the centre. Side faces retain top CCD; end
                 // faces reinforce exterior/bottom contacts without duplicate top contacts.
-                guard.excludeLayers=(1<<VehicleCollisionLayer)|(1<<TrackBuilder.BarrierCollisionLayer)|(i>=2?1<<TrackBuilder.RoadCollisionLayer:0);
+                guard.excludeLayers=(1<<VehicleCollisionLayer)|(1<<TrackBuilder.BarrierCollisionLayer)|(axis==2?1<<TrackBuilder.RoadCollisionLayer:0);
             }
             Body.mass=mass;Body.centerOfMass=centre;
             Body.inertiaTensor=VehicleGeometry.BaselineInertia;
@@ -432,6 +468,25 @@ namespace StarRacingPrototype
             if (GetComponentInChildren<StaticVehicleVisual>() != null) return;
             presentationRoot=new GameObject("Vehicle presentation").transform;presentationRoot.SetParent(transform,false);
             visual = StaticVehicleVisual.Create(presentationRoot, color, human);
+            var profile=visual.ContactProfile();
+            for(int i=0;i<contactColliders.Length;i++) {
+                var collider=contactColliders[i];if(collider==null)collider=contactColliders[i]=gameObject.AddComponent<BoxCollider>();
+                collider.center=profile[i].center;collider.size=profile[i].size;
+                collider.hasModifiableContacts=true;collider.sharedMaterial=chassisMaterial;collider.contactOffset=.005f;
+            }
+            // Keep the existing contained road guards around the central CCD primitive.
+            for(int i=0;i<roadCcdFaces.Length;i++) {
+                int axis=i<2?0:2;float sign=i%2==0?-1:1;
+                var section=chassis;var size=section.size;var origin=section.center;
+                size[axis]=.02f;origin[axis]+=sign*(section.size[axis]-.02f)*.5f;size.y-=.01f;origin.y+=.005f;
+                roadCcdFaces[i].size=size;roadCcdFaces[i].center=origin;roadCcdFaces[i].contactOffset=.005f;
+            }
+            contactRadius=0;
+            foreach(var section in contactColliders)for(int corner=0;corner<8;corner++) {
+                var point=section.center+Vector3.Scale(section.size*.5f,new Vector3((corner&1)==0?-1:1,(corner&2)==0?-1:1,(corner&4)==0?-1:1));
+                contactRadius=Mathf.Max(contactRadius,(point-Body.centerOfMass).magnitude);
+            }
+            Body.inertiaTensor=VehicleGeometry.BaselineInertia;Body.inertiaTensorRotation=VehicleGeometry.BaselineInertiaRotation;
         }
 
         public void PrepareProjection(){
@@ -461,7 +516,8 @@ namespace StarRacingPrototype
             if(initialized && graphRoute!=null && !HasRoute){Hold(true);return;}
             if (!initialized || !HasRoute || Body.isKinematic) { track?.TireMarks?.Break(Seat); return; }
             float dt = Time.fixedDeltaTime;
-            physicsInterval++;neutralContactRemaining=Mathf.Max(0,neutralContactRemaining-dt);
+            physicsInterval++;impactRemaining=Mathf.Max(0,impactRemaining-dt);
+            neutralContactRemaining=Mathf.Max(0,neutralContactRemaining-dt);
             if(Mathf.Abs(input.steer)>=.01f||input.drift||handling.driftIntentRemaining>0)neutralContactRemaining=0;
             recoveryTick++;
             recovery.StepGhost(dt);
@@ -507,14 +563,14 @@ namespace StarRacingPrototype
             if(grounded && contacts==4 && roadBelow && Vector3.Dot(transform.up,Frame.normal)>.7f)unlandedJump=false;
             var protectedFrame=EvaluateRoad(Distance);
             float protectedLane=Vector3.Dot(Body.position-protectedFrame.position,protectedFrame.right);
-            roadProtection=AdditionalMagneticAdhesion && roadBelow && !Frame.gap && !Jumping && !unlandedJump && !IsGhosting &&
+            roadProtection=!ImpactResponse && AdditionalMagneticAdhesion && roadBelow && !Frame.gap && !Jumping && !unlandedJump && !IsGhosting &&
                 (graphRoute==null ? track.Route.TryRoadBounds(Distance,protectedLane,out _,out _) : graphRoute.RaycastWithOrigin(Body.position,-protectedFrame.normal,2f,out _,GraphRuntimeProfile.SupportProbe.RoadProtection));
             protectedNormal=protectedFrame.normal;
             if(Jumping && !grounded && raceActive && !airSteeringBlocked && !IsGhosting && !FinishedCoasting && !recovery.Falling)
                 preparedAirSteer=float.IsNaN(input.steer)?0:Mathf.Clamp(input.steer,-1,1);
             // Contact loss on a crest must not switch off the force that counters
             // centrifugal separation. Authored ramp flight retains its ballistic arc.
-            if (grounded && roadBelow && routeNear && AdditionalMagneticAdhesion &&
+            if (!ImpactResponse && grounded && roadBelow && routeNear && AdditionalMagneticAdhesion &&
                 !Frame.gap && !Jumping && !unlandedJump && !onRampSupport) {
                 // On supported road, supply signed centripetal acceleration directly.
                 // An unsigned inward pull doubles the suspension load in a concave
@@ -525,11 +581,10 @@ namespace StarRacingPrototype
                 float arc = Vector3.Distance(before.position, after.position);
                 float curvature = arc > .001f ? Vector3.Dot(after.tangent-before.tangent,roadNormal)/arc : 0;
                 float forwardSpeed = Vector3.Dot(Body.linearVelocity, Frame.tangent);
-                AddForce(gravityDirection * 14f + roadNormal * (curvature * forwardSpeed * forwardSpeed),
-                    ForceMode.Acceleration);
+                AddAdhesion(gravityDirection * 14f + roadNormal * (curvature * forwardSpeed * forwardSpeed));
             }
-            else if (grounded || (roadBelow && !Jumping && !unlandedJump && !onRampSupport))
-                AddForce(MagneticAdhesionAcceleration, ForceMode.Acceleration);
+            else if (!ImpactResponse && (grounded || (roadBelow && !Jumping && !unlandedJump && !onRampSupport)))
+                AddAdhesion(MagneticAdhesionAcceleration);
             if (grounded)
             {
                 ApplyMagnetAndDrive(dt);
@@ -579,16 +634,16 @@ namespace StarRacingPrototype
             contactYawRemaining=grounded && !IsGhosting?Mathf.Max(0,contactYawRemaining-dt):0;
             // Extra return force only above the working stroke. Signed damping eases
             // the return as the body descends, avoiding extra static suspension load.
-            if(AdditionalMagneticAdhesion && roadBelow && routeNear && !Frame.gap &&
+            if(!ImpactResponse && AdditionalMagneticAdhesion && roadBelow && routeNear && !Frame.gap &&
                 !Jumping && !unlandedJump && !onRampSupport && !IsGhosting) {
                 float excess=Vector3.Dot(Body.position-Frame.position,Frame.normal)-RestBodyHeight-.04f;
                 if(excess>0) {
                     float outward=Vector3.Dot(Body.linearVelocity,-gravityDirection);
                     float returnAcceleration=Mathf.Clamp(excess*60f+outward*12f,0f,60f);
-                    AddForce(gravityDirection*returnAcceleration,ForceMode.Acceleration);
+                    AddAdhesion(gravityDirection*returnAcceleration);
                 }
             }
-            AlignToRoad(grounded);
+            if(!ImpactResponse)AlignToRoad(grounded);
             UpdateWheels();
 
             wasGrounded = grounded;
@@ -597,7 +652,7 @@ namespace StarRacingPrototype
             float heightFromRoad=Vector3.Dot(Body.position-Frame.position,Frame.normal);
             float headingCos=Mathf.Abs(Vector3.Dot(transform.forward,Frame.tangent));
             float headingSin=Mathf.Abs(Vector3.Dot(transform.forward,Frame.right));
-            float footprintExtent=headingCos*1.38f+headingSin*2.1f;
+            float footprintExtent=headingCos*VehicleGeometry.HalfWidth+headingSin*VehicleGeometry.HalfLength;
             bool unsupported = (graphRoute!=null && graphRoute.RequiresRecovery) || !grounded && !roadBelow && !Jumping &&
                 (Frame.gap || !routeNear || lateralFromSupportedSpan-footprintExtent>Frame.halfWidth || heightFromRoad< -2f);
             float along = Vector3.Dot(Body.linearVelocity,Frame.tangent);
@@ -740,7 +795,9 @@ namespace StarRacingPrototype
                     handling.yawRate=-yaw;
                 }
                 var engineAcceleration=Vector3.ProjectOnPlane(Body.rotation*Vector3.forward,Frame.normal).normalized*driveAcceleration;
-                preparedHandlingCorrection=acceleration-engineAcceleration;preparedHandlingAngular=angularAcceleration;
+                preparedHandlingCorrection=ImpactResponse?Vector3.zero:acceleration-engineAcceleration;
+                if(ImpactResponse)acceleration=engineAcceleration;
+                preparedHandlingAngular=angularAcceleration;
                 reconciliation.Record(handling,Body.angularVelocity,angularAcceleration,Frame,dt,physicsInterval,handlingGeneration,PositionRevision);
                 AddForce(acceleration,ForceMode.Acceleration);AddTorque(angularAcceleration,ForceMode.Acceleration);
             }
@@ -783,7 +840,8 @@ namespace StarRacingPrototype
             }
             Vector3 acceleration = axis * (grounded ? 65f : 24f) -
                 (swing - targetSwing) * (grounded ? 13f : 7f) + targetSwing * Body.angularDamping;
-            AddTorque(Vector3.ClampMagnitude(acceleration, 70f), ForceMode.Acceleration);
+            preparedAlignment=Vector3.ClampMagnitude(acceleration,70f);
+            AddTorque(preparedAlignment, ForceMode.Acceleration);
         }
 
         void UpdateWheels()
@@ -797,7 +855,7 @@ namespace StarRacingPrototype
             var other=collision.rigidbody==null?null:collision.rigidbody.GetComponent<MagneticVehicle>();
             if(other==null)return;
 
-            if(collision.relativeVelocity.magnitude>WeakContactRelativeSpeed){CancelSideAssist();strongContacts.Add(other);return;}
+            if(ContactNormalSpeed(collision)>WeakContactRelativeSpeed){CancelSideAssist();strongContacts.Add(other);return;}
             if(strongContacts.Contains(other))return;
             if(IsGhosting || other.IsGhosting || IsFalling || other.IsFalling ||
                 Vector3.Dot(Frame.normal,other.Frame.normal)<.7f)return;
@@ -832,7 +890,7 @@ namespace StarRacingPrototype
         {
             foreach (Collider other in ignoredCars) if (other != null) {
                 var vehicle=other.GetComponent<MagneticVehicle>();
-                if (vehicle==null || (!vehicle.IsGhosting && !vehicle.IsFalling)) Physics.IgnoreCollision(chassis, other, false);
+                if (vehicle==null || (!vehicle.IsGhosting && !vehicle.IsFalling)) RestorePair(other);
             }
             ignoredCars.Clear();
         }
@@ -846,19 +904,21 @@ namespace StarRacingPrototype
             {
                 var vehicle=vehicles[i];
                 if (vehicle == null || vehicle == this || !vehicle.gameObject.activeInHierarchy || vehicle.chassis == null) continue;
-                IgnoreCarCollision(vehicle.chassis);
+                foreach(var collider in vehicle.contactColliders)if(collider!=null)IgnoreCarCollision(collider);
             }
         }
+
+        void RestorePair(Collider other){foreach(var collider in contactColliders)if(collider!=null)Physics.IgnoreCollision(collider,other,false);}
 
         void IgnoreCarCollision(Collider other)
         {
             if(ignoredCars.Contains(other))return;
             // A peer may already own protection of this symmetric PhysX pair.
-            if(!Physics.GetIgnoreCollision(chassis,other))Physics.IgnoreCollision(chassis,other,true);
+            foreach(var collider in contactColliders)if(collider!=null&&!Physics.GetIgnoreCollision(collider,other))Physics.IgnoreCollision(collider,other,true);
             ignoredCars.Add(other);
         }
 
         void OnDisable() { CancelAirSteering();ResetPresentation();ClearSideContacts();ClearPreparedForces();track?.TireMarks?.Break(Seat); }
-        void OnDestroy() { ClearPreparedForces();RacePhysicsStepper.Unregister(this);RestoreCarCollisions(); }
+        void OnDestroy() { ClearPreparedForces();RacePhysicsStepper.Unregister(this);RestoreCarCollisions();if(chassisMaterial!=null){if(Application.isPlaying)Destroy(chassisMaterial);else DestroyImmediate(chassisMaterial);} }
     }
 }

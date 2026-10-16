@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "generation": 0,
+  "defaultId": "557df012-9318-4207-9366-a77a124bea21",
+  "profiles": [
+    {
+      "id": "557df012-9318-4207-9366-a77a124bea21",
+      "name": "Default",
+      "versions": [
+        {
+          "number": 1,
+          "createdUtc": null
+        }
+      ]
+    }
+  ],
+  "releases": {
+    "557df012-9318-4207-9366-a77a124bea21": [
+      1
+    ]
+  }
+}

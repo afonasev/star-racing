@@ -1,0 +1,27 @@
+{
+  "index": {
+    "schema": 1,
+    "generation": 0,
+    "defaultId": "557df012-9318-4207-9366-a77a124bea21",
+    "profiles": [
+      {
+        "id": "557df012-9318-4207-9366-a77a124bea21",
+        "name": "Default",
+        "versions": [
+          {
+            "number": 1,
+            "createdUtc": null
+          }
+        ]
+      }
+    ],
+    "releases": {
+      "557df012-9318-4207-9366-a77a124bea21": [
+        1
+      ]
+    }
+  },
+  "versions": {
+    "557df012-9318-4207-9366-a77a124bea21/1.json": "{\n  \"version\": 8,\n  \"values\": {\n    \"baseSpeedKmh\": 300,\n    \"nitroMaxSpeedKmh\": 500,\n    \"acceleration\": 25,\n    \"highSpeedSteeringRetention\": 0.65,\n    \"steeringResponseSeconds\": 0.06,\n    \"yawResponseSeconds\": 0.08,\n    \"regularGrip\": 7,\n    \"driftGrip\": 1.8,\n    \"driftEntryYawImpulse\": 0.55,\n    \"counterSteerStrength\": 1.4,\n    \"gripRecoverySeconds\": 0.16,\n    \"brakeDeceleration\": 42,\n    \"brakeYawInfluence\": 0.35,\n    \"throttleDriftInfluence\": 0.25,\n    \"slipDrag\": 0.18,\n    \"nitroAcceleration\": 25,\n    \"nitroCapacity\": 100,\n    \"nitroDrainPerSecond\": 35,\n    \"nitroRecoveryPerSecond\": 5,\n    \"nitroRecoveryBehindMultiplier\": 2,\n    \"aiOvertakeAggression\": 0.95,\n    \"aiNitroReserve\": 40,\n    \"aiNitroStraightDistance\": 30,\n    \"racerNitroRecoveryMultiplier\": 1.5,\n    \"aceNitroRecoveryMultiplier\": 2,\n    \"racerAccelerationMultiplier\": 1.25,\n    \"aceAccelerationMultiplier\": 1.5,\n    \"contactSeparationPerStep\": 0.55,\n    \"contactLateralDamping\": 0.72,\n    \"contactLongitudinalDamping\": 0.3,\n    \"trackHairpinMinGapSegments\": 2,\n    \"trackMinimumLongCurves\": 4,\n    \"trackCurvatureAlternation\": 0.95,\n    \"trackMinimumDriftCurves\": 3,\n    \"trackMinimumTightHairpins\": 3,\n    \"trackDriftCurveMinLength\": 160,\n    \"trackDriftCurveMaxLength\": 280,\n    \"trackDriftCurveMinTurnDegrees\": 130,\n    \"trackDriftCurveMaxTurnDegrees\": 179,\n    \"trackTightHairpinMinLength\": 70,\n    \"trackTightHairpinMaxLength\": 150,\n    \"trackTightHairpinMinTurnDegrees\": 150,\n    \"trackDemandingTurnMinGap\": 100,\n    \"trackDemandingTurnMaxGap\": 900,\n    \"trackPatternMinCount\": 2,\n    \"trackPatternMaxCount\": 4,\n    \"trackSpiralTurns\": 2,\n    \"trackChicaneIntensity\": 1,\n    \"trackWideSectionChance\": 0.5,\n    \"trackWideSectionWidthMultiplier\": 1.7\n  }\n}\n"
+  }
+}

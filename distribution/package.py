@@ -78,6 +78,15 @@ def prepare_installer(release,channel,version,defer_windows_installer=False,make
         setup.rename(release/('Star-Racing-'+version+'-macOS-Setup.pkg'))
 
 
+def package_recovery(dotnet,root,content,channel,env):
+    for runtime in (['win-x64'] if channel=='win-x64' else ['osx-arm64','osx-x64']):
+        target=content/'recovery'/runtime
+        subprocess.run([str(dotnet),'publish',str(root/'recovery/RecoveryAgent.csproj'),'-c','Release','-r',runtime,
+                        '--self-contained','true','-p:PublishSingleFile=true','-p:IncludeNativeLibrariesForSelfExtract=true',
+                        '-o',str(target)],check=True,env=env)
+        name='StarRacingRecovery.exe' if runtime=='win-x64' else 'StarRacingRecovery'
+        if not (target/name).is_file():raise ValueError('Recovery agent missing for '+runtime)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--track', choices=['production','test'], required=True)
@@ -143,6 +152,7 @@ def main():
         imported=re.findall(r'DLL Name:\s*(\S+)',imports)
         if 'velopack_libc.dll' not in imported or not (payload/'velopack_libc.dll').is_file():
             raise ValueError('Windows bootstrap native dependency is missing')
+    package_recovery(a.dotnet,root,payload/'Contents/MacOS' if a.channel=='osx-universal' else payload,a.channel,env)
     notes=release/'notes.md';notes.write_text(a.notes+'\n')
     cmd=[str(a.vpk.resolve())]+(['[win]'] if a.channel=='win-x64' else [])
     cmd+=['--skip-updates','pack','--packId','tech.afonasev.star-racing.'+a.channel,'--packVersion',a.version,
@@ -177,6 +187,8 @@ def main():
                   player=str(a.player),createdUTC=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   files=[dict(name=f.name,size=f.stat().st_size,sha256=digest(f)) for f in sorted(release.iterdir()) if f.is_file()])
     (release/'identity.json').write_text(json.dumps(identity,indent=2)+'\n')
+    # Final signed package/portable/installer and identity are durable; payload is reproducible.
+    shutil.rmtree(payload)
     print('PACKAGED',a.channel,a.version,release)
 
 if __name__=='__main__':main()

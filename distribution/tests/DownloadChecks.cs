@@ -24,7 +24,29 @@ static class DownloadChecks {
      require(File.Exists(file)&&progress[^1]==100,"failed transfer can be retried");
     }
    }
+   var suspendedHandler=new SuspendedHandler();
+   using(var paused=new AuthenticatedUpdateSource((string)data["appId"]!,(string)data["channel"]!,1,"test",suspendedHandler,modulus)){
+    paused.Restore(envelope(data));string selected=paused.Envelope;paused.DownloadConsent=true;string path=Path.Combine(root,"suspended");
+    var transfer=paused.DownloadReleaseEntry(null,paused.Release.Asset,path,null);
+    await suspendedHandler.Started.Task;paused.SuspendNetwork();
+    try{await transfer;throw new Exception("Active transfer ignored race suspension");}catch(OperationCanceledException){}
+    int count=suspendedHandler.Requests;require(!File.Exists(path)&&paused.Envelope==selected,"race suspension retains selected identity and removes partial package");
+    try{await paused.DownloadReleaseEntry(null,paused.Release.Asset,path,null);throw new Exception("New transfer in race");}catch(OperationCanceledException){}
+    require(suspendedHandler.Requests==count,"no payload request during race");
+    paused.ResumeNetwork();suspendedHandler.Block=false;
+    await paused.DownloadReleaseEntry(null,paused.Release.Asset,path,null);
+    require(File.ReadAllBytes(path).SequenceEqual(new byte[]{1,2,3})&&paused.Envelope==selected,"menu resumes same selected package without discovery");
+   }
+
   }finally{Directory.Delete(root,true);}
+ }
+ sealed class SuspendedHandler:HttpMessageHandler {
+  public bool Block=true;public int Requests;public readonly TaskCompletionSource<bool> Started=new();
+  protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token){
+   Requests++;token.ThrowIfCancellationRequested();
+   if(Block){Started.TrySetResult(true);await Task.Delay(Timeout.Infinite,token);}
+   return new HttpResponseMessage(HttpStatusCode.OK){Content=new ByteArrayContent(new byte[]{1,2,3})};
+  }
  }
  sealed class PackageHandler:HttpMessageHandler {
   public string Scenario;public int Requests;

@@ -15,7 +15,7 @@ namespace StarRacingPrototype {
   static double started;
   static bool hadPrefs,hadDisplayPrefs,prepared;
   static int prefs;
-  static string displayPrefs;
+  static string displayPrefs,previousSettingsPath;static UserSettings previousSettings;
   static float volume;
   static RaceDirector director;
   static EditorWindow view;
@@ -43,22 +43,23 @@ namespace StarRacingPrototype {
     if(EditorApplication.timeSinceStartup-started>120)throw new Exception("Nitro setting PlayMode timed out");
     EditorApplication.QueuePlayerLoopUpdate();if(view!=null)view.Repaint();ticks++;
     if(ticks==1){
+     previousSettingsPath=UserSettingsStore.OverridePath;previousSettings=UserSettingsStore.Current;UserSettingsStore.OverridePath=Path.Combine(Output,"preferences.json");UserSettingsStore.Replace(new UserSettings());
      hadPrefs=PlayerPrefs.HasKey(NitroBlurSettings.PreferenceKey);prefs=PlayerPrefs.GetInt(NitroBlurSettings.PreferenceKey);
      hadDisplayPrefs=PlayerPrefs.HasKey(DisplaySettings.PreferenceKey);displayPrefs=PlayerPrefs.GetString(DisplaySettings.PreferenceKey);volume=AudioListener.volume;prepared=true;
      PlayerPrefs.DeleteKey(NitroBlurSettings.PreferenceKey);NitroBlurSettings.Reload();Check(NitroBlurSettings.Enabled,"default enabled");AudioListener.volume=0;
-     new GameObject("settings camera").AddComponent<Camera>();director=new GameObject("settings fixture").AddComponent<RaceDirector>();director.GetComponent<RaceMenu>().Open(RaceMenuScreen.Settings);
+     new GameObject("settings camera").AddComponent<Camera>();director=new GameObject("settings fixture").AddComponent<RaceDirector>();director.GetComponent<RaceMenu>().Open(RaceMenuScreen.Settings);typeof(RaceMenu).GetField("settingsPage",Private).SetValue(director.GetComponent<RaceMenu>(),1);
     }
     if(ticks==25)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"settings-enabled.png"));
     if(ticks==35){
      var menu=director.GetComponent<RaceMenu>();
-     typeof(RaceMenu).GetField("focus",Private).SetValue(menu,"fps");typeof(RaceMenu).GetMethod("Move",Private).Invoke(menu,new object[]{1});
+     typeof(RaceMenu).GetField("focus",Private).SetValue(menu,"mist");typeof(RaceMenu).GetMethod("Move",Private).Invoke(menu,new object[]{1});
      Check((string)typeof(RaceMenu).GetField("focus",Private).GetValue(menu)=="nitro-blur","navigation reaches toggle");
-     Invoke(menu,"nitro-blur");Check(!NitroBlurSettings.Enabled&&PlayerPrefs.GetInt(NitroBlurSettings.PreferenceKey,-1)==0,"main toggle persists off");
+     Invoke(menu,"nitro-blur");Check(!NitroBlurSettings.Enabled&&!UserSettings.Parse(File.ReadAllText(UserSettingsStore.PathName)).nitroBlur,"main toggle persists off");
      NitroBlurSettings.Reload();Check(!NitroBlurSettings.Enabled,"fresh load stays off");
     }
     if(ticks==45)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"settings-disabled.png"));
     if(ticks==55){director.enabled=false;typeof(RaceDirector).GetProperty("Started").SetValue(director,true);director.GetComponent<RaceMenu>().OpenPauseSettings();}
-    if(ticks==70){Invoke(director.GetComponent<RaceMenu>(),"nitro-blur");Check(NitroBlurSettings.Enabled&&PlayerPrefs.GetInt(NitroBlurSettings.PreferenceKey,-1)==1,"pause toggle persists on");}
+    if(ticks==70){Invoke(director.GetComponent<RaceMenu>(),"nitro-blur");Check(NitroBlurSettings.Enabled&&UserSettings.Parse(File.ReadAllText(UserSettingsStore.PathName)).nitroBlur,"pause toggle persists on");}
     if(ticks==80)ScreenCapture.CaptureScreenshot(Path.Combine(Output,"pause-settings-enabled.png"));
     if(ticks==95){
      CameraChecks();DisplaySettingsChecks.Run();
@@ -88,6 +89,7 @@ namespace StarRacingPrototype {
    EditorApplication.update-=Tick;SessionState.SetBool(Key+"Failed",error);
    foreach(var go in SceneManager.GetActiveScene().GetRootGameObjects())UnityEngine.Object.DestroyImmediate(go);
    if(prepared){if(hadPrefs)PlayerPrefs.SetInt(NitroBlurSettings.PreferenceKey,prefs);else PlayerPrefs.DeleteKey(NitroBlurSettings.PreferenceKey);if(hadDisplayPrefs)PlayerPrefs.SetString(DisplaySettings.PreferenceKey,displayPrefs);else PlayerPrefs.DeleteKey(DisplaySettings.PreferenceKey);PlayerPrefs.Save();NitroBlurSettings.Reload();AudioListener.volume=volume;}
+   UserSettingsStore.OverridePath=previousSettingsPath;if(previousSettings!=null)UserSettingsStore.Replace(previousSettings);
    Time.timeScale=1;EditorApplication.isPlaying=false;
   }
  }

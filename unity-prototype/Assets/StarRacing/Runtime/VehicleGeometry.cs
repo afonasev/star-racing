@@ -1,8 +1,10 @@
 using UnityEngine;
 namespace StarRacingPrototype {
  public static class VehicleGeometry {
-  public const float HalfWidth=1.38f, HalfLength=2.1f, VisualScale=.72f;
+  public const float HalfWidth=1.08f, HalfLength=2.1f, VisualScale=.72f;
   public const float Width=HalfWidth*2, Length=HalfLength*2;
+  // Art fitting is immutable; changing the contact envelope must not resize the model.
+  public const float VisualFitWidth=2.76f, VisualFitLength=4.2f;
   // Measured before resize in baseline-inertia.json (Unity 6000.3.23f1).
   public static readonly Vector3 BaselineInertia=new Vector3(1548.108154296875f,2104.799560546875f,712.9083862304688f);
   public static readonly Quaternion BaselineInertiaRotation=Quaternion.identity;
@@ -20,7 +22,7 @@ namespace StarRacingPrototype {
   public const float AvailableWorkingStroke=UnloadedBodyHeight-BaselineStopHeight;
   public const float NeutralWorkingClearance=NeutralBodyHeight-BaselineStopHeight;
   public const float SourceAttachmentY=BaselineChassisMinY-SourceMinY;
-  public const float ChassisMinY=SourceMinY+SourceAttachmentY, ChassisMaxY=SourceMaxY+SourceAttachmentY;
+  public const float ChassisMinY=SourceMinY+SourceAttachmentY, ChassisMaxY=.800f;
   public static readonly Vector3 ChassisSize=new Vector3(Width,ChassisMaxY-ChassisMinY,Length);
   public static readonly Vector3 ChassisCenter=new Vector3(0,(ChassisMinY+ChassisMaxY)*.5f,0);
   public const float PairRearmDistance=Length+1, PairRearmLateral=Width+1;

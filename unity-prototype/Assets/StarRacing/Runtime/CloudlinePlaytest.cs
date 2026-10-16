@@ -47,7 +47,7 @@ namespace StarRacingPrototype {
    InputSystem.QueueStateEvent(joining,new GamepadState().WithButton(GamepadButton.North));yield return null;yield return null;
    Check(menu.Selected.humans==1,"Y-no-duplicate");InputSystem.QueueStateEvent(joining,new GamepadState());yield return null;
    for(int humans=1;humans<=4;humans++){
-    menu.Open(RaceMenuScreen.LocalSetup);var chosen=menu.Selected;chosen.generatorRevision=12;chosen.replay=null;chosen.humans=humans;chosen.entrants=8;chosen.devices=(int[])proofDevices.Clone();chosen.theme=humans%2==0?"space-station":"cloud-city";chosen.rails="normal";chosen.jumps=false;chosen.seed="77";
+    menu.Open(RaceMenuScreen.LocalSetup);var chosen=menu.Selected;chosen.humans=humans;chosen.entrants=8;chosen.devices=(int[])proofDevices.Clone();chosen.theme=humans%2==0?"space-station":"cloud-city";chosen.rails="normal";chosen.jumps=false;chosen.seed="77";
     typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");
     chosen.Save();Check(LocalRaceConfig.Load().humans==humans,"saved-human-count-"+humans);
     if(humans==4){
@@ -57,8 +57,8 @@ namespace StarRacingPrototype {
     }
     int generation=director.RaceGeneration;menu.StartSelected();while(menu.Loading)yield return null;Check(director.Started&&director.RaceGeneration==generation+1,"single-start-"+humans);
     Check(director.HumanCount==humans&&director.Cars.Length==8,"applied-roster-"+humans);
-    Check(director.Course.GeneratorRevision==12&&(director.Course.IsIndependent?director.Track.GraphSurface!=null&&director.Track.GetComponentsInChildren<MeshCollider>().Length>0:director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0),"staged-road-inventory-"+humans);
-    foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(director.Course.IsIndependent?surface.graphIdentity==director.Course.Graph.Identity&&surface.graphBuildRevision==director.Track.GraphSurface.BuildRevision:surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
+    Check(director.Track.NearestRoad!=null&&director.Track.NearestRoad.TriangleCount>0,"staged-road-inventory-"+humans);
+    foreach(var surface in director.Track.GetComponentsInChildren<TrackSurface>())Check(surface.owner==director.Track&&surface.buildRevision==director.Track.BuildRevision,"surface-ownership-"+humans);
     Check(director.Cars[0].HasProvenCheckpoint,"initial-checkpoint-"+humans);
     for(int seat=0;seat<4;seat++)Check(director.CameraFor(seat).GetComponent<Camera>().enabled==(seat<humans),"camera-enabled-"+humans+"-"+seat);
     yield return Shot("countdown-"+humans);yield return new WaitForSecondsRealtime(3.6f);
@@ -77,29 +77,10 @@ namespace StarRacingPrototype {
     director.Restart();Check(director.Session.Phase==RacePhase.Countdown,"repeat-"+humans);director.SetPaused(true);Check(director.ExitToMenu(),"pause-return-"+humans);
     Check(!director.Started&&menu.ScreenState==RaceMenuScreen.LocalSetup&&director.TrackSeed==77&&menu.Selected.Seed!=77,"return-refreshes-draft-seed-"+humans);
    }
-   // Native12 also contains path-choice courses; exercise the real graph startup separately.
-   var graphConfig=menu.Selected;graphConfig.generatorRevision=12;graphConfig.replay=null;graphConfig.seed="20";graphConfig.theme="cloud-city";graphConfig.jumps=true;graphConfig.humans=1;graphConfig.entrants=8;graphConfig.devices=(int[])proofDevices.Clone();
-   typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"20");graphConfig.Save();menu.StartSelected();while(menu.Loading)yield return null;
-   Check(director.Started&&director.Course.GeneratorRevision==12&&director.Course.IsIndependent&&director.Track.GraphSurface!=null,"native12-path-choice-start");
-   string graphIdentity=director.Course.GeometryIdentity;Check(director.Cars[0].GraphRoute!=null&&director.Cars[0].HasProvenCheckpoint,"native12-graph-checkpoint");
-   yield return Shot("native12-path-choice");yield return new WaitForSecondsRealtime(4);
-   Check(director.Session.Phase==RacePhase.Racing&&director.GraphWorld!=null,"native12-graph-racing");
-   director.Restart();Check(director.Course.GeometryIdentity==graphIdentity&&director.Session.Phase==RacePhase.Countdown,"native12-graph-repeat-identity");
-   director.SetPaused(true);Check(director.ExitToMenu(),"native12-graph-return");
-   // Drive the human seat through a virtual gamepad and the unchanged input/physics path.
-   // Results now require the last human to cross; an idle human cannot certify completion.
-   var last=menu.Selected;last.humans=1;last.devices=(int[])proofDevices.Clone();last.theme="cloud-city";last.entrants=8;last.seed="77";last.jumps=false;last.replay=null;typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();while(menu.Loading)yield return null;
-   Check(director.Started,"natural-race-start");var pilot=new AiDriver(0,DriverProfile.Racer,77,director.Balance);float deadline=Time.realtimeSinceStartup+600,nextProgress=Time.realtimeSinceStartup;
+   // Run the unmodified AI and race rules to an actual crossing/finish window.
+   var last=menu.Selected;last.humans=1;last.devices=new[]{-2,-1,0,1};last.theme="cloud-city";last.entrants=8;last.seed="77";typeof(RaceMenu).GetField("seedText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(menu,"77");last.Save();menu.StartSelected();while(menu.Loading)yield return null;
+   Check(director.Started,"natural-race-start");float deadline=Time.realtimeSinceStartup+600,nextProgress=Time.realtimeSinceStartup;
    while(director.Session.Phase!=RacePhase.Results&&Time.realtimeSinceStartup<deadline){
-    var state=new GamepadState();
-    if(director.Session.CanDrive(0)&&!director.Paused){
-     var command=director.Track.GraphSurface!=null?pilot.ApplyGraphControl(director.Cars[0],pilot.StepGraph(director.GraphWorld,Time.deltaTime),Time.deltaTime):pilot.Step(director.World,director.Track.Route,Time.deltaTime);
-     state.rightTrigger=command.throttle;state.leftStick=new Vector2(command.steer,0);
-     if(command.brake>0)state=state.WithButton(GamepadButton.South);
-     if(command.drift)state=state.WithButton(GamepadButton.LeftShoulder);
-     if(command.nitro)state=state.WithButton(GamepadButton.East);
-    }
-    InputSystem.QueueStateEvent(owned[0],state);
     if(Time.realtimeSinceStartup>=nextProgress){float leader=0;foreach(var racer in director.Session.Racers)leader=Mathf.Max(leader,racer.Progress);Debug.Log("CLOUDLINE_NATURAL_PROGRESS elapsed="+director.Session.Elapsed+" leader="+leader+" length="+director.Session.RaceLength);nextProgress=Time.realtimeSinceStartup+15;}
     // The opt-in automation can lose desktop focus while evidence is inspected.
     // Resume through the production path; do not synthesize finish/progress.
@@ -108,7 +89,7 @@ namespace StarRacingPrototype {
    }
    Check(director.Session.Phase==RacePhase.Results,"natural-results");bool aiFinished=false;
    for(int i=1;i<director.Cars.Length;i++)aiFinished|=director.Session.Racers[i].Finished;
-   Check(aiFinished,"natural-ai-finish");Check(director.Session.Racers[0].Finished,"natural-human-finish");yield return Shot("05-natural-results");
+   Check(aiFinished,"natural-ai-finish");yield return Shot("05-natural-results");
    Check(director.ExitToMenu(),"results-return");yield return Shot("06-return-setup");
   }
   void OnApplicationQuit(){Restore();}

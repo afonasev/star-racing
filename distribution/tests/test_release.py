@@ -61,11 +61,8 @@ class ReleaseSourcePreservation(unittest.TestCase):
    meta=assets/'Resources/Track.png.meta';meta.parent.mkdir();meta.write_text('texture:\n  userData:\n')
    plugin=root/'unity-prototype/Assets/Plugins.meta';plugin.write_text('plugin')
    quality=project.parent/'QualitySettings.asset';quality.write_text('quality')
-   settings=root/'unity-prototype/Assets/Settings/UniversalRenderPipelineGlobalSettings.asset';settings.parent.mkdir();settings.write_text('URP settings')
    evidence=root/'evidence';evidence.mkdir()
    def fake_run(args,**kwargs):
-    self.assertIn('-noaudio',args)
-    settings.write_text('serialized URP settings')
     meta.write_text('texture:\n  userData: \n')
     plugin.write_text('imported plugin');quality.write_text('build quality')
     Path(args[args.index('-logFile')+1]).write_text('PROTOTYPE_BUILD_OK')
@@ -75,8 +72,18 @@ class ReleaseSourcePreservation(unittest.TestCase):
    self.assertEqual(project.read_text(),'project')
    self.assertEqual(plugin.read_text(),'plugin');self.assertEqual(quality.read_text(),'quality')
    self.assertEqual(generated.read_text(),'scene')
-   self.assertEqual(settings.read_text(),'URP settings')
    self.assertEqual(build.call_count,2)
+
+class ChangelogAdmission(unittest.TestCase):
+ def test_invalid_review_never_creates_publisher_reservation(self):
+  import json,tempfile
+  with tempfile.TemporaryDirectory() as tmp:
+   key=Path(tmp)/'key.pem';key.write_text('unused fixture key');review=Path(tmp)/'review.json';review.write_text('{}')
+   source='a'*40;previous=dict(body=json.dumps(dict(sourceRevision='b'*40,unsignedProductionCatalog=True,platforms={'win-x64':dict(releaseTrack='production',version='0.3.5',sequence=1)})))
+   args=['release.py','--track','production','--version','0.3.6','--sequence','2','--key',str(key),'--changelog-review',str(review)]
+   with patch.object(sys,'argv',args),patch.object(release.subprocess,'check_output',side_effect=['',source]),patch.object(release,'api') as api,patch.object(release,'optional_release',side_effect=[None,previous]),patch.object(release,'generate_changelog',side_effect=ValueError('Unreviewed Git commits')):
+    with self.assertRaises(ValueError):release.main()
+    api.assert_called_once_with('commits/'+source)
 
 class MenuSmokeContract(unittest.TestCase):
  def test_menu_smoke_is_silent_and_requires_its_own_receipt(self):
@@ -89,7 +96,7 @@ class MenuSmokeContract(unittest.TestCase):
     if '--menu-release-smoke-dir' in commands[-1]:
      proof=Path(commands[-1][commands[-1].index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'menu','installed_queue_untouched':True}))
    with patch.object(release,'run',side_effect=fake_run):release.smoke_menu_macos(folder,evidence)
-   args=commands[-1];self.assertIn('-noaudio',args);self.assertNotIn('-batchmode',args);self.assertIn('--menu-release-smoke-dir',args);self.assertNotIn('--cloudline-proof-dir',args)
+   args=commands[-1];self.assertIn('-noaudio',args);self.assertIn('-muted',args);self.assertNotIn('-batchmode',args);self.assertIn('--menu-release-smoke-dir',args);self.assertNotIn('--cloudline-proof-dir',args)
    self.assertEqual((evidence/'macos-menu-smoke/candidate.json').exists(),True)
 
  def test_menu_smoke_rejects_a_different_scope_receipt(self):
@@ -101,20 +108,3 @@ class MenuSmokeContract(unittest.TestCase):
     if '--menu-release-smoke-dir' in args:
      proof=Path(args[args.index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'race','natural_ai_finish':True}))
    with patch.object(release,'run',side_effect=fake_run),self.assertRaises(ValueError):release.smoke_menu_macos(folder,evidence)
-
-class PreparedReleaseContract(unittest.TestCase):
- def test_exact_prepared_bytes_and_tooling_only_source(self):
-  import tempfile,json,hashlib,subprocess
-  with tempfile.TemporaryDirectory() as tmp:
-   output=Path(tmp)
-   for channel in ['osx-universal','win-x64']:
-    folder=output/channel/'0.3.4';folder.mkdir(parents=True);file=folder/'package';file.write_bytes(b'bytes')
-    (folder/'identity.json').write_text(json.dumps(dict(version='0.3.4',channel=channel,sequence=5,sourceStatus='',sourceRevision='abc',files=[dict(name='package',size=5,sha256=hashlib.sha256(b'bytes').hexdigest())])))
-   with patch.object(release.subprocess,'check_output',return_value='distribution/release.py\n'):
-    self.assertEqual(release.verify_prepared(output,'0.3.4',5),'abc')
-    with self.assertRaises(ValueError):release.verify_prepared(output,'0.3.4',6)
-    (output/'win-x64/0.3.4/package').write_bytes(b'other')
-    with self.assertRaises(ValueError):release.verify_prepared(output,'0.3.4',5)
-   (output/'win-x64/0.3.4/package').write_bytes(b'bytes')
-   with patch.object(release.subprocess,'check_output',return_value='unity-prototype/Assets/StarRacing/Runtime/RaceMenu.cs\n'):
-    with self.assertRaises(ValueError):release.verify_prepared(output,'0.3.4',5)

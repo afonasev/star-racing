@@ -2,11 +2,19 @@
 
 NSIS owns ARP/uninstall/shortcuts; .portable keeps Velopack from resetting them.
 """
-import argparse, hashlib, json, subprocess, tempfile, zipfile
+import argparse, hashlib, json, subprocess, tempfile, zipfile, os, sys
 from pathlib import Path, PurePosixPath
 
 REQUIRED = {'.portable', 'Star Racing.exe', 'Update.exe', 'current/sq.version',
-            'current/Star Racing.exe', 'current/UnityPlayer.dll', 'current/velopack_libc.dll'}
+            'current/Star Racing.exe', 'current/UnityPlayer.dll', 'current/velopack_libc.dll',
+            'current/recovery/win-x64/StarRacingRecovery.exe'}
+
+def compiler_env():
+    # POSIX NSIS uses the process locale even with explicit input UTF-8.
+    # Keep Cyrillic labels intact without changing the host's locale.
+    env=os.environ.copy()
+    if os.name!='nt':env['LC_ALL']='en_US.UTF-8' if sys.platform=='darwin' else 'C.UTF-8'
+    return env
 
 def validate_portable(archive):
     names = set(archive.namelist())
@@ -35,7 +43,7 @@ def build(portable, output, makensis='makensis', version=None):
         with zipfile.ZipFile(portable) as archive:
             validate_portable(archive)
             archive.extractall(folder)
-        subprocess.run([makensis, '-V2', '-DPAYLOAD='+folder, '-DOUTPUT='+str(output), '-DVERSION='+version, '-DICON='+str(icon), str(script)], check=True)
+        subprocess.run([makensis, '-INPUTCHARSET', 'UTF8', '-V2', '-DPAYLOAD='+folder, '-DOUTPUT='+str(output), '-DVERSION='+version, '-DICON='+str(icon), str(script)], check=True, env=compiler_env())
     if output.open('rb').read(2) != b'MZ':
         raise ValueError('Compiler did not produce a Windows executable')
     def digest(path):

@@ -189,17 +189,26 @@ namespace StarRacingPrototype {
             var dark = Lit(new Color(.6f, .73f, .84f), .22f, false, "Facade", .38f);
             var teal = Lit(new Color(.12f, .86f, .8f), .05f, true);
             var amber = Lit(new Color(1, .65f, .24f), .05f, true);
+            var batches = new CityBatches(this);
             for (int i = 0; i < Plan.towers.Count; i++) {
                 var tower = Plan.towers[i];
                 var material = i % 3 == 0 ? facade : i % 3 == 1 ? blue : dark;
-                Shape("City tower", cube, material, tower.position, Quaternion.identity,
-                      new Vector3(tower.width, tower.height, tower.width), i < 10);
                 var top = tower.position + Vector3.up * (tower.height * .5f);
-                BuildTowerTrim(tower.position, top, tower.width, tower.height, silver);
-                if (i % 3 == 0)
-                    Shape("Navigation light", cube, tower.amber ? amber : teal, top + Vector3.up * 1.5f,
-                          Quaternion.identity, new Vector3(2.2f, 3f, 2.2f), false);
+                if(i<10) {
+                    Shape("City tower", cube, material, tower.position, Quaternion.identity,
+                          new Vector3(tower.width,tower.height,tower.width), true);
+                    BuildTowerTrim(tower.position,top,tower.width,tower.height,silver);
+                } else {
+                    batches.Box(material,tower.position,new Vector3(tower.width,tower.height,tower.width),12);
+                    batches.Box(silver,top-Vector3.up*2,new Vector3(tower.width*1.12f,4,tower.width*1.12f),4);
+                    for(int floor=1;floor<=4;floor++)batches.Box(silver,
+                        new Vector3(tower.position.x,Plan.cityBaseY+tower.height*floor/5f,tower.position.z),
+                        new Vector3(tower.width*1.015f,.65f,tower.width*1.015f),4);
+                }
+                if(i%3==0)batches.Box(tower.amber?amber:teal,top+Vector3.up*1.5f,new Vector3(2.2f,3f,2.2f),4);
+
             }
+            batches.Flush();
         }
 
         void BuildTowerTrim(Vector3 center, Vector3 top, float width, float height, Material silver) {

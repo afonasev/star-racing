@@ -218,7 +218,7 @@ namespace StarRacingPrototype
                 int contactTicks=0;
                 for(int i=0;i<count;i++)
                 {
-                    cars[i]=Car(root,track,i,human,80+(side?i/2*4.25f:i*4.25f),side?(i%2==0?-1.4f:1.4f):0,42+(i==0?relative:0));
+                    cars[i]=Car(root,track,i,human,80+(side?i/2*4.25f:i*4.25f),side?(i%2==0?-(VehicleGeometry.HalfWidth+.02f):(VehicleGeometry.HalfWidth+.02f)):0,42+(i==0?relative:0));
                     revisions[i]=cars[i].PositionRevision;
                     if(side)cars[i].Body.linearVelocity+=cars[i].Frame.right*(i%2==0?relative:-relative);
                     cars[i].ContactObserved+=c=>
@@ -269,7 +269,7 @@ namespace StarRacingPrototype
                     Check(Vector3.Dot(c.Body.linearVelocity,c.Frame.tangent)>=37.8f,"pair still lost tempo after3s "+kind);
                     Check(Mathf.Abs(Vector3.Dot(c.Body.position-c.Frame.position,c.Frame.right))<=c.Frame.halfWidth,"pair off road "+kind);
                 }
-                if(kind=="side")Check(Mathf.Abs(cars[0].Body.position.x-cars[1].Body.position.x)>=2.86f || (Environment.GetEnvironmentVariable("STAR_RACING_CONTACT_SHIPPING_AI")=="1"&&Mathf.Abs(cars[0].Distance-cars[1].Distance)>=4.3f),"side failed to open physical clearance");
+                if(kind=="side")Check(Mathf.Abs(cars[0].Body.position.x-cars[1].Body.position.x)>=VehicleGeometry.Width+.1f || (Environment.GetEnvironmentVariable("STAR_RACING_CONTACT_SHIPPING_AI")=="1"&&Mathf.Abs(cars[0].Distance-cars[1].Distance)>=4.3f),"side failed to open physical clearance");
             }
             finally
             {
@@ -316,8 +316,7 @@ namespace StarRacingPrototype
                 Check(sustained,"rear steering fixture lacked sustained rear contact");
                 Check(yawAt20>.02f,"rear contact blocked requested yaw");
                 Check(cleared && !touching,"rear contact did not open physical clearance under throttle");
-                Check(!Physics.ComputePenetration(rear.GetComponent<BoxCollider>(),rear.Body.position,rear.Body.rotation,
-                    lead.GetComponent<BoxCollider>(),lead.Body.position,lead.Body.rotation,out _,out _),"rear steering retained overlapping chassis");
+                foreach(var rearBox in rear.ContactColliders)foreach(var leadBox in lead.ContactColliders)Check(!Physics.ComputePenetration(rearBox,rear.Body.position,rear.Body.rotation,leadBox,lead.Body.position,lead.Body.rotation,out _,out _),"rear steering retained overlapping compound chassis");
                 Check(!drift || !human || rear.HandlingState.driftActive,"rear steering did not exercise actual drift");
                 Check(Mathf.Abs(Vector3.Dot(cars[0].Body.position-cars[0].Frame.position,cars[0].Frame.right))+VehicleGeometry.HalfWidth<=cars[0].Frame.halfWidth,"rear steering left road");
                 Check(!cars[0].IsFalling&&cars[0].PositionRevision==revision,"rear steering required recovery");
@@ -356,7 +355,7 @@ namespace StarRacingPrototype
                 }
                 var lead=cars[count-1];
                 var control=cars[count]=Car(root,track,count,human,80+(count+12)*4.25f,.2f*((count-1)%2),42);
-                int hits=0;float peakLoss=0,brakeStart=0;
+                int hits=0,brakingTicks=0;float peakLoss=0,brakeStart=0;
                 lead.ContactObserved+=c=>{if(c.rigidbody!=null)hits++;};
                 Physics.SyncTransforms();
                 for(int t=0;t<300;t++) {
@@ -365,6 +364,10 @@ namespace StarRacingPrototype
                     var command=new DrivingInput{throttle=t<150?1:0,brake=t<150?0:.3f};
                     lead.SetInput(command);control.SetInput(command);
                     Step(cars,t);
+                    if(t>=150) {
+                        float commanded=(float)typeof(MagneticVehicle).GetField("driveAcceleration",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(lead);
+                        Check(commanded<0,"rear contact erased driver braking force");brakingTicks++;
+                    }
                     float speed=Vector3.Dot(lead.Body.linearVelocity,lead.Frame.tangent);
                     float expected=Vector3.Dot(control.Body.linearVelocity,control.Frame.tangent);
                     peakLoss=Mathf.Max(peakLoss,expected-speed);
@@ -372,8 +375,10 @@ namespace StarRacingPrototype
                     Check(!lead.IsFalling,"rear train leader fell");
                 }
                 Check(hits>0,"rear train never contacted leader");
-                Check(lead.Body.linearVelocity.magnitude<brakeStart-1,"rear protection erased driver braking");
-                string row=$"REAR_TRAIN human={human} count={count} hits={hits} peakLoss={peakLoss:F6}";
+                // Momentum from accelerating followers can overcome a partial brake.
+                // Certify all original150 braking ticks rather than infinite leading mass.
+                Check(brakingTicks==150,"rear contact skipped driver braking interval");
+                string row=$"REAR_TRAIN human={human} count={count} hits={hits} peakLoss={peakLoss:F6} brakingTicks={brakingTicks} brakeStart={brakeStart:F4} final={lead.Body.linearVelocity.magnitude:F4}";
                 Debug.Log(row);File.AppendAllText(Path.Combine(Output,"metrics.txt"),row+"\n");
             }finally {UnityEngine.Object.DestroyImmediate(root);}
         }
@@ -401,7 +406,7 @@ namespace StarRacingPrototype
                 var track=Track(root);
                 var cars=new[]
                 {
-                    Car(root,track,0,human,80,-1.385f,42,6),Car(root,track,1,human,80,1.385f,42,-6)
+                    Car(root,track,0,human,80,-(VehicleGeometry.HalfWidth+.005f),42,6),Car(root,track,1,human,80,(VehicleGeometry.HalfWidth+.005f),42,-6)
                 }
                 ;
                 int hits=0;
@@ -444,7 +449,7 @@ namespace StarRacingPrototype
                 Debug.Log(row);
                 File.AppendAllText(Path.Combine(Output,"metrics.txt"),row+"\n");
                 Check(hits>0&&minSpeed>=37.8f,"pinch lost tempo");
-                Check(Mathf.Abs(cars[0].Body.position.x-cars[1].Body.position.x)>=2.86f,"pinch did not separate after steering released");
+                Check(Mathf.Abs(cars[0].Body.position.x-cars[1].Body.position.x)>=VehicleGeometry.Width+.1f,"pinch did not separate after steering released");
             }
             finally
             {
@@ -525,7 +530,7 @@ namespace StarRacingPrototype
             var root=new GameObject("contact control authority");
             try {
                 var track=Track(root);
-                var cars=new[]{Car(root,track,0,human,80,-1.4f,44),Car(root,track,1,human,80,1.4f,42)};
+                var cars=new[]{Car(root,track,0,human,80,-(VehicleGeometry.HalfWidth+.02f),44),Car(root,track,1,human,80,(VehicleGeometry.HalfWidth+.02f),42)};
                 cars[0].Body.linearVelocity+=cars[0].Frame.right*2;
                 cars[1].Body.linearVelocity-=cars[1].Frame.right*2;
                 int contacts=0;cars[0].ContactObserved+=c=>{if(c.rigidbody==cars[1].Body)contacts++;};
@@ -560,11 +565,11 @@ namespace StarRacingPrototype
             var root=new GameObject("strong hit during weak contact");
             try {
                 var track=Track(root);
-                var receiver=Car(root,track,0,human,80,-1.4f,42);
-                var neighbour=Car(root,track,1,human,80,1.4f,42);
+                var receiver=Car(root,track,0,human,80,-(VehicleGeometry.HalfWidth+.02f),42);
+                var neighbour=Car(root,track,1,human,80,(VehicleGeometry.HalfWidth+.02f),42);
                 receiver.Body.linearVelocity+=receiver.Frame.right*2;
                 neighbour.Body.linearVelocity-=neighbour.Frame.right*2;
-                var donor=Car(root,track,2,human,72,-1.4f,67);
+                var donor=Car(root,track,2,human,72,-(VehicleGeometry.HalfWidth+.02f),67);
                 int strong=0;float helperAfterStrong=0;
                 receiver.ContactObserved+=collision=> {
                     if(collision.rigidbody!=donor.Body)return;

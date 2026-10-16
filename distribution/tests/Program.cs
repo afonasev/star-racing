@@ -45,7 +45,7 @@ var production=(JObject)data.DeepClone();production["releaseTrack"]="production"
 DesktopRelease Unsigned(JObject obj,long min=1,string track="production")=>ReleaseAuthentication.VerifyUnsignedProduction(obj.ToString(),"tech.afonasev.star-racing.win-x64","win-x64",min,track);
 Reject(()=>Verify(production.ToString()),"unsigned passed to signed route");
 Reject(()=>Unsigned(production,1,"test"),"unsigned test route");
-#if STAR_RACING_UNSIGNED_PRODUCTION
+#if LEGACY_SOURCE_QA
 var unsignedRelease=Unsigned(production);Require(unsignedRelease.version=="0.3.0","unsigned production accepted with compiled opt-in");
 using(var activationSource=new AuthenticatedUpdateSource(unsignedRelease.appId,unsignedRelease.channel,1)){
  activationSource.Restore(production.ToString());
@@ -72,7 +72,10 @@ Reject(()=>Unsigned(production),"unsigned rejected without compiled opt-in");
 #endif
 await DownloadChecks.Run(data,Envelope,modulus,Require);
 await PublicationChecks.Run(Require);
+await HistoryChecks.Run(Require);
 ApplyPathChecks.Run(Require);
+RecoveryChecks.Run(Require);
+InstallChecks.Run(Require);
 Console.WriteLine("UPDATE_CONTRACTS_OK "+assertions);
 
 if(args.Length==2&&args[0]=="--live-production"){

@@ -3,17 +3,14 @@ using UnityEngine;
 namespace StarRacingPrototype {
  public static class NitroBlurSettings {
   public const string PreferenceKey="StarRacing.NitroBlur";
-  static bool loaded,enabled;
   public static int Revision {get;private set;}
   public static bool Enabled {
-   get {if(!loaded)Reload();return enabled;}
-   set {
-    if(Enabled==value)return;
-    enabled=value;Revision++;
-    PlayerPrefs.SetInt(PreferenceKey,value?1:0);PlayerPrefs.Save();
-   }
+   get=>UserSettingsStore.Current.nitroBlur;
+   set {if(Enabled==value)return;UserSettingsStore.Current.nitroBlur=value;Revision++;UserSettingsStore.Save();}
   }
-  public static void Reload(){enabled=PlayerPrefs.GetInt(PreferenceKey,1)!=0;loaded=true;Revision++;}
+  internal static void NotifyChange(){Revision++;}
+  public static void Reload(){UserSettingsStore.Reload();Revision++;}
+
  }
  // Read the accepted feedback snapshot after the vehicle has published it.
  [DefaultExecutionOrder(200)]

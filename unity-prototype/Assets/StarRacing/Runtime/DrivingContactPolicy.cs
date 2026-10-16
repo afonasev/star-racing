@@ -13,12 +13,13 @@ namespace StarRacingPrototype {
   public int Id,Generation,Revision,Span;
   public float Distance,Lateral,Heading,LeftClearance,RightClearance;
   public Vector3 Velocity,Right,Tangent,Normal;
-  public bool Suppressed,LeftRail,RightRail,GraphMode;
+  public bool Suppressed,SolidSuppressed,LeftRail,RightRail,GraphMode;
   public GraphRaceObservation Graph;public Vector3 Position;
  }
  // A semantic observer only: never applies separation, damping, forces or pose writes.
  public sealed class DrivingContactPolicy {
   sealed class Pair {public int ARevision,BRevision,Generation,LastContact=-2;public bool Audible;}
+  readonly Dictionary<int,Pair> solids=new Dictionary<int,Pair>();
   readonly Dictionary<(int,int),Pair> pairs=new Dictionary<(int,int),Pair>();
   readonly Dictionary<int,DrivingContactObservation> current=new Dictionary<int,DrivingContactObservation>();
   readonly Dictionary<int,int> railSides=new Dictionary<int,int>();
@@ -26,7 +27,7 @@ namespace StarRacingPrototype {
   readonly float lateralDamping,longitudinalDamping;
   int step,sequence;
   public DrivingContactPolicy(float lateral=.72f,float longitudinal=.3f){lateralDamping=lateral;longitudinalDamping=longitudinal;}
-  public void Reset(){pairs.Clear();current.Clear();railSides.Clear();step=sequence=0;}
+  public void Reset(){solids.Clear();pairs.Clear();current.Clear();railSides.Clear();step=sequence=0;}
   public void BeginStep(DrivingContactObservation[] observations){
    step++;var previous=new Dictionary<int,DrivingContactObservation>(current);current.Clear();
    foreach(var a in observations){
@@ -71,6 +72,25 @@ namespace StarRacingPrototype {
    float strength=Score(a,b,lateralDamping,longitudinalDamping);
    if(!onset||p.Audible||strength<.18f)return false;
    p.Audible=true;result=new DrivingContactEvent(DrivingContactKind.Vehicle,a,b,++sequence,strength);return true;
+  }
+  public static float SolidNormalSpeed(Collision collision,Vector3 roadNormal){
+   float speed=-1;
+   for(int i=0;i<collision.contactCount;i++) {
+    var contact=collision.GetContact(i);if(Mathf.Abs(Vector3.Dot(contact.normal,roadNormal))>=.65f)continue;
+    speed=Mathf.Max(speed,Mathf.Abs(Vector3.Dot(collision.relativeVelocity,contact.normal)));
+   }
+   return speed;
+  }
+  public bool Solid(int entrant,float normalSpeed,out DrivingContactEvent result){
+   result=default;if(!current.TryGetValue(entrant,out var a)||a.SolidSuppressed)return false;
+   var key=entrant;
+   if(!solids.TryGetValue(key,out var p)||p.Generation!=a.Generation||p.ARevision!=a.Revision||step-p.LastContact>25) {
+    p=new Pair{ARevision=a.Revision,Generation=a.Generation};solids[key]=p;
+   }
+   p.LastContact=step;
+   if(p.Audible||normalSpeed<2.5f)return false;
+   p.Audible=true;var other=a;other.Id=-1;
+   result=new DrivingContactEvent(DrivingContactKind.Barrier,a,other,++sequence,Mathf.Clamp01(normalSpeed/25f));return true;
   }
   public bool Barrier(int entrant,int side,out DrivingContactEvent result){
    result=default;if(!current.TryGetValue(entrant,out var a)||a.Suppressed||side==0||!(side<0?a.LeftRail:a.RightRail)||side*Vector3.Dot(a.Velocity,a.Right)<=0)return false;

@@ -16,7 +16,8 @@ namespace StarRacingPrototype {
    var renderer=AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/StarRacing/Generated/PrototypeRenderer.asset");
    if(renderer==null){renderer=ScriptableObject.CreateInstance<UniversalRendererData>();AssetDatabase.CreateAsset(renderer,"Assets/StarRacing/Generated/PrototypeRenderer.asset");}
    NitroEdgeBlurRendererFeature.EnsureConfigured(renderer);
-   VehicleContactShadowsRendererFeature.EnsureConfigured(renderer);
+   var contactShadows=VehicleContactShadowsRendererFeature.EnsureConfigured(renderer);
+   ConfigureGraphicsBindings(contactShadows);
    var pipeline=AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>("Assets/StarRacing/Generated/PrototypePipeline.asset");
    if(pipeline==null){pipeline=UniversalRenderPipelineAsset.Create(renderer);AssetDatabase.CreateAsset(pipeline,"Assets/StarRacing/Generated/PrototypePipeline.asset");}
    pipeline.shadowDistance=160;pipeline.shadowCascadeCount=4;pipeline.msaaSampleCount=2;pipeline.renderScale=1;pipeline.mainLightShadowmapResolution=2048;
@@ -31,6 +32,12 @@ namespace StarRacingPrototype {
    PlayerSettings.SetArchitecture(NamedBuildTarget.Standalone,2);
    var scene=EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);new GameObject("Star Racing").AddComponent<RaceStartup>();
    EditorSceneManager.SaveScene(scene,"Assets/StarRacing/Generated/Prototype.unity");EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/StarRacing/Generated/Prototype.unity",true)};AssetDatabase.SaveAssets();
+  }
+  public static void ConfigureGraphicsBindings(UnityEngine.Rendering.Universal.ScriptableRendererFeature feature){
+   const string path="Assets/StarRacing/Resources/GraphicsRuntimeBindings.asset";
+   var bindings=AssetDatabase.LoadAssetAtPath<RaceGraphicsBindings>(path);
+   if(bindings==null){bindings=ScriptableObject.CreateInstance<RaceGraphicsBindings>();AssetDatabase.CreateAsset(bindings,path);}
+   if(bindings.contactShadows!=feature){bindings.contactShadows=feature;EditorUtility.SetDirty(bindings);}AssetDatabase.SaveAssets();
   }
   public static void ConfigureApplicationIcon(){
    var icon=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/StarRacing/Resources/Star-Racing-Icon.png");

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.Rendering;
 namespace StarRacingPrototype {
  // Resources belong to one prepared environment; activation happens only after race publication.
@@ -7,6 +8,10 @@ namespace StarRacingPrototype {
   public Cubemap Reflection {get;private set;}
   readonly float reflectionIntensity;
   Material deckMaterial,mistMaterial;Mesh plane;
+  readonly List<Renderer> mistRenderers=new List<Renderer>();
+  public int MistRendererCount=>mistRenderers.Count;
+  public bool MistEnabled {get;private set;}=true;
+  public void SetMistEnabled(bool enabled){MistEnabled=enabled;foreach(var renderer in mistRenderers)if(renderer!=null)renderer.enabled=enabled;}
   const string Path="Environment/Sky/";
   public TrackSky(EnvironmentPlan plan,TrackRoute route,Transform parent):this(plan,RouteBounds(route),parent) {}
   static Bounds RouteBounds(TrackRoute route){var b=new Bounds(route.Samples[0].position,Vector3.zero);foreach(var s in route.Samples)b.Encapsulate(s.position);return b;}
@@ -35,7 +40,7 @@ namespace StarRacingPrototype {
     plane=new Mesh{name="Render-only cloud plane"};plane.vertices=new[]{new Vector3(-.5f,0,-.5f),new Vector3(-.5f,0,.5f),new Vector3(.5f,0,.5f),new Vector3(.5f,0,-.5f)};
     plane.uv=new[]{Vector2.zero,Vector2.up,Vector2.one,Vector2.right};plane.triangles=new[]{0,1,2,0,2,3};plane.RecalculateNormals();plane.RecalculateBounds();
     AddPlane(parent,"Cloud sea",deckMaterial,new Vector3(bounds.center.x,plan.cityBaseY+25,bounds.center.z),new Vector3(bounds.size.x+3640,1,bounds.size.z+3640));
-    foreach(var tower in plan.towers) for(int layer=0;layer<3;layer++)
+    foreach(var tower in plan.towers.GetRange(0,Mathf.Min(EnvironmentPlan.MaximumMistTowers,plan.NearTowerCount))) for(int layer=0;layer<3;layer++)
      AddPlane(parent,"Tower cloud mist",mistMaterial,new Vector3(tower.position.x,plan.cityBaseY+29+layer*6,tower.position.z),new Vector3(tower.width*7+layer*13,1,tower.width*7+layer*13));
    }
    } catch {Clear();throw;}
@@ -46,6 +51,7 @@ namespace StarRacingPrototype {
   void AddPlane(Transform parent,string name,Material material,Vector3 position,Vector3 scale) {
    var go=new GameObject(name);go.transform.SetParent(parent,false);go.transform.position=position;go.transform.localScale=scale;
    go.AddComponent<MeshFilter>().sharedMesh=plane;var renderer=go.AddComponent<MeshRenderer>();renderer.sharedMaterial=material;renderer.shadowCastingMode=ShadowCastingMode.Off;renderer.receiveShadows=false;
+   if(material==mistMaterial)mistRenderers.Add(renderer);
   }
   public void Activate(){
    RenderSettings.skybox=Material;
@@ -59,7 +65,7 @@ namespace StarRacingPrototype {
     RenderSettings.skybox=null;RenderSettings.customReflectionTexture=null;
     RenderSettings.defaultReflectionMode=DefaultReflectionMode.Skybox;RenderSettings.reflectionIntensity=1;
    }
-   Dispose(Material);Dispose(deckMaterial);Dispose(mistMaterial);Dispose(plane);Material=null;Reflection=null;
+   mistRenderers.Clear();Dispose(Material);Dispose(deckMaterial);Dispose(mistMaterial);Dispose(plane);Material=null;Reflection=null;
   }
   static void Dispose(Object value){if(value==null)return;if(Application.isPlaying)Object.Destroy(value);else Object.DestroyImmediate(value);}
  }

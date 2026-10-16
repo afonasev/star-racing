@@ -130,6 +130,7 @@ namespace StarRacingPrototype
             readonly List<Vector3> vertices = new List<Vector3>();
             readonly List<Vector2> uv = new List<Vector2>();
             readonly List<int> triangles = new List<int>();
+            readonly List<bool> repairable = new List<bool>();
             public int IndexCount=>triangles.Count;
             public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward,SupportCell owner=null,int side=-1,Vector2[] coordinates=null)
             {
@@ -151,6 +152,7 @@ namespace StarRacingPrototype
                 if(Vector3.Cross(vertices[b]-vertices[a],vertices[c]-vertices[a]).sqrMagnitude>1e-12f)
                 {
                     triangles.AddRange(new[]{a,b,c});
+                    repairable.Add(emittingOwner!=null&&emittingSide>=0&&!emittingOwner.sections[emittingSide]);
                     if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
@@ -179,6 +181,7 @@ namespace StarRacingPrototype
                 var exteriorCollider=collisionObject.AddComponent<MeshCollider>();
                 if(graph)exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
                 exteriorCollider.sharedMesh=exterior;
+                collisionObject.AddComponent<RoadSupportContact>().InitializeMesh(exteriorCollider,repairable.GetRange(bottomIndices/3,(triangles.Count-bottomIndices)/3).ToArray());
             }
         }
         static int Key(float value) => Mathf.RoundToInt(value / Tolerance);
@@ -294,6 +297,8 @@ namespace StarRacingPrototype
             Physics.BakeMesh(mesh.GetEntityId(),true,options);
             var go=new GameObject(SupportName);go.transform.SetParent(parent,false);go.transform.localPosition=origin;
             var collider=go.AddComponent<MeshCollider>();collider.convex=true;collider.cookingOptions=options;collider.sharedMesh=mesh;
+            if(triangle.side>=0&&!triangle.owner.sections[triangle.side])
+                go.AddComponent<RoadSupportContact>().Initialize(collider,parent.TransformPoint(triangle.a),parent.TransformPoint(triangle.b),parent.TransformPoint(triangle.c));
             return collider;
             } catch {
                 if(Application.isPlaying)Object.Destroy(mesh);else Object.DestroyImmediate(mesh);

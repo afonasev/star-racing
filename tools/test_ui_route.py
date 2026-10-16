@@ -17,6 +17,7 @@ class UiRouteTests(unittest.TestCase):
             output = root/'proof'
             selected = {'scope':'local-ui', 'required':qa.GATES['local-ui']}
             def record(command, **kwargs):
+                self.assertIn('-noaudio', command)
                 self.assertEqual(command[command.index('-executeMethod')+1], qa.check_method('local-ui'))
                 self.assertNotIn(qa.check_method('full'), command)
                 Path(command[command.index('-logFile')+1]).write_text(

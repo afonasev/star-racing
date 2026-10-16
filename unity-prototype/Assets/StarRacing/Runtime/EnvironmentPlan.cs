@@ -6,6 +6,10 @@ namespace StarRacingPrototype {
     // Rendering data only. No Unity random state, clock, or mutable scene state is read here.
     public sealed class EnvironmentPlan {
         public const int Version = 2;
+        public const int CityLayoutVersion = 1;
+        public const int MaximumCityTowers = 512;
+        public const int MaximumMistTowers = 24;
+        public int NearTowerCount { get; private set; }
         public const float CorridorMargin = 38f;
         public readonly uint seed;
         public readonly string theme;
@@ -31,7 +35,6 @@ namespace StarRacingPrototype {
             seed = sourceSeed;
             theme = sourceTheme;
             lighting = RaceLightingProfile.Create(seed, theme);
-            var decor = new Procedural.SeedRandom(seed ^ 0xb17f00d5u);
             float lowest = float.PositiveInfinity;
             float maxX = float.NegativeInfinity, maxZ = float.NegativeInfinity;
             foreach (var frame in frames) {
@@ -40,19 +43,7 @@ namespace StarRacingPrototype {
                 maxZ = Mathf.Max(maxZ, frame.position.z);
             }
             cityBaseY = lowest - 240f;
-            if (theme == "cloud-city") {
-                for (int attempt = 0; attempt < 240 && towers.Count < 24; attempt++) {
-                    var frame = frames[decor.Int(10, frames.Length - 11)];
-                    float width = (float)decor.Range(18, 32);
-                    float lateral = frame.halfWidth + CorridorMargin + width + (float)decor.Range(18, 85);
-                    float side = decor.Next() < .5 ? -1 : 1;
-                    var center = frame.position + frame.right * (side * lateral);
-                    float height = Mathf.Max(260, frame.position.y - cityBaseY + (float)decor.Range(40, 135));
-                    center.y = cityBaseY + height * .5f;
-                    if (!clear(center, new Vector3(width * .5f, height * .5f, width * .5f), CorridorMargin)) continue;
-                    towers.Add(new CityTower { position = center, width = width, height = height, amber = decor.Next() < .35 });
-                }
-            }
+            if (theme == "cloud-city") BuildMetropolis(frames, clear);
             var space = new Procedural.SeedRandom(seed ^ 0x5aceu);
             var start = frames[0];
             Vector3 forward = Vector3.ProjectOnPlane(start.tangent, Vector3.up).normalized;
@@ -88,6 +79,62 @@ namespace StarRacingPrototype {
             hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity);
         }
 
+        void BuildMetropolis(TrackFrame[] frames, Func<Vector3, Vector3, float, bool> clear) {
+            // Independent presentation streams keep the track, planet and space station identities intact.
+            var near = new Procedural.SeedRandom(seed ^ 0xb17f00d5u);
+            var anchors = new List<TrackFrame>();
+            foreach(var frame in frames)
+                if(anchors.Count == 0 || (frame.position - anchors[anchors.Count-1].position).sqrMagnitude >= 70*70)
+                    anchors.Add(frame);
+            // Shuffle distance-spaced anchors so near buildings/mist/shadows cover the whole route,
+            // including when the cap is reached before a pass ends.
+            var order = new Procedural.SeedRandom(seed ^ 0x616e6368u);
+            for(int i=anchors.Count-1;i>0;i--){int j=order.Int(0,i);var temp=anchors[i];anchors[i]=anchors[j];anchors[j]=temp;}
+            // Visit the whole route on each pass, alternate sides, and never force a rejected placement.
+            for(int pass=0;pass<8 && towers.Count<112;pass++) for(int i=0;i<anchors.Count && towers.Count<112;i++) {
+                var frame=anchors[i];
+                float width=(float)near.Range(18,54);
+                var side=(pass+i)%2==0?1:-1;
+                var lateral=frame.halfWidth+CorridorMargin+width*.56f+(float)near.Range(8,95);
+                var right=Vector3.ProjectOnPlane(frame.right,Vector3.up).normalized;
+                if(right.sqrMagnitude<.1f)right=Vector3.right;
+                var position=frame.position+right*(side*lateral);
+                float height=Mathf.Max(220,frame.position.y-cityBaseY+(float)near.Range(35,220));
+                TryAdd(position,width,height,near.Next()<.35);
+            }
+            NearTowerCount=towers.Count;
+            var bounds=new Bounds(frames[0].position,Vector3.zero);
+            foreach(var frame in frames)bounds.Encapsulate(frame.position);
+            // A jittered district grid surrounds the complete route; shuffled order avoids a directional bias.
+            var districts=new Procedural.SeedRandom(seed ^ 0x6d656761u);
+            float spanX=bounds.size.x+2400,spanZ=bounds.size.z+2400;
+            var cells=new List<Vector2Int>();for(int z=0;z<20;z++)for(int x=0;x<20;x++)cells.Add(new Vector2Int(x,z));
+            for(int i=cells.Count-1;i>0;i--){int j=districts.Int(0,i);var tmp=cells[i];cells[i]=cells[j];cells[j]=tmp;}
+            foreach(var cell in cells) {
+                var position=new Vector3(bounds.min.x-1200+(cell.x+.5f+(float)districts.Range(-.22,.22))*spanX/20,0,
+                    bounds.min.z-1200+(cell.y+.5f+(float)districts.Range(-.22,.22))*spanZ/20);
+                float width=(float)districts.Range(26,84);
+                double kind=districts.Next();
+                float height=(float)(kind<.25?districts.Range(180,280):kind<.78?districts.Range(300,490):districts.Range(530,780));
+                TryAdd(position,width,height,districts.Next()<.35);
+            }
+
+            void TryAdd(Vector3 position,float width,float height,bool amber) {
+                if(towers.Count>=MaximumCityTowers)return;
+                position.y=cityBaseY+height*.5f;
+                var candidate=new CityTower{position=position,width=width,height=height,amber=amber};
+                var extents=TowerExtents(candidate);
+                foreach(var other in towers) {
+                    float spacing=extents.x+TowerExtents(other).x+12;
+                    if(Mathf.Abs(position.x-other.position.x)<spacing && Mathf.Abs(position.z-other.position.z)<spacing)return;
+                }
+                if(clear(position,extents,CorridorMargin))towers.Add(candidate);
+            }
+        }
+
+        // Roof trim is 1.12 widths wide; the navigation lamp rises 3m above the roof.
+        public static Vector3 TowerExtents(CityTower tower) => new Vector3(tower.width*.56f,tower.height*.5f+3,tower.width*.56f);
+
         public static EnvironmentPlan Create(TrackRoute route, uint? skySeed = null) {
             if (route == null || route.Definition == null) throw new ArgumentException("Procedural route required");
             return new EnvironmentPlan(route, skySeed);
@@ -119,6 +166,7 @@ namespace StarRacingPrototype {
                 Action<int> add = n => { value = (value ^ (uint)n) * 16777619; };
                 add(Version); add((int)seed); add(theme == "space-station" ? 2 : 1);
                 add(lighting.HashCode()); add(skyPlanetVariant);
+                if(theme == "cloud-city") add(CityLayoutVersion);
                 foreach (var tower in towers) {
                     add(Mathf.RoundToInt(tower.position.x * 100)); add(Mathf.RoundToInt(tower.position.y * 100));
                     add(Mathf.RoundToInt(tower.position.z * 100)); add(Mathf.RoundToInt(tower.width * 100));
@@ -164,7 +212,7 @@ namespace StarRacingPrototype {
                 ambientEquatorColor = new Color(.46f, .50f, .54f), ambientGroundColor = new Color(.38f, .40f, .43f),
                 reflectionIntensity = .65f,
                 // Distance haze separates the far skyline while leaving the first 100m legible.
-                skyColor = skyColor, fogColor = new Color(.69f, .78f, .86f), fogDensity = .00155f };
+                skyColor = skyColor, fogColor = new Color(.69f, .78f, .86f), fogDensity = .0006f };
         }
 
         public int HashCode() {

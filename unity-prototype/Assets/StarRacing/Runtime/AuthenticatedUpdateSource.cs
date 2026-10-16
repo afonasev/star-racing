@@ -68,8 +68,12 @@ namespace StarRacingPrototype.Distribution {
   }
  }
 
- public sealed class AuthenticatedUpdateSource:IUpdateSource,IDisposable {
+ public sealed partial class AuthenticatedUpdateSource:IUpdateSource,IDisposable {
   readonly HttpClient client;
+  CancellationTokenSource network=new CancellationTokenSource();
+  public bool NetworkSuspended=>network.IsCancellationRequested;
+  public void SuspendNetwork(){network.Cancel();}
+  public void ResumeNetwork(){if(network.IsCancellationRequested){network.Dispose();network=new CancellationTokenSource();}}
   readonly string appId,channel,track,modulus;
   public long MinimumSequence {get;set;}
   public string Envelope {get;private set;}
@@ -83,11 +87,12 @@ namespace StarRacingPrototype.Distribution {
    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version","2022-11-28");
   }
+  CancellationTokenSource MetadataTimeout(){var timeout=CancellationTokenSource.CreateLinkedTokenSource(network.Token);timeout.CancelAfter(TimeSpan.FromSeconds(20));return timeout;}
   // Presentation metadata only: never participates in update authorization.
   public async Task<string> PublicationDate(string installedVersion){
    var version=SemanticVersion.Parse(installedVersion);
    if(version.ToNormalizedString()!=installedVersion)throw new InvalidDataException("Invalid installed version");
-   using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+   using(var timeout=MetadataTimeout())
    using(var response=await client.GetAsync("https://api.github.com/repos/afonasev/star-racing/releases/tags/v"+installedVersion,HttpCompletionOption.ResponseHeadersRead,timeout.Token).ConfigureAwait(false)){
     response.EnsureSuccessStatusCode();
     using(var input=await response.Content.ReadAsStreamAsync().ConfigureAwait(false))using(var output=new MemoryStream()){
@@ -100,10 +105,30 @@ namespace StarRacingPrototype.Distribution {
     }
    }
   }
+  public async Task<string> RecoveryBaseline(string installedVersion,System.Threading.CancellationToken token){
+   var version=SemanticVersion.Parse(installedVersion);if(version.ToNormalizedString()!=installedVersion)throw new InvalidDataException("Invalid installed version");
+   string descriptor;
+   try{descriptor=await DescriptorAsset(installedVersion,"signed-"+channel+".json",token).ConfigureAwait(false);}
+   catch(FileNotFoundException){descriptor=await DescriptorAsset(Release.version,"recovery-baseline-"+channel+".json",token).ConfigureAwait(false);}
+   var baseline=ReleaseAuthentication.Verify(descriptor,appId,channel,0,track,modulus);
+   if(baseline.version!=installedVersion)throw new InvalidDataException("Нет подписанного пакета восстановления установленной версии");return descriptor;
+  }
+  async Task<string> DescriptorAsset(string version,string name,CancellationToken token){
+   using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(token,network.Token)){
+    timeout.CancelAfter(TimeSpan.FromSeconds(20));
+    var response=await GetPackageHeaders("https://github.com/afonasev/star-racing/releases/download/v"+version+"/"+name,timeout.Token).ConfigureAwait(false);
+    if((int)response.StatusCode==301||(int)response.StatusCode==302||(int)response.StatusCode==307){var location=response.Headers.Location;response.Dispose();if(!ReleaseAuthentication.IsReleaseRedirect(location))throw new InvalidDataException("Invalid descriptor redirect");response=await GetPackageHeaders(location.AbsoluteUri,timeout.Token).ConfigureAwait(false);}
+    using(response){if(response.StatusCode==System.Net.HttpStatusCode.NotFound)throw new FileNotFoundException("Signed baseline unavailable");response.EnsureSuccessStatusCode();
+     using(var input=await response.Content.ReadAsStreamAsync().ConfigureAwait(false))using(var output=new MemoryStream()){
+      await CopyBounded(input,output,131072,timeout.Token,null).ConfigureAwait(false);return new UTF8Encoding(false,true).GetString(output.ToArray());
+     }
+    }
+   }
+  }
   public void Restore(string envelope){var release=VerifyStored(envelope);Release=release;Envelope=envelope;}
   public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger,string requestedAppId,string requestedChannel,Guid? stagingId=null,VelopackAsset latestLocalRelease=null){
    if(requestedAppId!=appId||requestedChannel!=channel)throw new InvalidDataException("Неподходящий канал обновлений");
-   using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+   using(var timeout=MetadataTimeout())
    using(var response=await client.GetAsync("https://api.github.com/repos/afonasev/star-racing/releases/tags/channel-"+track,HttpCompletionOption.ResponseHeadersRead,timeout.Token).ConfigureAwait(false)){
     response.EnsureSuccessStatusCode();
     using(var input=await response.Content.ReadAsStreamAsync().ConfigureAwait(false))using(var output=new MemoryStream()){
@@ -122,6 +147,8 @@ namespace StarRacingPrototype.Distribution {
    return new VelopackAssetFeed{Assets=new[]{Release.Asset}};
   }
   public async Task DownloadReleaseEntry(IVelopackLogger logger,VelopackAsset asset,string localFile,Action<int> progress,CancellationToken cancelToken=default){
+   using(var linked=CancellationTokenSource.CreateLinkedTokenSource(cancelToken,network.Token)){
+   cancelToken=linked.Token;cancelToken.ThrowIfCancellationRequested();
    var release=VerifyStored(Envelope);
    if(!DownloadConsent||asset.PackageId!=release.appId||asset.Version!=SemanticVersion.Parse(release.version)||asset.Type!=VelopackAssetType.Full||asset.FileName!=release.fileName||asset.Size!=release.size||!string.Equals(asset.SHA256,release.sha256,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Загрузка не согласована или пакет изменился");
    try{
@@ -134,6 +161,7 @@ namespace StarRacingPrototype.Distribution {
     }
     ReleaseAuthentication.VerifyFile(release,localFile); // Before SDK extracts/replaces its native helper.
    }catch{if(File.Exists(localFile))File.Delete(localFile);throw;}
+   }
   }
   public DesktopRelease VerifyDescriptor(string descriptor)=>VerifyStored(descriptor);
   DesktopRelease VerifyStored(string descriptor){
@@ -170,6 +198,6 @@ namespace StarRacingPrototype.Distribution {
     await output.WriteAsync(buffer,0,count,token).ConfigureAwait(false);progress?.Invoke((int)(copied*100/limit));
    }
   }
-  public void Dispose(){client.Dispose();}
+  public void Dispose(){network.Cancel();client.Dispose();network.Dispose();}
  }
 }
