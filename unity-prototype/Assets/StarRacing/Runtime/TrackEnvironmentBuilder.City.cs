@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 namespace StarRacingPrototype {
@@ -23,12 +24,13 @@ namespace StarRacingPrototype {
                 }
                 foreach(int index in triangles)batch.triangles.Add(start+index);
             }
-            public void Flush() {
+            public IEnumerator FlushSteps() {
                 foreach(var batch in batches.Values) {
                     var mesh=new Mesh{name="City district mesh"};
                     if(batch.vertices.Count>65535)mesh.indexFormat=UnityEngine.Rendering.IndexFormat.UInt32;
                     mesh.SetVertices(batch.vertices);mesh.SetNormals(batch.normals);mesh.SetUVs(0,batch.uv);mesh.SetTriangles(batch.triangles,0);mesh.RecalculateBounds();
                     owner.meshes.Add(mesh);owner.Shape("City district",mesh,batch.material,batch.origin,Quaternion.identity,Vector3.one,false);
+                    yield return null;
                 }
             }
             sealed class Batch {

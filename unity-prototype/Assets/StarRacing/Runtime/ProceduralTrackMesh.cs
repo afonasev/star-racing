@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -103,12 +104,16 @@ public static class ProceduralTrackMesh
         return (2 * u * u * u - 3 * u * u + 1) * 2.8f + (u * u * u - 2 * u * u + u) * .12f * (end - launch);
     }
     public static void Build(Transform parent, TrackRoute route, Material roadMaterial, Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null)
+    {LoadingWork.Drain(BuildSteps(parent,route,roadMaterial,railMaterial,observer));}
+    internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,Material roadMaterial,Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null)
     {
+        var budget=new LoadingWork.Budget();
         var road = new Geometry();
         var rails = new Geometry();
         var d = route.Definition;
         for (int i = 0; i < route.Samples.Length - 1; i++)
         {
+            if(budget.Due){yield return null;budget.Restart();}
             var a = route.Samples[i];
             var b = route.Samples[i + 1];
             bool runout = a.distance < 30 || a.distance >= route.FinishDistance;
@@ -215,8 +220,10 @@ public static class ProceduralTrackMesh
                 }
             }
         }
+        yield return null;
         road.Create(parent, "Procedural road", roadMaterial, true);
-        RoadVolumeMesh.Build(parent, route, road.vertices, road.faces,road.triangles, roadMaterial,observer);
+        yield return null;
+        yield return RoadVolumeMesh.BuildSteps(parent, route, road.vertices, road.faces,road.triangles, roadMaterial,observer);
         rails.Create(parent, "Procedural guard rails", railMaterial, false);
     }
 }

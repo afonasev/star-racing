@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -29,6 +30,10 @@ namespace StarRacingPrototype {
             Action<Transform,RoadVolumeMesh.SupportTriangle> observer=null) => BuildCore(parent,graph,buildRevision,roadMaterial,railMaterial,observer,true,true);
         static GraphRoadSurface BuildCore(Transform parent,IndependentGraph graph,int buildRevision,Material roadMaterial,Material railMaterial,
             Action<Transform,RoadVolumeMesh.SupportTriangle> observer,bool commonVertical,bool commonCatalog=false) {
+            GraphRoadSurface result=null;LoadingWork.Drain(BuildSteps(parent,graph,buildRevision,roadMaterial,railMaterial,observer,commonVertical,commonCatalog,value=>result=value));return result;
+        }
+        internal static IEnumerator BuildSteps(Transform parent,IndependentGraph graph,int buildRevision,Material roadMaterial,Material railMaterial,Action<Transform,RoadVolumeMesh.SupportTriangle> observer,bool commonVertical,bool commonCatalog,Action<GraphRoadSurface> completed) {
+            var budget=new LoadingWork.Budget();
             if(!parent.position.Equals(Vector3.zero) || !parent.rotation.Equals(Quaternion.identity) || !parent.lossyScale.Equals(Vector3.one))
                 throw new ArgumentException("Graph coordinates require an identity parent transform");
             if(parent.childCount!=0 || parent.GetComponents<Component>().Length!=1)throw new ArgumentException("Graph compiler requires a dedicated empty root");
@@ -70,6 +75,7 @@ namespace StarRacingPrototype {
             var geometryRoot=new GameObject("Independent geometry frame");geometryRoot.transform.SetParent(parent,false);
             geometryRoot.transform.localPosition=carrier.origin.Float;
             geometryRoot.transform.localRotation=Quaternion.LookRotation(carrier.tangent.Float,carrier.normal.Float);
+            bool complete=false;
             try {
             TrackFrame LocalFrame(RoadFace face,float distance) {
                 if(face.geometryId==3 || face.geometryId==4) {
@@ -126,6 +132,7 @@ namespace StarRacingPrototype {
                 }
                 int steps=stations.Count-1;
                 for(int i=0;i<steps;i++) {
+                    if(budget.Due){yield return null;budget.Restart();}
                     var a=edge.Evaluate(stations[i]);var b=edge.Evaluate(stations[i+1]);
                     int start=i==0?edge.fromPort:0,end=i==steps-1?edge.toPort:0;
                     // Uniform .5m cross-port cuts include q=0 and match both node halves.
@@ -203,6 +210,7 @@ namespace StarRacingPrototype {
                 var pieces=new List<(ProceduralTrackMesh.Geometry geometry,Vector3 offset)>();Vector3 chunkOffset=Vector3.zero;
                 int previousGeometry=-1;bool previousPlanar=false;ProceduralTrackMesh.Geometry piece=null;
                 for(int q=0;q<road.vertices.Count/4;q++) {
+                    if(budget.Due){yield return null;budget.Restart();}
                     int at=q*4;var face=road.faces[q*2];
                     bool planar=road.vertices[at].y==0 && road.vertices[at+1].y==0 && road.vertices[at+2].y==0 && road.vertices[at+3].y==0;
                     if(piece==null || face.geometryId!=previousGeometry || planar!=previousPlanar) {
@@ -225,13 +233,15 @@ namespace StarRacingPrototype {
                     var context=geometryRoot.transform;
                     if(chunk.offset!=Vector3.zero){var pivot=new GameObject("Common strip local origin");pivot.transform.SetParent(context,false);pivot.transform.localPosition=chunk.offset;context=pivot.transform;}
                     chunk.geometry.Create(context,"Independent road",roadMaterial,true);
+                    yield return null;budget.Restart();
                 }
             }
-            RoadVolumeMesh.BuildGraph(geometryRoot.transform,LocalFrame,road.vertices,road.faces,road.triangles,roadMaterial,observer==null?null:tri=>observer(geometryRoot.transform,tri),port=>Up(graph.ports.Single(p=>p.id==port).frame));
+            yield return RoadVolumeMesh.BuildGraphSteps(geometryRoot.transform,LocalFrame,road.vertices,road.faces,road.triangles,roadMaterial,observer==null?null:tri=>observer(geometryRoot.transform,tri),port=>Up(graph.ports.Single(p=>p.id==port).frame));
             if(rails.triangles.Count>0)rails.Create(geometryRoot.transform,"Independent guard rails",railMaterial,false);
             var surface=parent.gameObject.AddComponent<GraphRoadSurface>();surface.Initialize(graph,buildRevision);
-            return surface;
-            } catch {
+            completed(surface);complete=true;
+            } finally {
+                if(!complete){
                 var meshes=new HashSet<Mesh>();
                 foreach(var filter in geometryRoot.GetComponentsInChildren<MeshFilter>())if(filter.sharedMesh!=null)meshes.Add(filter.sharedMesh);
                 foreach(var collider in geometryRoot.GetComponentsInChildren<MeshCollider>())if(collider.sharedMesh!=null)meshes.Add(collider.sharedMesh);
@@ -240,7 +250,7 @@ namespace StarRacingPrototype {
                 geometryRoot.transform.SetParent(null,false);
                 if(Application.isPlaying)UnityEngine.Object.Destroy(geometryRoot);else UnityEngine.Object.DestroyImmediate(geometryRoot);
                 foreach(var mesh in meshes)if(Application.isPlaying)UnityEngine.Object.Destroy(mesh);else UnityEngine.Object.DestroyImmediate(mesh);
-                throw;
+                }
             }
         }
     }

@@ -8,9 +8,9 @@ namespace StarRacingPrototype {
   public static readonly Color[] PlayerColors={new Color(.1f,.4f,1),new Color(.94f,.36f,.12f),new Color(0,.62f,.69f),new Color(.48f,.23f,.9f)};
   public readonly Texture2D Background,CloudPreview,SpacePreview,RandomPreview,KeyboardGuide,GamepadGuide;
   readonly GUIStyle normal,bold,field;
-  public CloudlineSkin(){
+  public CloudlineSkin(bool loadingOnly=false){
    Background=Resources.Load<Texture2D>("UI/CloudlineBackground");
-   RandomPreview=Resources.Load<Texture2D>("UI/ThemeRandom");CloudPreview=Resources.Load<Texture2D>("UI/ThemeCloudCity");SpacePreview=Resources.Load<Texture2D>("UI/ThemeSpaceStation");KeyboardGuide=Resources.Load<Texture2D>("UI/ControlsKeyboard");GamepadGuide=Resources.Load<Texture2D>("UI/ControlsGamepad");
+   if(!loadingOnly){RandomPreview=Resources.Load<Texture2D>("UI/ThemeRandom");CloudPreview=Resources.Load<Texture2D>("UI/ThemeCloudCity");SpacePreview=Resources.Load<Texture2D>("UI/ThemeSpaceStation");KeyboardGuide=Resources.Load<Texture2D>("UI/ControlsKeyboard");GamepadGuide=Resources.Load<Texture2D>("UI/ControlsGamepad");}
    var regular=Resources.Load<Font>("UI/NotoSans-Regular")??Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
    var heavy=Resources.Load<Font>("UI/NotoSans-Bold")??regular;
    normal=new GUIStyle{font=regular,wordWrap=false,richText=false};bold=new GUIStyle(normal){font=heavy};

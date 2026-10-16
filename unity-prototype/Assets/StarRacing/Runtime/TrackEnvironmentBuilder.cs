@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -21,15 +23,18 @@ namespace StarRacingPrototype {
         public TrackSky Sky { get; private set; }
         public Transform Root => root == null ? null : root.transform;
 
-        public void Build(TrackRoute route, Transform roadRoot, uint? skySeed = null) {
+        public void Build(TrackRoute route,Transform roadRoot,uint? skySeed=null)=>LoadingWork.Drain(BuildSteps(route,roadRoot,skySeed,false));
+        internal IEnumerator BuildSteps(TrackRoute route, Transform roadRoot, uint? skySeed=null,bool background=true) {
             Clear();
-            Plan = EnvironmentPlan.Create(route, skySeed);
+            if(background){var task=LoadingWork.Background(()=>EnvironmentPlan.Create(route,skySeed));while(!task.IsCompleted)yield return null;Plan=task.GetAwaiter().GetResult();}
+            else Plan=EnvironmentPlan.Create(route,skySeed);
             root = new GameObject("Track environment " + Plan.theme);
             cube = CreateCube(); sphere = CreateSphere(12, 16);
-            BuildRoadDistricts(route, roadRoot);
-            BuildRailSurfaces(roadRoot);
-            if (Plan.theme == "cloud-city") BuildCity(route);
-            else BuildSpace(route);
+            yield return null;BuildRoadDistricts(route, roadRoot);
+            yield return null;BuildRailSurfaces(roadRoot);
+            if (Plan.theme == "cloud-city") yield return BuildCitySteps(route);
+            else yield return BuildSpaceSteps(route);
+            yield return null;
             Sky = new TrackSky(Plan, route, root.transform);
 
         }
@@ -182,7 +187,8 @@ namespace StarRacingPrototype {
             }
         }
 
-        void BuildCity(TrackRoute route) {
+        IEnumerator BuildCitySteps(TrackRoute route) {
+            var budget=new LoadingWork.Budget();
             var silver = Lit(new Color(.85f, .91f, .95f), .48f);
             var facade = Lit(new Color(.86f, .94f, 1f), .22f, false, "Facade", .38f);
             var blue = Lit(new Color(.65f, .8f, .95f), .22f, false, "Facade", .38f);
@@ -191,6 +197,7 @@ namespace StarRacingPrototype {
             var amber = Lit(new Color(1, .65f, .24f), .05f, true);
             var batches = new CityBatches(this);
             for (int i = 0; i < Plan.towers.Count; i++) {
+                if(budget.Due){yield return null;budget.Restart();}
                 var tower = Plan.towers[i];
                 var material = i % 3 == 0 ? facade : i % 3 == 1 ? blue : dark;
                 var top = tower.position + Vector3.up * (tower.height * .5f);
@@ -208,7 +215,7 @@ namespace StarRacingPrototype {
                 if(i%3==0)batches.Box(tower.amber?amber:teal,top+Vector3.up*1.5f,new Vector3(2.2f,3f,2.2f),4);
 
             }
-            batches.Flush();
+            yield return batches.FlushSteps();
         }
 
         void BuildTowerTrim(Vector3 center, Vector3 top, float width, float height, Material silver) {
@@ -240,7 +247,8 @@ namespace StarRacingPrototype {
             }
         }
 
-        void BuildSpace(TrackRoute route) {
+        IEnumerator BuildSpaceSteps(TrackRoute route) {
+            var budget=new LoadingWork.Budget();
             var hull = Lit(new Color(.51f, .62f, .72f), .72f);
             var shadow = Lit(new Color(.22f, .31f, .44f), .63f);
             var cyan = Lit(new Color(.18f, .86f, 1), .1f, true);
@@ -260,6 +268,7 @@ namespace StarRacingPrototype {
                       Quaternion.FromToRotation(Vector3.up, link), new Vector3(.8f, link.magnitude, .8f), false);
             }
             for (float distance = 0; distance < route.Length; distance += 80f) {
+                if(budget.Due){yield return null;budget.Restart();}
                 var spans = route.PavedAt(distance);
                 if (route.IsJumpRegion(distance) || spans.Length == 0) continue;
                 var frame = route.Evaluate(distance);

@@ -22,7 +22,7 @@ namespace StarRacingPrototype {
   void LabLeave(RaceMenuScreen screen,Gamepad source){LabGuard(()=>{labBypass=true;try{Open(screen,source);}finally{labBypass=false;}});}
   public void GuardExit(Action action){if(!LabDirty){action();return;}ScreenState=RaceMenuScreen.Lab;LabGuard(action);}
   bool LabQuit(){if(!LabDirty||labBypass)return true;ScreenState=RaceMenuScreen.Lab;LabGuard(()=>{labBypass=true;Application.Quit();});return false;}
-  void OnDestroy(){Application.wantsToQuit-=LabQuit;}
+  void OnDestroy(){CancelLoading();Application.wantsToQuit-=LabQuit;}
   bool LabInput(Keyboard keyboard,Gamepad pad){
    if(ScreenState!=RaceMenuScreen.Lab)return false;
    bool back=(keyboard!=null&&keyboard.escapeKey.wasPressedThisFrame)||(pad!=null&&pad.buttonEast.wasPressedThisFrame);

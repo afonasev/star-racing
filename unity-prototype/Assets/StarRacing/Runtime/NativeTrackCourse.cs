@@ -61,17 +61,23 @@ namespace StarRacingPrototype {
  public static class NativeTrackGenerator {
   public static readonly string[] Families={"speed","technical","vertical","path-choice"};
   public static string FamilyFor(uint seed,string theme)=>Families[new Procedural.SeedRandom(seed^(theme=="space-station"?0x5a710a1eu:0u)).Int(0,3)];
-  public static NativeTrackCourse Generate(uint seed,Procedural.GraphCourseSettings settings,int revision=12,bool fallback=false) {
+  internal sealed class Generated {
+   internal Procedural.Definition single;internal Procedural.GraphCourseDefinition independent;internal Procedural.GraphCourseSettings settings;
+   internal NativeTrackCourse Complete()=>new NativeTrackCourse(single,independent,settings);
+  }
+  public static NativeTrackCourse Generate(uint seed,Procedural.GraphCourseSettings settings,int revision=12,bool fallback=false)=>GenerateData(seed,settings,revision,fallback).Complete();
+  // Pure managed generation only. NativeTrackCourse serialization is finalized on main thread.
+  internal static Generated GenerateData(uint seed,Procedural.GraphCourseSettings settings,int revision=12,bool fallback=false) {
    if(settings==null)throw new ArgumentNullException(nameof(settings));
    if(revision==10||revision==11) {
     var old=fallback?Procedural.Generator.GenerateFallback(seed,settings.rails,settings.theme,settings.jumps,true,revision):Procedural.Generator.Generate(seed,settings.rails,settings.theme,settings.jumps,true,revision);
-    return new NativeTrackCourse(old,null,settings);
+    return new Generated{single=old,settings=settings};
    }
    if(revision!=12)throw new ArgumentException("Unsupported native revision");
    string family=FamilyFor(seed,settings.theme);
-   if(family!="path-choice")return new NativeTrackCourse(Procedural.Generator.GenerateNative12(seed,settings.rails,settings.theme,settings.jumps,family,fallback),null,settings);
+   if(family!="path-choice")return new Generated{single=Procedural.Generator.GenerateNative12(seed,settings.rails,settings.theme,settings.jumps,family,fallback),settings=settings};
    var graph=Procedural.GraphCourseGenerator.SelectProfile(seed,settings,fallback,actual=>Procedural.GraphNativeCatalog.Candidate(actual,settings),actual=>Procedural.GraphNativeCatalog.ProfileBase+Procedural.GraphNativeCatalog.ProfileFor(actual));
-   return new NativeTrackCourse(null,graph,settings);
+   return new Generated{independent=graph,settings=settings};
   }
  }
 }

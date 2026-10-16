@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -188,16 +189,19 @@ namespace StarRacingPrototype
 
         public static void Build(Transform parent, TrackRoute route, IList<Vector3> top, IList<RoadFace> faces,IList<int> topTriangles, Material material,System.Action<SupportTriangle> observer=null)
         {
-            BuildCore(parent, (face,distance)=>route.Evaluate(distance), top, faces, topTriangles, material, observer, null);
+            LoadingWork.Drain(BuildSteps(parent,route,top,faces,topTriangles,material,observer));
         }
         public static void BuildGraph(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
             IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer=null, System.Func<int,Vector3> portNormal=null)
         {
-            BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
+            LoadingWork.Drain(BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal));
         }
-        static void BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
+        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null);
+        internal static IEnumerator BuildGraphSteps(Transform parent,System.Func<RoadFace,float,TrackFrame> evaluate,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer,System.Func<int,Vector3> portNormal)=>BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
+        static IEnumerator BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
             IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal)
         {
+            var budget=new LoadingWork.Budget();
             var supports=observer==null?new List<SupportTriangle>():null;
             var shell = new Geometry(observer??(triangle=>supports.Add(triangle)));
             // Section edges may have different subdivisions on their two sides.
@@ -208,6 +212,7 @@ namespace StarRacingPrototype
             var along = new Dictionary<(int, int, int, int, int, int), List<Edge>>();
             for (int q = 0; q < top.Count / 4; q++)
             {
+                if(budget.Due){yield return null;budget.Restart();}
                 RoadFace face = faces[q*2]; int at = q*4;
                 var start = evaluate(face,face.startDistance); var end = evaluate(face,face.endDistance);
                 if(face.canonicalFlatPorts) {
@@ -263,12 +268,14 @@ namespace StarRacingPrototype
                 }
             }
             int bottomIndices=shell.IndexCount;
-            foreach (var group in sections.Values) CloseGroup(shell,group);
-            foreach (var group in along.Values) CloseGroup(shell,group);
+            foreach (var group in sections.Values){CloseGroup(shell,group);if(budget.Due){yield return null;budget.Restart();}}
+            foreach (var group in along.Values){CloseGroup(shell,group);if(budget.Due){yield return null;budget.Restart();}}
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
+            yield return null;budget.Restart();
             shell.Create(parent,material,bottomIndices,portNormal!=null);
-            if(supports!=null)foreach(var triangle in supports)CreateSupport(parent,triangle);
+            yield return null;budget.Restart();
+            if(supports!=null)foreach(var triangle in supports){CreateSupport(parent,triangle);if(budget.Due){yield return null;budget.Restart();}}
         }
         public static MeshCollider CreateSupport(Transform parent,SupportTriangle triangle)
         {

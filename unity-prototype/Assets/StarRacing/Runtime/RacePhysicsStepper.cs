@@ -111,7 +111,7 @@ namespace StarRacingPrototype
             if(owner!=null && owner!=this)throw new InvalidOperationException("A physics scene already has a race stepper");
             owner=this;previousMode=Physics.simulationMode;Physics.simulationMode=SimulationMode.Script;owns=true;
         }
-        void FixedUpdate(){if(owns)SimulatePrepared(vehicles,Time.fixedDeltaTime);}
+        void FixedUpdate(){if(owns&&!LoadingWork.SimulationFrozen)SimulatePrepared(vehicles,Time.fixedDeltaTime);}
         void OnDisable()
         {
             if(!owns)return;

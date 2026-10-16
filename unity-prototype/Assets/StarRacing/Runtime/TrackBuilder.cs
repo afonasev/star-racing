@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -26,7 +27,8 @@ namespace StarRacingPrototype {
         PhysicsMaterial roadContactMaterial;
         PhysicsMaterial barrierContactMaterial;
 
-        public void Build(TrackRoute route) {
+        public void Build(TrackRoute route)=>LoadingWork.Drain(BuildSteps(route));
+        IEnumerator BuildSteps(TrackRoute route) {
             buildRevision++;
             Route = route ?? throw new System.ArgumentNullException(nameof(route));
             ClearGenerated();
@@ -48,7 +50,7 @@ namespace StarRacingPrototype {
                 frictionCombine = PhysicsMaterialCombine.Minimum,
                 bounceCombine = PhysicsMaterialCombine.Minimum
             };
-            ProceduralTrackMesh.Build(transform, Route, roadMaterial, railMaterial);
+            yield return ProceduralTrackMesh.BuildSteps(transform, Route, roadMaterial, railMaterial);
             foreach(var collider in GetComponentsInChildren<MeshCollider>())
                 if(collider.sharedMesh!=null && collider.sharedMesh.name=="Procedural guard rails")
                 {
@@ -111,9 +113,10 @@ namespace StarRacingPrototype {
             }
         }
 
-        public void BuildNativeCourse(NativeTrackCourse course) {
-            if(!course.IsIndependent){Build(new TrackRoute(course.Single));return;}
-            BuildIndependentCommonCatalog(course.Graph);
+        public void BuildNativeCourse(NativeTrackCourse course)=>LoadingWork.Drain(BuildNativeSteps(course));
+        internal IEnumerator BuildNativeSteps(NativeTrackCourse course) {
+            if(!course.IsIndependent){yield return BuildSteps(new TrackRoute(course.Single));yield break;}
+            yield return BuildIndependentSteps(course.Graph,(marks,bounds)=>marks.Initialize(bounds),true,true);
             TrackFrame Frame(Procedural.GraphFrame f)=>new TrackFrame{distance=(float)f.distance,position=f.position.Float,tangent=f.tangent.Float,normal=f.normal.Float,right=-f.right.Float,halfWidth=(float)f.halfWidth};
             BuildFrameLine(Frame(course.Graph.Road(0).Evaluate(course.Start)),"START",Color.cyan);
             var exit=course.Graph.Road(5);BuildFrameLine(Frame(exit.Evaluate(exit.PhysicalDistance(course.Finish))),"FINISH",Color.white);
@@ -125,7 +128,8 @@ namespace StarRacingPrototype {
         public void BuildIndependentCommonVertical(Procedural.IndependentGraph graph)=>BuildIndependentCore(graph,(marks,bounds)=>marks.Initialize(bounds),true);
         public void BuildIndependentCommonCatalog(Procedural.IndependentGraph graph)=>BuildIndependentCore(graph,(marks,bounds)=>marks.Initialize(bounds),true,true);
         void BuildIndependent(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks)=>BuildIndependentCore(graph,initializeMarks,false);
-        void BuildIndependentCore(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks,bool commonVertical,bool commonCatalog=false) {
+        void BuildIndependentCore(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks,bool commonVertical,bool commonCatalog=false)=>LoadingWork.Drain(BuildIndependentSteps(graph,initializeMarks,commonVertical,commonCatalog));
+        IEnumerator BuildIndependentSteps(Procedural.IndependentGraph graph,System.Action<DriftTireMarks,Bounds> initializeMarks,bool commonVertical,bool commonCatalog=false) {
             buildRevision++;ClearGenerated();Route=null;GraphSurface=null;
             roadMaterial=CreateMaterial(new Color(.055f,.07f,.11f),.18f);
             railMaterial=CreateMaterial(new Color(.18f,.7f,.85f),.4f,"Hull");
@@ -138,8 +142,9 @@ namespace StarRacingPrototype {
                 frictionCombine=PhysicsMaterialCombine.Minimum,bounceCombine=PhysicsMaterialCombine.Minimum
             };
             var root=new GameObject("Independent road build");root.transform.SetParent(transform,false);
+            bool complete=false;
             try {
-                GraphSurface=commonCatalog?IndependentTrackMesh.BuildCommonCatalog(root.transform,graph,buildRevision,roadMaterial,railMaterial):commonVertical?IndependentTrackMesh.BuildCommonVertical(root.transform,graph,buildRevision,roadMaterial,railMaterial):IndependentTrackMesh.Build(root.transform,graph,buildRevision,roadMaterial,railMaterial);
+                yield return IndependentTrackMesh.BuildSteps(root.transform,graph,buildRevision,roadMaterial,railMaterial,null,commonVertical,commonCatalog,value=>GraphSurface=value);
                 var marks=new GameObject("Graph drift tire marks");marks.transform.SetParent(transform,false);TireMarks=marks.AddComponent<DriftTireMarks>();
                 initializeMarks(TireMarks,new GraphEnvironmentGeometry(graph).Bounds);
                 foreach(var collider in root.GetComponentsInChildren<MeshCollider>()) {
@@ -148,7 +153,8 @@ namespace StarRacingPrototype {
                     collider.gameObject.layer=rail?BarrierCollisionLayer:RoadCollisionLayer;
                     if(rail)barriers.Add(collider);
                 }
-            } catch { ClearGenerated();GraphSurface=null;Route=null;throw; }
+                complete=true;
+            } finally {if(!complete){ClearGenerated();GraphSurface=null;Route=null;}}
         }
 
         public bool RaycastRoad(Vector3 origin, Vector3 direction, float maxDistance, float progress, out RaycastHit hit) {
@@ -205,6 +211,12 @@ namespace StarRacingPrototype {
         }
 
         void DisposeResources() {
+            foreach(var filter in GetComponentsInChildren<MeshFilter>(true)) {
+                var mesh=filter.sharedMesh;if(mesh!=null&&(mesh.name=="Procedural road"||mesh.name=="Procedural guard rails"||mesh.name==RoadVolumeMesh.MeshName)&&!ownedMeshes.Contains(mesh))ownedMeshes.Add(mesh);
+            }
+            foreach(var collider in GetComponentsInChildren<MeshCollider>(true)) {
+                var mesh=collider.sharedMesh;if(mesh!=null&&(mesh.name==RoadVolumeMesh.BottomName||mesh.name==RoadVolumeMesh.ExteriorName||mesh.name==RoadVolumeMesh.SupportName)&&!ownedMeshes.Contains(mesh))ownedMeshes.Add(mesh);
+            }
             barriers.Clear();
 
             nearestRoad = null;

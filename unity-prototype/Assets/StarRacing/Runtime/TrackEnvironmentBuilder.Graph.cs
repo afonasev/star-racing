@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using StarRacingPrototype.Procedural;
@@ -7,14 +8,19 @@ namespace StarRacingPrototype {
   readonly List<(MeshRenderer renderer,bool enabled)> graphRenderers=new List<(MeshRenderer,bool)>();
   public GraphEnvironmentGeometry GraphGeometry {get;private set;}
   void ClearGraphRenderers(){foreach(var item in graphRenderers)if(item.renderer!=null)item.renderer.enabled=item.enabled;graphRenderers.Clear();GraphGeometry=null;}
-  public void BuildIndependent(GraphRoadSurface surface,uint seed,string theme,uint? skySeed=null) {
+  public void BuildIndependent(GraphRoadSurface surface,uint seed,string theme,uint? skySeed=null)=>LoadingWork.Drain(BuildIndependentSteps(surface,seed,theme,skySeed,false));
+  internal IEnumerator BuildIndependentSteps(GraphRoadSurface surface,uint seed,string theme,uint? skySeed=null,bool background=true) {
    if(surface==null||!surface.isActiveAndEnabled||surface.Graph==null)throw new ArgumentException("Current graph surface required");
-   Clear();GraphGeometry=new GraphEnvironmentGeometry(surface.Graph);Plan=EnvironmentPlan.Create(GraphGeometry,seed,theme,skySeed);
+   Clear();
+   if(background){var graph=surface.Graph;var task=LoadingWork.Background(()=>{var geometry=new GraphEnvironmentGeometry(graph);return (geometry,plan:EnvironmentPlan.Create(geometry,seed,theme,skySeed));});while(!task.IsCompleted)yield return null;var result=task.GetAwaiter().GetResult();GraphGeometry=result.geometry;Plan=result.plan;}
+   else {GraphGeometry=new GraphEnvironmentGeometry(surface.Graph);Plan=EnvironmentPlan.Create(GraphGeometry,seed,theme,skySeed);}
    root=new GameObject("Graph environment "+theme);cube=CreateCube();sphere=CreateSphere(12,16);
+   bool complete=false;
    try {
     var road=SurfaceMaterial("RoadBlend",false);road.mainTextureScale=new Vector2(8f/32f,8f/288f);
     var rail=SurfaceMaterial("RailBlend",true);rail.mainTextureScale=new Vector2(4f/288f,4f/1.3f);
     foreach(var source in surface.GetComponentsInChildren<MeshFilter>()) {
+     yield return null;
      bool top=source.GetComponent<TrackSurface>()!=null,isRail=source.sharedMesh!=null&&source.sharedMesh.name=="Independent guard rails";
      if(!top&&!isRail)continue;
      var visual=UnityEngine.Object.Instantiate(source.sharedMesh);visual.name=top?"Graph environment road visual":"Graph environment rail visual";meshes.Add(visual);
@@ -24,18 +30,22 @@ namespace StarRacingPrototype {
      go.AddComponent<MeshFilter>().sharedMesh=visual;go.AddComponent<MeshRenderer>().sharedMaterial=top?road:rail;
      var renderer=source.GetComponent<MeshRenderer>();if(renderer!=null){graphRenderers.Add((renderer,renderer.enabled));renderer.enabled=false;}
     }
-    BuildGraphBoundaries(theme=="space-station");
-    if(theme=="cloud-city")BuildCity(null);else BuildGraphStation();
+    yield return BuildGraphBoundariesSteps(theme=="space-station");
+    if(theme=="cloud-city")yield return BuildCitySteps(null);else BuildGraphStation();
+    yield return null;
     Sky=new TrackSky(Plan,GraphGeometry.Bounds,root.transform);
-   }catch{Clear();throw;}
+    complete=true;
+   }finally{if(!complete)Clear();}
   }
-  void BuildGraphBoundaries(bool lamps) {
+  IEnumerator BuildGraphBoundariesSteps(bool lamps) {
+   var budget=new LoadingWork.Budget();
    var paint=Lit(new Color(.18f,.86f,1),.1f,true);var pole=lamps?Lit(new Color(.22f,.31f,.44f),.63f):null;
    var vertices=new List<Vector3>();var triangles=new List<int>();var uv=new List<Vector2>();
    for(int chainIndex=0;chainIndex<GraphGeometry.Boundaries.Count;chainIndex++) {
     var chain=GraphGeometry.Boundaries[chainIndex];var normals=GraphGeometry.BoundaryNormals[chainIndex];
     float distance=0,nextLamp=40;
     for(int i=0;i+1<chain.Length;i++) {
+     if(budget.Due){yield return null;budget.Restart();}
      var a=chain[i];var b=chain[i+1];var tangent=(b-a).normalized;var normal=normals[i];var nextNormal=normals[i+1];var side=Vector3.Cross(normal,tangent).normalized*.10f;var nextSide=Vector3.Cross(nextNormal,tangent).normalized*.10f;int v=vertices.Count;
      vertices.AddRange(new[]{a-side,b-nextSide,a+side,b+nextSide});uv.AddRange(new[]{Vector2.zero,Vector2.up,Vector2.right,Vector2.one});triangles.AddRange(new[]{v,v+1,v+2,v+2,v+1,v+3});
      float length=Vector3.Distance(a,b);

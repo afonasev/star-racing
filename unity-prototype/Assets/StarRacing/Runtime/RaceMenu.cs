@@ -86,21 +86,35 @@ namespace StarRacingPrototype {
    Selected.seed=seed.ToString();Selected.Save();
    EditingSeed=false;ClosePopup();controls.Clear();
    if(!Application.isPlaying){if(!director.TryStartSelected(Selected,out var error))Error=error;return;}
-   Loading=true;StartCoroutine(PrepareSelected(Selected.Copy()));
+   director.BeginLoading();Loading=true;preparationRoutine=StartCoroutine(PrepareSelected(Selected.Copy()));
   }
   public void RepeatRace(){
    if(Loading)return;
    if(!Application.isPlaying){director.Restart();return;}
-   Loading=true;StartCoroutine(PrepareSelected(null));
+   director.BeginLoading();Loading=true;preparationRoutine=StartCoroutine(PrepareSelected(null));
   }
+  Coroutine preparationRoutine;
+  LoadingWork.Freeze loadingFreeze;LoadingWork loadingWork;RaceLoading loadingOverlay;
   IEnumerator PrepareSelected(LocalRaceConfig config){
-   var loading=gameObject.AddComponent<RaceLoading>();loading.Status="Готовим гонку";
-   yield return RaceLoading.Present();
-   var updater=Distribution.DesktopUpdater.Instance;
-   var suspension=updater?.SuspendForRace();
-   if(suspension!=null)while(!suspension.IsCompleted)yield return null;
-   try{if(suspension!=null&&suspension.IsFaulted)throw suspension.Exception;if(config==null)director.Restart();else if(!director.TryStartSelected(config,out var error))Error=error;}
-   finally{loading.enabled=false;Destroy(loading);Loading=false;if(!director.Started)updater?.ResumeInMenu();}
+   loadingOverlay=gameObject.AddComponent<RaceLoading>();loadingOverlay.Status=config==null?"Готовим повтор гонки":"Готовим гонку";
+   loadingFreeze=new LoadingWork.Freeze();
+   try {
+    yield return RaceLoading.Present();
+    var suspension=Distribution.DesktopUpdater.Instance?.SuspendForRace();
+    if(suspension!=null)while(!suspension.IsCompleted)yield return null;
+    if(suspension!=null&&suspension.IsFaulted)throw suspension.Exception;
+    loadingWork=config==null?director.RepeatForLoading():director.PrepareForLoading(config);
+    while(loadingWork.MoveNext()){loadingOverlay.Status=loadingWork.Status;yield return null;}
+    Error=director.PreparationError(loadingWork);
+    if(loadingWork.Succeeded&&string.IsNullOrEmpty(Error)&&director.Started)loadingFreeze.Keep(director.Paused?0:1);
+   }finally{ReleaseLoading(true);}
+  }
+  void CancelLoading(){var pending=preparationRoutine;preparationRoutine=null;if(pending!=null)StopCoroutine(pending);ReleaseLoading(false);}
+  void ReleaseLoading(bool resumeUpdater){
+   bool wasLoading=Loading;preparationRoutine=null;
+   loadingWork?.Dispose();loadingWork=null;if(director!=null&&director.Started&&director.Paused)loadingFreeze?.Keep(0);loadingFreeze?.Dispose();loadingFreeze=null;if(wasLoading&&director!=null)director.ApplyLoadingPause();
+   if(loadingOverlay!=null){loadingOverlay.enabled=false;Destroy(loadingOverlay);}loadingOverlay=null;Loading=false;
+   if(resumeUpdater&&director!=null&&!director.Started)Distribution.DesktopUpdater.Instance?.ResumeInMenu();
   }
   void Update(){
    TickSettings();
@@ -161,7 +175,7 @@ namespace StarRacingPrototype {
    Cursor.visible=!applicationFocused||(!racing&&!gamepadNavigation);
   }
   void OnApplicationFocus(bool focused){applicationFocused=focused;if(!focused)Cursor.visible=true;}
-  void OnDisable(){Cursor.visible=true;}
+  void OnDisable(){CancelLoading();Cursor.visible=true;}
   bool GUIFocusIsSearch;
   void Move(int direction){if(controls.Count==0)return;int index=controls.FindIndex(c=>c.id==focus);focus=controls[(index+direction+controls.Count)%controls.Count].id;if(PopupOpen)popupScroll.y=Mathf.Max(0,(controls.FindIndex(c=>c.id==focus)-1)*56-112);}
   void Register(string id,Action action,Action<int> adjust=null,Rect area=default){if(collect)controls.Add(new Control{id=id,action=action,adjust=adjust,area=area});}
