@@ -117,8 +117,9 @@ def upload(tag,file,name=None):
         with tempfile.TemporaryDirectory(prefix='star-racing-upload-') as tmp:
             target=Path(tmp)/name;shutil.copyfile(file,target);run(['gh','release','upload',tag,target,'-R',REPO])
     else:run(['gh','release','upload',tag,file,'-R',REPO])
-def wizard(tag,source,folder,evidence):
-    portable=next(folder.glob('*Portable.zip'));draft=optional_release(tag)
+def wizard(tag,source,folder,evidence,draft=None):
+    portable=next(folder.glob('*Portable.zip'));draft=draft if draft is not None else optional_release(tag)
+    if draft is None:raise ValueError("Windows wizard requires the owned draft release")
     existing=next((x for x in draft['assets'] if x['name']==portable.name),None)
     if existing:
         if existing['size']!=portable.stat().st_size or existing.get('digest')!='sha256:'+sha(portable):raise ValueError('Draft portable differs')
@@ -268,7 +269,8 @@ def publish_candidate(a,key,source,tag,previous):
         if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True or result.get('version')!=a.version or candidate['sha256']!=sha(next(directories[0].glob('*Portable.zip'))):raise ValueError('Prepared menu receipt mismatch')
     else:(smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
     draft=a.resume_draft or api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
-    wizard(tag,source,directories[1],evidence)
+    (evidence/'draft-owner.json').write_text(json.dumps(dict(id=draft['id'],target_commitish=draft['target_commitish']),indent=2)+'\n')
+    wizard(tag,source,directories[1],evidence,draft=draft)
     for folder in directories:
         baseline=recovery_baseline(previous,folder.parent.name,a.track,key)
         if baseline:(folder/'recovery-baseline.json').write_text(json.dumps(baseline)+'\n')

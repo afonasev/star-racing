@@ -128,3 +128,22 @@ class PreparedIdentityContract(unittest.TestCase):
     with self.assertRaises(ValueError):release.verify_prepared(root/'output','1.0.0',7)
     package.write_bytes(b'exact');game.write_text('different game');git('add','unity-prototype');git('commit','-qm','game changed')
     with self.assertRaises(ValueError):release.verify_prepared(root/'output','1.0.0',7)
+
+class DraftWizardContract(unittest.TestCase):
+ def test_created_draft_is_used_without_eventually_consistent_lookup(self):
+  import tempfile,json
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);folder=root/'release';folder.mkdir();evidence=root/'evidence';evidence.mkdir()
+   portable=folder/'candidate-Portable.zip';portable.write_bytes(b'portable')
+   source='a'*40;draft={'id':123,'target_commitish':source,'assets':[]};commands=[]
+   def run(args,**kwargs):
+    args=[str(x) for x in args];commands.append(args)
+    if args[:3]==['gh','release','download']:
+     setup=folder/'Star-Racing-1.0.0-Windows-Setup.exe';setup.write_bytes(b'installer')
+     (folder/'installer-policy-win-x64.json').write_text(json.dumps({'sourceRevision':source,'portableSHA256':release.sha(portable),'installerSHA256':release.sha(setup)}))
+   completed={'id':7,'display_title':'Windows wizard v1.0.0','created_at':'9999-01-01T00:00:00Z','status':'completed','conclusion':'success'}
+   with patch.object(release,'optional_release',side_effect=AssertionError('new draft must not be looked up again')),patch.object(release,'run',side_effect=run),patch.object(release,'api',return_value={'workflow_runs':[completed]}),patch.object(release,'upload') as upload:
+    release.wizard('v1.0.0',source,folder,evidence,draft=draft)
+   upload.assert_called_once_with('v1.0.0',portable)
+   self.assertTrue((folder/'installer-policy.json').is_file())
+   self.assertEqual(json.loads((evidence/'windows-workflow.json').read_text())['id'],7)
