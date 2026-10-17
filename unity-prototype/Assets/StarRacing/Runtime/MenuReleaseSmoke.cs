@@ -15,9 +15,16 @@ namespace StarRacingPrototype {
   void Check(bool value,string label){assertions++;if(!value)throw new Exception("MENU_RELEASE_SMOKE "+label);}
   void Set(string key,object value)=>typeof(DesktopUpdater).GetProperty(key).SetValue(updater,value);
   IEnumerator Start(){
-   Application.runInBackground=true;Directory.CreateDirectory(Output);yield return new WaitForSecondsRealtime(2);
-   var director=FindFirstObjectByType<RaceDirector>();
-   try{Check(director!=null&&!director.Started,"startup main menu");menu=director.GetComponent<RaceMenu>();originalScale=menu.Preferences.textScale;updater=DesktopUpdater.Instance;Check(menu!=null&&menu.ScreenState==RaceMenuScreen.Main,"main route");Check(updater!=null,"updater component");Check(updater.InstalledVersion==Application.version,"built version in footer");Check(!updater.CanUpdate,"isolated smoke avoids installed update queue");}
+   Application.runInBackground=true;Directory.CreateDirectory(Output);
+   // Preparation now spans frames; readiness, rather than a fixed delay, owns admission.
+   RaceDirector director=null;float deadline=Time.realtimeSinceStartup+120;
+   while(director==null||!director.Ready){
+    director=FindFirstObjectByType<RaceDirector>();
+    if(Time.realtimeSinceStartup>deadline){Fail(new TimeoutException("Packaged startup did not become ready"));yield break;}
+    yield return null;
+   }
+   yield return new WaitForSecondsRealtime(2);
+   try{Check(director!=null&&director.Ready&&!director.Started,"startup main menu");menu=director.GetComponent<RaceMenu>();originalScale=menu.Preferences.textScale;updater=DesktopUpdater.Instance;Check(menu!=null&&menu.ScreenState==RaceMenuScreen.Main,"main route");Check(updater!=null,"updater component");Check(updater.InstalledVersion==Application.version,"built version in footer");Check(!updater.CanUpdate,"isolated smoke avoids installed update queue");}
    catch(Exception e){Fail(e);yield break;}
    Set("CanUpdate",true);Set("Busy",true);Set("Status","Проверка обновлений…");
    yield return Shot("checking");
