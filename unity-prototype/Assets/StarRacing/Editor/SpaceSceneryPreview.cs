@@ -14,6 +14,7 @@ namespace StarRacingPrototype {
         static int ticks;
         static string Output => Environment.GetEnvironmentVariable("STAR_RACING_SPACE_QA_DIR");
         static SpaceSceneryPreview() { EditorApplication.playModeStateChanged += Changed; }
+        public static void Detail() { SpaceSceneryChecks.Detail(); Run(); }
         public static void Review() { SpaceSceneryChecks.Additional(); Run(); }
         public static void Verify() { SpaceSceneryChecks.Run(); Run(); }
         public static void Run() {
@@ -86,10 +87,11 @@ namespace StarRacingPrototype {
                 }
                 // Model studies are real runtime geometry, separate from chase-view evidence.
                 var groups = environment.Root.Cast<Transform>().Where(t => t.name.StartsWith("Space ")).ToArray();
-                int itemIndex = -1;
+                int itemIndex = -1; var studied = new System.Collections.Generic.HashSet<SpaceSceneryPlan.Kind>();
                 foreach (var item in environment.Plan.space.items) {
                     itemIndex++;
-                    if ((item.kind == SpaceSceneryPlan.Kind.Ring && item.size >= 480) || item.kind == SpaceSceneryPlan.Kind.Shipyard) {
+                    if (!studied.Contains(item.kind) && (item.kind != SpaceSceneryPlan.Kind.Ring || item.size >= 480)) {
+                        studied.Add(item.kind);
                         foreach (var renderer in root.GetComponentsInChildren<Renderer>()) renderer.enabled = false;
                         for (int i = 0; i < groups.Length; i++) groups[i].gameObject.SetActive(i == itemIndex);
                         foreach (Transform child in environment.Root) if (!child.name.StartsWith("Space ")) child.gameObject.SetActive(false);
@@ -97,6 +99,14 @@ namespace StarRacingPrototype {
                         camera.transform.position = item.position + item.rotation * new Vector3(item.size * .4f, item.size * .25f, item.size * 2.6f);
                         camera.transform.LookAt(item.position, item.rotation * Vector3.up); camera.rect = new Rect(0, 0, 1, 1); camera.aspect = 16f / 9;
                         Single(camera, Path.Combine(Output, name + "-model-" + item.kind + ".png"));
+                        if (item.kind == SpaceSceneryPlan.Kind.Ring || item.kind == SpaceSceneryPlan.Kind.Modular || item.kind == SpaceSceneryPlan.Kind.Asteroid) {
+                            var focus = item.position + item.rotation * (item.kind == SpaceSceneryPlan.Kind.Ring ? Vector3.up * item.size * .8f : Vector3.zero);
+                            var offset = item.kind == SpaceSceneryPlan.Kind.Ring ? new Vector3(.15f,.08f,.70f) : new Vector3(.15f,.2f,item.kind == SpaceSceneryPlan.Kind.Asteroid ? 1.8f : .95f);
+                            camera.transform.position = focus + item.rotation * (offset * item.size);
+                            camera.transform.LookAt(focus,item.rotation * Vector3.up); camera.fieldOfView = 40;
+                            Single(camera,Path.Combine(Output,name + "-detail-" + item.kind + ".png"));
+                            camera.fieldOfView = 65;
+                        }
                     }
                 }
                 UnityEngine.Object.DestroyImmediate(profile);

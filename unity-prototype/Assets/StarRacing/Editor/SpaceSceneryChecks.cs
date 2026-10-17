@@ -46,6 +46,59 @@ namespace StarRacingPrototype {
             File.WriteAllText(Path.Combine(Output, "contracts.json"), "{\"success\":true,\"assertions\":" + assertions + ",\"coreBaselineExact\":true,\"legacyAndNative12\":true,\"playerBuild\":false}");
             Debug.Log("SPACE_SCENERY_CHECKS_OK assertions=" + assertions);
         }
+        // Focused detail regression: placement baseline, actual UV/tangents/imports, rebuild and cleanup.
+        public static void Detail() {
+            Directory.CreateDirectory(Output); assertions = 0;
+            var shader = Resources.Load<Shader>("Environment/SpaceRock");
+            Check(shader != null && !ShaderUtil.ShaderHasError(shader), "detailed stone shader compiles");
+            foreach (string name in new[] { "SpaceHull", "SpaceHullNormal", "SpaceRock", "SpaceRockNormal" }) {
+                string path = "Assets/StarRacing/Resources/Environment/Textures/" + name + ".png";
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                bool normal = name.EndsWith("Normal"); var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                Debug.Log($"SPACE_IMPORT {name} size={texture?.width}x{texture?.height} format={texture?.format}");
+                Check(texture != null && texture.width > 1024 && texture.width <= 2048, "preserved source detail " + name);
+                Check(importer.maxTextureSize == 2048 && importer.anisoLevel == 8 && importer.mipmapEnabled && !importer.isReadable, "scoped texture budget " + name);
+                Check(importer.convertToNormalmap == normal && importer.sRGBTexture == !normal && (importer.textureType == TextureImporterType.NormalMap) == normal, "normal conversion and color space " + name);
+                Check(importer.wrapMode == TextureWrapMode.Repeat && importer.filterMode == FilterMode.Trilinear, "filtered repeat " + name);
+            }
+            foreach (uint seed in new uint[] { 77, 78, 79, 139, 300, 997 }) {
+                var route = new TrackRoute(Procedural.Generator.Generate(seed, "full", "space-station", true, true));
+                var plan = EnvironmentPlan.Create(route); var clear = SpaceSceneryPlan.LegacyClearance(route);
+                Compare(plan.space, new SpaceSceneryBaselineV1(plan.seed, route.Samples, plan.station, clear));
+                Plan(plan, EnvironmentPlan.Create(route), clear);
+                Check(plan.hash == CloudCityBaseline.EnvironmentPlan.Create(route).hash, "legacy core unchanged");
+            }
+            foreach (bool transformed in new[] { false, true }) foreach (string mode in new[] { "normal", "full", "none" }) {
+                var geometry = new GraphEnvironmentGeometry(GraphCommonCatalogChecks.Geometry(mode, true, transformed));
+                var plan = EnvironmentPlan.Create(geometry, 77, "space-station");
+                Compare(plan.space, new SpaceSceneryBaselineV1(77, geometry.Samples, plan.station, geometry.Clear));
+                Plan(plan, EnvironmentPlan.Create(geometry, 77, "space-station"), geometry.Clear);
+                Check(plan.hash == CloudCityBaseline.EnvironmentPlan.Create(geometry,77,"space-station").hash, "graph core unchanged");
+            }
+            Build(false); Build(true);
+            File.WriteAllText(Path.Combine(Output,"detail-contracts.json"), "{\"success\":true,\"assertions\":"+assertions+",\"placementBaseline\":\"5b54604a\",\"legacyAndNative12\":true,\"uvTangents\":true,\"textureImport\":true,\"playerBuild\":false}");
+            Debug.Log("SPACE_SCENERY_DETAIL_OK assertions="+assertions);
+        }
+        static void DetailSurface(Mesh mesh, SpaceSceneryPlan.Kind kind) {
+            var vertices=mesh.vertices;var uv=mesh.uv;var triangles=mesh.triangles;
+            Check(mesh.tangents.Length==vertices.Length,"complete tangent basis");
+            foreach(var t in mesh.tangents) Check(!float.IsNaN(t.x+t.y+t.z+t.w) && new Vector3(t.x,t.y,t.z).sqrMagnitude>.9f,"finite normalized tangents");
+            for(int i=0;i<triangles.Length;i+=3) {
+                int a=triangles[i],b=triangles[i+1],c=triangles[i+2];
+                if(Vector3.Cross(vertices[b]-vertices[a],vertices[c]-vertices[a]).sqrMagnitude<1e-18f)continue;
+                var u=uv[b]-uv[a];var v=uv[c]-uv[a];
+                Check(Mathf.Abs(u.x*v.y-u.y*v.x)>1e-12f,"non-degenerate UV on every surface "+kind+"/"+mesh.name);
+            }
+        }
+        static void Compare(SpaceSceneryPlan plan, SpaceSceneryBaselineV1 baseline) {
+            Check(plan.items.Count == baseline.items.Count && plan.bounds == baseline.bounds, "placement count and bounds exact");
+            Check(plan.hash != baseline.hash, "detail version changes presentation identity");
+            for (int i=0;i<plan.items.Count;i++) {
+                var a=plan.items[i];var b=baseline.items[i];
+                Check((int)a.kind==(int)b.kind && a.position.Equals(b.position) && a.rotation.Equals(b.rotation) && a.size==b.size && a.variant==b.variant, "every item transform and variant exact");
+            }
+        }
         public static void Additional() {
             Directory.CreateDirectory(Output);
             foreach (uint seed in new uint[] { 77, 78, 79, 139, 300, 997 }) {
@@ -139,6 +192,12 @@ namespace StarRacingPrototype {
                         Check(renderers.Length <= 5, "bounded per-object material batches");
                         foreach (var filter in group.GetComponentsInChildren<MeshFilter>()) {
                             var mesh = filter.sharedMesh; triangleCount += mesh.triangles.Length / 3;
+                            var material = filter.GetComponent<Renderer>().sharedMaterial;
+                            if (item.kind != SpaceSceneryPlan.Kind.Asteroid) {
+                                DetailSurface(mesh,item.kind);
+                                if (mesh.name.EndsWith(" 0") || mesh.name.EndsWith(" 1"))
+                                    Check(material.mainTexture == Resources.Load<Texture2D>("Environment/Textures/SpaceHull") && material.GetTexture("_BumpMap") == Resources.Load<Texture2D>("Environment/Textures/SpaceHullNormal") && material.IsKeywordEnabled("_NORMALMAP"), "station albedo and normal bound");
+                            } else Check(material.GetTexture("_BaseMap") == Resources.Load<Texture2D>("Environment/Textures/SpaceRock") && material.GetTexture("_BumpMap") == Resources.Load<Texture2D>("Environment/Textures/SpaceRockNormal"), "triplanar rock textures bound");
                             foreach (var v in mesh.vertices) {
                                 Check(v.magnitude <= 1.00001f, "every actual model vertex in unit envelope");
                                 Check(item.Envelope.Contains(filter.transform.TransformPoint(v)), "every world vertex in placed envelope");

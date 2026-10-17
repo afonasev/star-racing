@@ -5,8 +5,8 @@ namespace StarRacingPrototype {
     public sealed partial class TrackEnvironmentBuilder {
         IEnumerator BuildSpaceScenerySteps() {
             if (Plan.space == null) yield break;
-            var hull = Lit(new Color(1.18f, 1.23f, 1.30f), .22f, false, "Hull", .27f);
-            var trim = Lit(new Color(.33f, .39f, .46f), .4f, false, "Hull", .3f);
+            var hull = Lit(new Color(1.18f, 1.23f, 1.30f), .22f, false, "SpaceHull", .27f);
+            var trim = Lit(new Color(.33f, .39f, .46f), .4f, false, "SpaceHull", .3f);
             var solar = Lit(new Color(.08f, .20f, .62f), .35f, false, null, .48f);
             var windows = Lit(new Color(1f, .72f, .35f), .1f, true, null);
             var glass = Lit(new Color(.12f, .52f, .69f), .5f, false, null, .6f);
@@ -14,10 +14,17 @@ namespace StarRacingPrototype {
             hull.EnableKeyword("_EMISSION"); hull.SetColor("_EmissionColor", new Color(.14f, .16f, .20f));
             trim.EnableKeyword("_EMISSION"); trim.SetColor("_EmissionColor", new Color(.035f, .045f, .065f));
             solar.EnableKeyword("_EMISSION"); solar.SetColor("_EmissionColor", new Color(.015f, .045f, .14f));
+            foreach (var metal in new[] { hull, trim }) {
+                metal.EnableKeyword("_NORMALMAP");
+                metal.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/SpaceHullNormal"));
+                metal.SetFloat("_BumpScale", .45f);
+            }
             var palette = new[] { hull, trim, solar, windows, glass };
             var shader = Resources.Load<Shader>("Environment/SpaceRock");
             if (shader == null) throw new System.InvalidOperationException("Missing SpaceRock shader");
             var rock = new Material(shader) { name = "Cratered asteroid stone" }; materials.Add(rock);
+            rock.SetTexture("_BaseMap", Resources.Load<Texture2D>("Environment/Textures/SpaceRock"));
+            rock.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/SpaceRockNormal"));
             var rocks = new Mesh[12];
             var budget = new LoadingWork.Budget();
             foreach (var item in Plan.space.items) {
@@ -61,6 +68,11 @@ namespace StarRacingPrototype {
                     float distance = Vector3.Distance(n, craters[index]) / radii[index];
                     if (distance < 1) radius -= .13f * (1 - distance * distance);
                     if (distance > .78f && distance < 1.18f) radius += .025f * Mathf.Sin((distance - .78f) / .4f * Mathf.PI);
+                }
+                // Broad planar fractures interrupt the old rounded silhouette without more tessellation.
+                for (int cut = 0; cut < 5; cut++) {
+                    var plane = craters[cut]; float facing = Vector3.Dot(n, plane);
+                    if (facing > .48f) radius = Mathf.Min(radius, (.58f + cut * .025f) / facing);
                 }
                 var p = Vector3.Scale(n * radius, new Vector3(1, .73f + variant % 3 * .07f, .79f + variant % 4 * .05f));
                 int at = y * (longitude + 1) + x; vertices[at] = p; uv[at] = new Vector2(x / (float)longitude, y / (float)latitude);

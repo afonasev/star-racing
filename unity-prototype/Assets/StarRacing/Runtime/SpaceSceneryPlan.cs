@@ -5,7 +5,7 @@ using UnityEngine;
 namespace StarRacingPrototype {
     // Pure presentation data. All variants, rotations and complete envelopes are part of the identity.
     public sealed class SpaceSceneryPlan {
-        public const int Version = 1;
+        public const int Version = 2;
         public const int MaximumAsteroids = 210, MaximumStations = 18;
         public enum Kind { Research, Modular, Shipyard, Ring, Asteroid }
         public struct Item {

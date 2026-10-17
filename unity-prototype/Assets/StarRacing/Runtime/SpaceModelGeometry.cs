@@ -20,13 +20,15 @@ namespace StarRacingPrototype {
             for (int i = 0; i < cubeVertices.Length; i++) {
                 var v = Vector3.Scale(cubeVertices[i], scale);
                 p.vertices.Add(center + rotation * v); p.normals.Add(rotation * cubeNormals[i]);
-                p.uv.Add(new Vector2((v.x + v.z) / 4, v.y / 4));
+                var n = cubeNormals[i];
+                p.uv.Add(Mathf.Abs(n.x) > .5f ? new Vector2(v.z, v.y) / 8 :
+                    Mathf.Abs(n.y) > .5f ? new Vector2(v.x, v.z) / 8 : new Vector2(v.x, v.y) / 8);
             }
             foreach (int i in cubeTriangles) p.triangles.Add(start + i);
         }
         void Box(int material, Vector3 center, Vector3 scale) => Box(material, center, scale, Quaternion.identity);
         void Beam(int material, Vector3 a, Vector3 b, float width) => Box(material, (a + b) * .5f, new Vector3(width, width, Vector3.Distance(a, b)), Quaternion.LookRotation(b - a));
-        void Cylinder(int material, Vector3 a, Vector3 b, float radius, float endRadius = -1, int sides = 16) {
+        void Cylinder(int material, Vector3 a, Vector3 b, float radius, float endRadius = -1, int sides = 24) {
             if (endRadius < 0) endRadius = radius;
             var q = Quaternion.LookRotation(b - a); var p = parts[material]; float length = Vector3.Distance(a, b);
             for (int i = 0; i < sides; i++) {
@@ -36,13 +38,14 @@ namespace StarRacingPrototype {
                 int at = p.vertices.Count;
                 p.vertices.AddRange(new[] { a + q * new Vector3(Mathf.Cos(t) * radius, Mathf.Sin(t) * radius, 0), a + q * new Vector3(Mathf.Cos(next) * radius, Mathf.Sin(next) * radius, 0), b + q * new Vector3(Mathf.Cos(t) * endRadius, Mathf.Sin(t) * endRadius, 0), b + q * new Vector3(Mathf.Cos(next) * endRadius, Mathf.Sin(next) * endRadius, 0) });
                 p.normals.AddRange(new[] { q * n0, q * n1, q * n0, q * n1 });
-                p.uv.AddRange(new[] { new Vector2(i * radius / 10, 0), new Vector2((i + 1) * radius / 10, 0), new Vector2(i * radius / 10, length / 6), new Vector2((i + 1) * radius / 10, length / 6) });
+                p.uv.AddRange(new[] { new Vector2(i * Mathf.PI * 2 * radius / (sides * 8), 0), new Vector2((i + 1) * Mathf.PI * 2 * radius / (sides * 8), 0), new Vector2(i * Mathf.PI * 2 * radius / (sides * 8), length / 8), new Vector2((i + 1) * Mathf.PI * 2 * radius / (sides * 8), length / 8) });
                 p.triangles.AddRange(new[] { at, at + 1, at + 2, at + 2, at + 1, at + 3 });
                 Cap(a, radius, -1); Cap(b, endRadius, 1);
                 void Cap(Vector3 center, float r, int sign) {
                     int k = p.vertices.Count;
                     p.vertices.AddRange(new[] { center, center + q * new Vector3(Mathf.Cos(t) * r, Mathf.Sin(t) * r, 0), center + q * new Vector3(Mathf.Cos(next) * r, Mathf.Sin(next) * r, 0) });
-                    for (int j = 0; j < 3; j++) { p.normals.Add(q * Vector3.forward * sign); p.uv.Add(Vector2.zero); }
+                    for (int j = 0; j < 3; j++) p.normals.Add(q * Vector3.forward * sign);
+                    p.uv.AddRange(new[] { Vector2.zero, new Vector2(Mathf.Cos(t), Mathf.Sin(t)) * r / 8, new Vector2(Mathf.Cos(next), Mathf.Sin(next)) * r / 8 });
                     if (sign > 0) p.triangles.AddRange(new[] { k, k + 1, k + 2 }); else p.triangles.AddRange(new[] { k, k + 2, k + 1 });
                 }
             }
@@ -52,6 +55,17 @@ namespace StarRacingPrototype {
             Cylinder(0, a, b, radius);
             Cylinder(1, a - direction * radius * .35f, a + direction * .9f, radius * .7f, radius * 1.025f);
             Cylinder(1, b - direction * .9f, b + direction * radius * .35f, radius * 1.025f, radius * .7f);
+            var frame = Quaternion.LookRotation(direction);
+            // Raised service trunks and radiator fins stay close to the original pressure hull.
+            for (int side = 0; side < 4; side++) {
+                var radial = frame * (Quaternion.AngleAxis(side * 90 + 22.5f, Vector3.forward) * Vector3.up);
+                Beam(1, a + direction * 1.4f + radial * (radius * 1.03f), b - direction * 1.4f + radial * (radius * 1.03f), .24f);
+                var middle = (a + b) * .5f + radial * (radius * 1.04f);
+                var orientation = Quaternion.LookRotation(direction, radial);
+                Box(1, middle, new Vector3(radius * .52f, .35f, Vector3.Distance(a,b) * .28f), orientation);
+                for (int fin = -2; fin <= 2; fin++)
+                    Box(0, middle + direction * (fin * .75f) + radial * .24f, new Vector3(radius * .45f, .22f, .22f), orientation);
+            }
             for (int i = 1; i < 5; i++) {
                 var point = Vector3.Lerp(a, b, i / 5f);
                 Cylinder(1, point - direction * .22f, point + direction * .22f, radius * 1.025f);
@@ -66,11 +80,12 @@ namespace StarRacingPrototype {
         }
         void Panel(Vector3 center, float width, float height, Quaternion q) {
             Box(1, center, new Vector3(width + .8f, height + .8f, .65f), q);
-            Box(2, center + q * Vector3.forward * .36f, new Vector3(width, height, .16f), q);
-            Box(2, center - q * Vector3.forward * .36f, new Vector3(width, height, .16f), q);
+            Box(2, center + q * Vector3.forward * 1.2f, new Vector3(width, height, .16f), q);
+            Box(2, center - q * Vector3.forward * 1.2f, new Vector3(width, height, .16f), q);
+            // Explicit depth gaps keep all three layers separate at kilometre-scale viewing distances.
             // Solar cells remain readable on both faces, even when viewed from behind in a loop.
-            for (int x = 1; x < 5; x++) Box(1, center + q * new Vector3(-width / 2 + width * x / 5, 0, 0), new Vector3(.16f, height, .88f), q);
-            for (int y = 1; y < 12; y++) Box(1, center + q * new Vector3(0, -height / 2 + height * y / 12, 0), new Vector3(width, .12f, .88f), q);
+            for (int x = 1; x < 5; x++) Box(1, center + q * new Vector3(-width / 2 + width * x / 5, 0, 0), new Vector3(.16f, height, 3.2f), q);
+            for (int y = 1; y < 12; y++) Box(1, center + q * new Vector3(0, -height / 2 + height * y / 12, 0), new Vector3(width, .12f, 3.2f), q);
         }
         void Truss(Vector3 a, Vector3 b, float half) {
             var q = Quaternion.LookRotation(b - a); float length = Vector3.Distance(a, b);
@@ -90,6 +105,12 @@ namespace StarRacingPrototype {
             var end = center + direction * 17;
             Cylinder(0, center, end, 3.6f); Cylinder(1, end, end + direction * 2, 5.5f);
             Cylinder(4, end + direction * 2.02f, end + direction * 2.1f, 3.8f);
+            var q = Quaternion.LookRotation(direction);
+            for (int i = 0; i < 8; i++) {
+                var radial = q * (Quaternion.AngleAxis(i * 45, Vector3.forward) * Vector3.up);
+                Beam(1, center + direction * 2 + radial * 3.8f, end + radial * 4.7f, .38f);
+                Box(3, end + direction * 2.16f + radial * 4.7f, new Vector3(.35f,.7f,.18f), Quaternion.LookRotation(direction,radial));
+            }
         }
         void Antenna(Vector3 center) {
             Beam(1, center, center + Vector3.up * 18, .5f);
@@ -110,6 +131,12 @@ namespace StarRacingPrototype {
                     for (int window = -1; window <= 1; window++) {
                         Box(3, radial * 80 + tangent * (window * 1.55f) + Vector3.forward * 7.62f, new Vector3(.8f, 2, .18f), q);
                         Box(3, radial * 80 + tangent * (window * 1.55f) - Vector3.forward * 7.62f, new Vector3(.8f, 2, .18f), q);
+                    }
+                    // Paired raised access plates and recessed ventilation ribs on both broad faces.
+                    for (int face = -1; face <= 1; face += 2) {
+                        Box(1, radial * 83 + Vector3.forward * (face * 7.68f), new Vector3(3.7f, 1.6f, .22f), q);
+                        for (int vent = -1; vent <= 1; vent++)
+                            Box(0, radial * 83 + tangent * (vent * .8f) + Vector3.forward * (face * 7.84f), new Vector3(.16f, 1.2f, .16f), q);
                     }
                     if (i % 4 == 0) Box(1, radial * 80, new Vector3(.5f, 11.8f, 15.8f), q);
                     if (i % 12 == 0) { yield return null; Truss(Vector3.zero, radial * 74, 1.5f); Module(radial * 87, radial * 96, 2.7f); }
@@ -164,7 +191,7 @@ namespace StarRacingPrototype {
         }
         public Mesh Mesh(int slot) {
             var p = parts[slot]; var mesh = new Mesh { name = "Space station material " + slot, indexFormat = IndexFormat.UInt32 };
-            mesh.SetVertices(p.vertices); mesh.SetNormals(p.normals); mesh.SetUVs(0, p.uv); mesh.SetTriangles(p.triangles, 0); mesh.RecalculateBounds(); return mesh;
+            mesh.SetVertices(p.vertices); mesh.SetNormals(p.normals); mesh.SetUVs(0, p.uv); mesh.SetTriangles(p.triangles, 0); mesh.RecalculateTangents(); mesh.RecalculateBounds(); return mesh;
         }
     }
 }
