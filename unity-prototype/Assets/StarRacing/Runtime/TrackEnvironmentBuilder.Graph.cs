@@ -31,7 +31,7 @@ namespace StarRacingPrototype {
      var renderer=source.GetComponent<MeshRenderer>();if(renderer!=null){graphRenderers.Add((renderer,renderer.enabled));renderer.enabled=false;}
     }
     yield return BuildGraphBoundariesSteps(theme=="space-station");
-    if(theme=="cloud-city")yield return BuildCitySteps(null);else BuildGraphStation();
+    if(theme=="cloud-city")yield return BuildCitySteps(null);else yield return BuildSpaceScenerySteps();
     yield return null;
     Sky=new TrackSky(Plan,GraphGeometry.Bounds,root.transform);
     complete=true;
@@ -62,12 +62,6 @@ namespace StarRacingPrototype {
    }
    var mesh=new Mesh{name="Graph boundary markings",indexFormat=UnityEngine.Rendering.IndexFormat.UInt32};mesh.SetVertices(vertices);mesh.SetUVs(0,uv);mesh.SetTriangles(triangles,0);mesh.RecalculateNormals();mesh.RecalculateBounds();meshes.Add(mesh);
    var go=new GameObject("Graph boundary markings");go.transform.SetParent(root.transform,false);go.AddComponent<MeshFilter>().sharedMesh=mesh;go.AddComponent<MeshRenderer>().sharedMaterial=paint;
-  }
-  void BuildGraphStation() {
-   var hull=Lit(new Color(.51f,.62f,.72f),.72f);var shadow=Lit(new Color(.22f,.31f,.44f),.63f);var cyan=Lit(new Color(.18f,.86f,1),.1f,true);
-   Shape("Station core",sphere,hull,Plan.station,Quaternion.identity,Vector3.one*80);Shape("Station spindle",cube,shadow,Plan.station,Quaternion.Euler(0,30,0),new Vector3(130,18,30));
-   var random=new SeedRandom(Plan.seed^0x5aceu);for(int i=0;i<6;i++){float angle=i/6f*Mathf.PI*2+(float)random.Range(-.18,.18);var outward=new Vector3(Mathf.Cos(angle),(float)random.Range(-.18,.18),Mathf.Sin(angle));var node=Plan.station+outward*(float)random.Range(80,130);
-    Shape(i%2==0?"Satellite":"Station node",i%2==0?sphere:cube,i%2==0?hull:shadow,node,Quaternion.identity,Vector3.one*(i%2==0?25:19));var link=node-Plan.station;Shape("Communication link",cube,cyan,(node+Plan.station)*.5f,Quaternion.FromToRotation(Vector3.up,link),new Vector3(.8f,link.magnitude,.8f),false);}
   }
  }
 }

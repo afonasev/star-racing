@@ -21,7 +21,10 @@ namespace StarRacingPrototype {
         public const int SkyPlanetVariantCount = 4;
         public string SkyPlanetTexture => new[] { "PlanetSky", "PlanetGas", "PlanetRock", "PlanetIce" }[skyPlanetVariant];
         public readonly float cityBaseY;
+        // Compatibility identity for the original core layout. Complete visual identity is presentationHash.
         public readonly string hash;
+        public readonly SpaceSceneryPlan space;
+        public string presentationHash => space == null ? hash : hash + "-s" + SpaceSceneryPlan.Version + "-" + space.hash;
 
         public struct CityTower {
             public Vector3 position;
@@ -29,9 +32,9 @@ namespace StarRacingPrototype {
             public bool amber;
         }
 
-        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null) {}
+        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null,route.Definition.theme == "space-station" ? SpaceSceneryPlan.LegacyClearance(route) : null) {}
 
-        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity) {
+        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity,Func<Vector3,Vector3,float,bool> sceneryClear) {
             seed = sourceSeed;
             theme = sourceTheme;
             lighting = RaceLightingProfile.Create(seed, theme);
@@ -76,6 +79,7 @@ namespace StarRacingPrototype {
             skyPlanetDirection = (forward * 1350 - right * stationSide * 410 + Vector3.up * 90).normalized;
             // Preserve the approved ocean world for seed 77; consecutive seeds cycle all four worlds.
             skyPlanetVariant = (int)(((skySeed ?? seed) % SkyPlanetVariantCount + 3) % SkyPlanetVariantCount);
+            if (theme == "space-station") this.space = new SpaceSceneryPlan(seed, frames, station, sceneryClear);
             hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity);
         }
 
@@ -142,7 +146,7 @@ namespace StarRacingPrototype {
 
         public static EnvironmentPlan Create(GraphEnvironmentGeometry geometry,uint seed,string theme,uint? skySeed=null) {
             if(geometry==null||(theme!="cloud-city"&&theme!="space-station"))throw new ArgumentException("Graph and supported theme required");
-            return new EnvironmentPlan(seed,theme,geometry.Samples,geometry.Clear,skySeed,geometry.Graph.Identity);
+            return new EnvironmentPlan(seed,theme,geometry.Samples,geometry.Clear,skySeed,geometry.Graph.Identity,geometry.Clear);
         }
 
         public int District(float distance) => Mathf.FloorToInt((distance + (seed % 3) * 73f) / 240f) % 3;

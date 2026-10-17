@@ -30,12 +30,16 @@ namespace StarRacingPrototype {
             else Plan=EnvironmentPlan.Create(route,skySeed);
             root = new GameObject("Track environment " + Plan.theme);
             cube = CreateCube(); sphere = CreateSphere(12, 16);
+            bool complete = false;
+            try {
             yield return null;BuildRoadDistricts(route, roadRoot);
             yield return null;BuildRailSurfaces(roadRoot);
             if (Plan.theme == "cloud-city") yield return BuildCitySteps(route);
             else yield return BuildSpaceSteps(route);
             yield return null;
             Sky = new TrackSky(Plan, route, root.transform);
+            complete = true;
+            } finally { if (!complete) Clear(); }
 
         }
 
@@ -254,19 +258,7 @@ namespace StarRacingPrototype {
             var cyan = Lit(new Color(.18f, .86f, 1), .1f, true);
             var gold = Lit(new Color(1, .74f, .3f), .1f, true);
             BuildEdgeRibbons(route, cyan);
-            Shape("Station core", sphere, hull, Plan.station, Quaternion.identity, Vector3.one * 80);
-            Shape("Station spindle", cube, shadow, Plan.station, Quaternion.Euler(0, 30, 0), new Vector3(130, 18, 30));
-            var random = new Procedural.SeedRandom(Plan.seed ^ 0x5aceu);
-            for (int i = 0; i < 6; i++) {
-                float angle = (i / 6f) * Mathf.PI * 2 + (float)random.Range(-.18, .18);
-                var outward = new Vector3(Mathf.Cos(angle), (float)random.Range(-.18, .18), Mathf.Sin(angle));
-                Vector3 node = Plan.station + outward * (float)random.Range(80, 130);
-                Shape(i % 2 == 0 ? "Satellite" : "Station node", i % 2 == 0 ? sphere : cube,
-                      i % 2 == 0 ? hull : shadow, node, Quaternion.identity, Vector3.one * (i % 2 == 0 ? 25 : 19));
-                Vector3 link = node - Plan.station;
-                Shape("Communication link", cube, cyan, (node + Plan.station) * .5f,
-                      Quaternion.FromToRotation(Vector3.up, link), new Vector3(.8f, link.magnitude, .8f), false);
-            }
+            yield return BuildSpaceScenerySteps();
             for (float distance = 0; distance < route.Length; distance += 80f) {
                 if(budget.Due){yield return null;budget.Restart();}
                 var spans = route.PavedAt(distance);

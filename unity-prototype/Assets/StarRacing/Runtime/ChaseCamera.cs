@@ -9,7 +9,7 @@ namespace StarRacingPrototype {
   Camera view;
   Bounds skyline;bool hasSkyline;
   public const float MinimumFarClip=1800;
-  public void SetSkyline(EnvironmentPlan plan){hasSkyline=plan!=null&&plan.theme=="cloud-city"&&plan.towers.Count>0;if(hasSkyline){bool first=true;foreach(var tower in plan.towers){var box=new Bounds(tower.position,new Vector3(tower.width*1.2f,tower.height+12,tower.width*1.2f));if(first){skyline=box;first=false;}else skyline.Encapsulate(box);}}UpdateFarClip();}
+  public void SetSkyline(EnvironmentPlan plan){hasSkyline=plan!=null&&plan.theme=="cloud-city"&&plan.towers.Count>0;if(hasSkyline){bool first=true;foreach(var tower in plan.towers){var box=new Bounds(tower.position,new Vector3(tower.width*1.2f,tower.height+12,tower.width*1.2f));if(first){skyline=box;first=false;}else skyline.Encapsulate(box);}}if(plan!=null&&plan.space!=null){skyline=plan.space.bounds;hasSkyline=true;}UpdateFarClip();}
   public static float SkylineFarClip(Vector3 position,Bounds bounds)=>Mathf.Max(MinimumFarClip,Vector3.Distance(position,bounds.center)+bounds.extents.magnitude+64);
   void UpdateFarClip(){if(view==null)view=GetComponent<Camera>();if(view!=null)view.farClipPlane=hasSkyline?SkylineFarClip(transform.position,skyline):MinimumFarClip;}
   float jumpHeight;int epoch=-1;MagneticVehicle previousTarget;

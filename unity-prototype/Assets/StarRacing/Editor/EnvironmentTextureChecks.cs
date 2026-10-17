@@ -108,6 +108,15 @@ namespace StarRacingPrototype {
                                         Check(renderer.GetComponent<Collider>() == null, "cloud collider");
                                         continue;
                                     }
+                                    if (renderer.transform.parent != null && renderer.transform.parent.name == "Space Asteroid") {
+                                        var rockShader = Resources.Load<Shader>("Environment/SpaceRock");
+                                        var rockMesh = renderer.GetComponent<MeshFilter>().sharedMesh;
+                                        Check(material != null && material.shader == rockShader && rockShader != null && !ShaderUtil.ShaderHasError(rockShader), "bad procedural stone shader");
+                                        Check(material.HasProperty("_BaseColor") && material.GetColor("_BaseColor").maxColorComponent > 0, "missing stone surface color");
+                                        Check(rockMesh.name.StartsWith("Cratered asteroid ") && rockMesh.normals.Length == rockMesh.vertexCount && rockMesh.vertexCount > 1000, "missing volumetric stone surface");
+                                        Check(renderer.GetComponent<Collider>() == null, "asteroid collider");
+                                        continue;
+                                    }
                                     Check(material != null && material.shader.name == "Universal Render Pipeline/Lit", "bad material");
                                     if (material.mainTexture == null) continue;
                                     var mesh = renderer.GetComponent<MeshFilter>().sharedMesh;
