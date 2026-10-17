@@ -46,7 +46,7 @@ namespace StarRacingPrototype {
    } catch {Clear();throw;}
   }
   static T Required<T>(string name) where T:Object {
-   var value=Resources.Load<T>(Path+name);if(value==null)throw new System.InvalidOperationException("Missing sky resource: "+name);return value;
+   var value=SharedRaceAssets.Load<T>(Path+name);if(value==null)throw new System.InvalidOperationException("Missing sky resource: "+name);return value;
   }
   void AddPlane(Transform parent,string name,Material material,Vector3 position,Vector3 scale) {
    var go=new GameObject(name);go.transform.SetParent(parent,false);go.transform.position=position;go.transform.localScale=scale;

@@ -27,9 +27,9 @@ namespace StarRacingPrototype {
   public Mesh RenderMesh=>mesh;
   public long TotalFor(int car)=>car>=0&&car<MaxCars?produced[car]:0;
   public void Initialize(Bounds bounds) {
-   var shader=Resources.Load<Shader>("Vehicle/DriftTireMarks");
+   var shader=SharedRaceAssets.Load<Shader>("Vehicle/DriftTireMarks");
    if(shader==null)throw new InvalidOperationException("Missing drift tire mark shader");
-   var rubber=Resources.Load<Texture2D>("Vehicle/DriftRubber");
+   var rubber=SharedRaceAssets.Load<Texture2D>("Vehicle/DriftRubber");
    if(rubber==null)throw new InvalidOperationException("Missing drift rubber texture");
    material=new Material(shader){name="Shared drift rubber"};material.SetTexture("_RubberTex",rubber);
    mesh=new Mesh{name="Bounded drift tire marks",indexFormat=IndexFormat.UInt32};mesh.MarkDynamic();

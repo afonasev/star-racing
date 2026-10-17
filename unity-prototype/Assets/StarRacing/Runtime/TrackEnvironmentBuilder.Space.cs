@@ -16,15 +16,15 @@ namespace StarRacingPrototype {
             solar.EnableKeyword("_EMISSION"); solar.SetColor("_EmissionColor", new Color(.015f, .045f, .14f));
             foreach (var metal in new[] { hull, trim }) {
                 metal.EnableKeyword("_NORMALMAP");
-                metal.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/SpaceHullNormal"));
+                metal.SetTexture("_BumpMap", SharedRaceAssets.Load<Texture2D>("Environment/Textures/SpaceHullNormal"));
                 metal.SetFloat("_BumpScale", .45f);
             }
             var palette = new[] { hull, trim, solar, windows, glass };
-            var shader = Resources.Load<Shader>("Environment/SpaceRock");
+            var shader = SharedRaceAssets.Load<Shader>("Environment/SpaceRock");
             if (shader == null) throw new System.InvalidOperationException("Missing SpaceRock shader");
             var rock = new Material(shader) { name = "Cratered asteroid stone" }; materials.Add(rock);
-            rock.SetTexture("_BaseMap", Resources.Load<Texture2D>("Environment/Textures/SpaceRock"));
-            rock.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/SpaceRockNormal"));
+            rock.SetTexture("_BaseMap", SharedRaceAssets.Load<Texture2D>("Environment/Textures/SpaceRock"));
+            rock.SetTexture("_BumpMap", SharedRaceAssets.Load<Texture2D>("Environment/Textures/SpaceRockNormal"));
             var rocks = new Mesh[12];
             var budget = new LoadingWork.Budget();
             foreach (var item in Plan.space.items) {

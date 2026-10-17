@@ -17,7 +17,7 @@ namespace StarRacingPrototype
         public void Initialize(Transform left, Transform right)
         {
             block = new MaterialPropertyBlock();
-            var material = Resources.Load<Material>("Vehicle/CloudlineExhaust");
+            var material = SharedRaceAssets.Load<Material>("Vehicle/CloudlineExhaust");
             if (material == null) throw new System.InvalidOperationException("Missing Cloudline exhaust material");
             if (sharedMesh == null) sharedMesh = CreateMesh();
             var anchors = new[] { left, right };

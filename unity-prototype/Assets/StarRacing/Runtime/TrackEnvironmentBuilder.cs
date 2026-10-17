@@ -70,7 +70,7 @@ namespace StarRacingPrototype {
             if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
             if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
             if (!glow && texture != null) {
-                material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/" + texture);
+                material.mainTexture = SharedRaceAssets.Load<Texture2D>("Environment/Textures/" + texture);
                 if (material.mainTexture == null) Debug.LogError("Missing environment texture: " + texture);
             }
             if (glow) {
@@ -155,8 +155,8 @@ namespace StarRacingPrototype {
             // Separate metallic wall finish and neutral tint distinguish housings from the cool floor.
             if (rail) tint = space ? new Color(.88f, .9f, .93f) : new Color(1f, .98f, .93f);
             var material = Lit(tint, rail ? .45f : .18f, texture: texture, smoothness: 1f);
-            material.SetTexture("_MetallicGlossMap", Resources.Load<Texture2D>("Environment/Textures/" + texture + "Finish"));
-            material.SetTexture("_BumpMap", Resources.Load<Texture2D>("Environment/Textures/" + texture + "Normal"));
+            material.SetTexture("_MetallicGlossMap", SharedRaceAssets.Load<Texture2D>("Environment/Textures/" + texture + "Finish"));
+            material.SetTexture("_BumpMap", SharedRaceAssets.Load<Texture2D>("Environment/Textures/" + texture + "Normal"));
             material.SetFloat("_BumpScale", .65f);
             material.EnableKeyword("_METALLICSPECGLOSSMAP");
             material.EnableKeyword("_NORMALMAP");

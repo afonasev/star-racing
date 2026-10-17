@@ -72,10 +72,11 @@ namespace StarRacingPrototype {
   internal static bool StartupAudioDisabled(string[] arguments)=>SilentStartup.IsRequested(arguments);
   public bool Ready {get;private set;}
   LoadingWork activePreparation;bool pauseDuringPreparation;
+  IDisposable sharedAssetLease;bool sharedPrewarmFailed;
   public void BeginLoading(){pauseDuringPreparation=false;}
   public void ApplyLoadingPause(){if(pauseDuringPreparation&&Started&&Session!=null){Paused=true;Session.Paused=true;Input?.Block();Time.timeScale=0;}}
   // Eager synchronous initialization is retained for existing Editor tooling.
-  void Awake(){Application.lowMemory+=ReleaseInactiveWorlds;if(GetComponent<RaceStartup>()==null)LoadingWork.Drain(InitializeSteps(false,true));}
+  void Awake(){sharedAssetLease=SharedRaceAssets.Acquire();Application.lowMemory+=ReleaseInactiveWorlds;if(GetComponent<RaceStartup>()==null)LoadingWork.Drain(InitializeSteps(false,true));}
   LoadingWork OwnPreparation(IEnumerator steps){if(activePreparation!=null&&activePreparation.IsPending)throw new InvalidOperationException("Подготовка уже идёт");if(GetComponent<RaceMenu>()?.Loading!=true)BeginLoading();return activePreparation=new LoadingWork(steps);}
   public LoadingWork InitializeForLoading()=>OwnPreparation(InitializeSteps(true,false));
   IEnumerator InitializeSteps(bool background,bool eagerWorld){
@@ -162,13 +163,13 @@ namespace StarRacingPrototype {
    try{balanceSnapshot=DesignLabRuntime.Current.Capture();nextBalance=ReleaseBalance.Parse(balanceSnapshot.Json);}catch(Exception e){StartError=e.Message;}
    if(!string.IsNullOrEmpty(StartError))yield break;
    var input=new LocalInputRouter();if(!input.TryBind(config,out var bindingError)){StartError=bindingError;yield break;}
-   GameObject root=null;TrackWorld borrowedWorld=null;bool worldWasActive=false;
+   GameObject root=null;TrackWorld borrowedWorld=null;
    using(var freeze=new LoadingWork.Freeze(throughput:true))try{
     var snapshot=config.Copy();snapshot.handicap=false;int count=snapshot.entrants,humans=snapshot.humans,generation=RaceGeneration+1;
     string theme=snapshot.theme=="random"?(snapshot.Seed%2==0?"cloud-city":"space-station"):snapshot.theme;
     TrackWorld prepared=null;
     yield return AcquireWorldSteps(snapshot,background,reuseWorld,value=>prepared=value);
-    leasedWorld=borrowedWorld=prepared;worldWasActive=prepared.Root.activeSelf;prepared.Root.SetActive(true);Physics.SyncTransforms();
+    leasedWorld=borrowedWorld=prepared;prepared.Root.SetActive(true);Physics.SyncTransforms();
     var course=prepared.Course;var track=prepared.Track;var decor=prepared.Decor;
     var roster=new RaceRoster(count,humans,snapshot.Seed);roster.Shuffle(unchecked(snapshot.Seed+(uint)generation*7919));
     var route=course.IsIndependent?null:new TrackRoute(course.Single);
@@ -193,13 +194,13 @@ namespace StarRacingPrototype {
     if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
     yield return "Проверяем старт";
     if(!input.TryBind(snapshot,out bindingError))throw new InvalidOperationException(bindingError);
-    var oldCars=Cars;var oldRoot=activeRaceRoot;
+    var oldCars=Cars;var oldRoot=activeRaceRoot;var oldWorld=activeWorld;
     // Publish only after generation, bindings, placement and resource construction succeeded.
     Balance=nextBalance;RaceBalanceSnapshot=balanceSnapshot;ApplyValues(snapshot);Course=course;Track=track;GraphWorld=null;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
     observations=seen;decisionTimers=timers;decisionRevisions=revisions;lastDecisionTimes=times;botCommands=commands;contactObservations=contacts;contactPolicy=policy;
     RaceGeneration=generation;activeRaceRoot=root;root=null;
     if(activeWorld!=null&&activeWorld!=prepared)activeWorld.Root.SetActive(false);
-    activeWorld=prepared;TouchWorld(prepared);prepared.Root.SetActive(true);track.TireMarks?.Clear();
+    activeWorld=prepared;prepared.Root.SetActive(true);track.TireMarks?.Clear();
     foreach(var car in oldCars)car.gameObject.SetActive(false);
     activeRaceRoot.SetActive(true);Physics.SyncTransforms();
     for(int i=0;i<count;i++){ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);observations[i]=Observation(i);decisionRevisions[i]=cars[i].PositionRevision;}
@@ -208,8 +209,9 @@ namespace StarRacingPrototype {
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
     ApplyLighting();TrackSummary=$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
     if(oldRoot!=null)Destroy(oldRoot);else foreach(var car in oldCars)Destroy(car.gameObject);
+    if(oldWorld!=prepared)oldWorld?.Dispose();
     StartError="";freeze.Keep(Paused?0:1);
-   }finally{if(root!=null)root.SetActive(false);if(root!=null)Destroy(root);if(borrowedWorld!=null&&borrowedWorld!=activeWorld&&!worldWasActive&&borrowedWorld.Root!=null)borrowedWorld.Root.SetActive(false);leasedWorld=null;}
+   }finally{if(root!=null)root.SetActive(false);if(root!=null)Destroy(root);if(borrowedWorld!=null&&borrowedWorld!=activeWorld)borrowedWorld.Dispose();leasedWorld=null;}
   }
   // Experimental graph callers supply common start/finish; normal Generator11
   // still selects the exact legacy session and never activates independent roads.
@@ -268,6 +270,7 @@ namespace StarRacingPrototype {
   void OnApplicationFocus(bool focus){if(!focus)RequestBackgroundPause();}
   void OnApplicationPause(bool paused){if(paused)RequestBackgroundPause();}
   void Update(){
+   if(Ready&&!Started&&!sharedPrewarmFailed&&activePreparation?.IsPending!=true&&GetComponent<RaceMenu>()?.Loading!=true){try{SharedRaceAssets.TickPrewarm();}catch(Exception error){sharedPrewarmFailed=true;Debug.LogWarning("ASSET_PREWARM "+error.Message);}}
    TickWorldPrewarm();
    if(!Ready||LoadingWork.SimulationFrozen||Input==null||GetComponent<RaceMenu>().Loading)return;Input.Refresh();var k=Keyboard.current;
    if(!Started)return;
@@ -367,6 +370,7 @@ namespace StarRacingPrototype {
    if(activeRaceRoot!=null)Destroy(activeRaceRoot);else {if(Track!=null)Destroy(Track.gameObject);if(Cars!=null)foreach(var car in Cars)if(car!=null)Destroy(car.gameObject);}
    foreach(var camera in cameras)if(camera!=null)Destroy(camera.gameObject);if(sun!=null)Destroy(sun.gameObject);if(spaceFill!=null)Destroy(spaceFill.gameObject);
    activeRaceRoot=null;Track=null;Cars=null;System.Array.Clear(cameras,0,cameras.Length);sun=spaceFill=null;graphicsVolume=null;graphicsVolumeProfile=null;
+   sharedAssetLease?.Dispose();sharedAssetLease=null;
   }
  }
 }

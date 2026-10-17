@@ -218,7 +218,7 @@ namespace StarRacingPrototype {
             ownedMaterials.Add(material);
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
-            material.mainTexture = Resources.Load<Texture2D>("Environment/Textures/" + texture);
+            material.mainTexture = SharedRaceAssets.Load<Texture2D>("Environment/Textures/" + texture);
             if (material.mainTexture == null) Debug.LogError("Missing track texture: " + texture);
             if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", .25f);
             return material;

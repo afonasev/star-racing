@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 namespace StarRacingPrototype {
  public sealed partial class RaceDirector {
@@ -15,15 +14,12 @@ namespace StarRacingPrototype {
    public string Key;public LoadingWork Work;public TrackWorld Result;
    public void Dispose(){Work?.Dispose();Work=null;Result?.Dispose();Result=null;}
   }
-  // Keep room for OS/other applications on smaller machines. Unity lowMemory
-  // is not emitted by ordinary desktop Players, so also check an engine budget.
-  int WorldCapacity=>SystemInfo.systemMemorySize>=16384?3:2;
+  // Only the published level and the currently selected candidate are retained.
   long WorldMemoryBudget=>Math.Max(512L<<20,(long)SystemInfo.systemMemorySize*(1L<<20)/4);
-  readonly List<TrackWorld> worlds=new List<TrackWorld>();
   TrackWorld activeWorld,leasedWorld;WorldRequest prewarm;
   string selectedWorldKey;float selectionChanged,nextMemoryCheck;bool prewarmFailed;
-  internal int RetainedWorldCount=>worlds.Count;
-  internal bool WorldPrewarming=>prewarm!=null;
+  internal int RetainedWorldCount=>(activeWorld!=null?1:0)+(prewarm?.Result!=null?1:0)+(leasedWorld!=null&&leasedWorld!=activeWorld?1:0);
+  internal bool WorldPrewarming=>prewarm?.Work.IsPending==true;
   static long CacheMemoryUsage(long engineBytes){
    if(engineBytes>0)return engineBytes;
    // Non-development Players can have no Profiler. Read this process only;
@@ -37,20 +33,17 @@ namespace StarRacingPrototype {
   void RegisterInitialWorld(){
    var root=new GameObject("Retained track world");Track.transform.SetParent(root.transform,true);environment.Root.SetParent(root.transform,true);
    var generated=AppliedConfig.Copy();generated.replay=null;
-   activeWorld=new TrackWorld{Key=WorldKey(generated),Root=root,Track=Track,Course=Course,Decor=environment};worlds.Add(activeWorld);
+   activeWorld=new TrackWorld{Key=WorldKey(generated),Root=root,Track=Track,Course=Course,Decor=environment};
   }
-  TrackWorld FindWorld(string key){for(int i=worlds.Count-1;i>=0;i--)if(worlds[i].Key==key)return worlds[i];return null;}
-  void TouchWorld(TrackWorld world){worlds.Remove(world);worlds.Add(world);}
-  void ReserveWorldSlot(){
-   while(worlds.Count>=WorldCapacity){var victim=worlds.Find(w=>w!=activeWorld&&w!=leasedWorld);if(victim==null)break;worlds.Remove(victim);victim.Dispose();}
-  }
+  TrackWorld FindWorld(string key)=>activeWorld!=null&&activeWorld.Key==key?activeWorld:null;
   WorldRequest NewWorldRequest(LocalRaceConfig config,bool background){
-   ReserveWorldSlot();var request=new WorldRequest{Key=WorldKey(config)};
+   var request=new WorldRequest{Key=WorldKey(config)};
    request.Work=new LoadingWork(BuildWorldSteps(config.Copy(),background,request));return request;
   }
   IEnumerator BuildWorldSteps(LocalRaceConfig config,bool background,WorldRequest request){
    TrackWorld staging=null;
    using(var freeze=new LoadingWork.Freeze())try{
+    yield return "Загружаем общие модели";yield return SharedRaceAssets.EnsureSteps(background);
     string theme=ResolvedTheme(config);yield return "Рассчитываем трассу";
     NativeTrackCourse course;
     if(background){var settings=new Procedural.GraphCourseSettings(theme,config.rails,config.jumps);bool fallback=ForcedFallback(config,theme);
@@ -66,22 +59,21 @@ namespace StarRacingPrototype {
     request.Result=staging;staging=null;
    }finally{staging?.Dispose();}
   }
-  void StoreWorld(WorldRequest request){
+  static void CheckWorld(WorldRequest request){
    if(request.Work.Error!=null)throw request.Work.Error;
    if(!request.Work.Succeeded||request.Result==null)throw new InvalidOperationException("Подготовка мира не завершена");
-   worlds.Add(request.Result);request.Result=null;
   }
   IEnumerator AcquireWorldSteps(LocalRaceConfig config,bool background,bool reuseWorld,Action<TrackWorld> receive){
    string key=WorldKey(config);
    if(prewarm!=null&&(!reuseWorld||prewarm.Key!=key))CancelWorldPrewarm();
    var found=reuseWorld?FindWorld(key):null;
-   if(found!=null){leasedWorld=found;TouchWorld(found);receive(found);yield return "Используем готовую трассу";yield break;}
+   if(found!=null){CancelWorldPrewarm();leasedWorld=found;receive(found);yield return "Используем готовую трассу";yield break;}
    // Transfer ownership: Update can no longer advance or cancel this request.
    var request=prewarm??NewWorldRequest(config,background);prewarm=null;
    TrackWorld built=null;
    using(request){
     while(request.Work.MoveNext())yield return request.Work.Status;
-    built=request.Result;StoreWorld(request);
+    CheckWorld(request);built=request.Result;request.Result=null;
    }
    leasedWorld=built;receive(leasedWorld);
   }
@@ -100,11 +92,11 @@ namespace StarRacingPrototype {
    if(key!=selectedWorldKey){CancelWorldPrewarm();selectedWorldKey=key;selectionChanged=Time.realtimeSinceStartup;prewarmFailed=false;}
    if(FindWorld(key)!=null||prewarmFailed||Time.realtimeSinceStartup-selectionChanged<.25f)return;
    if(prewarm==null)prewarm=NewWorldRequest(config,true);
+   if(prewarm.Work.Succeeded)return;
    if(prewarm.Work.MoveNext())return;
-   try{StoreWorld(prewarm);}catch(Exception error){prewarmFailed=true;Debug.LogWarning("TRACK_PREWARM "+error.Message);}
-   finally{CancelWorldPrewarm();}
+   try{CheckWorld(prewarm);}catch(Exception error){CancelWorldPrewarm();prewarmFailed=true;Debug.LogWarning("TRACK_PREWARM "+error.Message);}
   }
-  void ReleaseInactiveWorlds(){CancelWorldPrewarm();prewarmFailed=true;for(int i=worlds.Count-1;i>=0;i--)if(worlds[i]!=activeWorld&&worlds[i]!=leasedWorld){worlds[i].Dispose();worlds.RemoveAt(i);}}
-  void ReleaseAllWorlds(){foreach(var world in worlds)world.Dispose();worlds.Clear();activeWorld=null;}
+  void ReleaseInactiveWorlds(){CancelWorldPrewarm();prewarmFailed=true;}
+  void ReleaseAllWorlds(){activeWorld?.Dispose();activeWorld=null;}
  }
 }

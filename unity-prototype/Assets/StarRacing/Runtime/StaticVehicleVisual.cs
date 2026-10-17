@@ -16,7 +16,7 @@ namespace StarRacingPrototype
 
         public static StaticVehicleVisual Create(Transform parent, Color color, bool human)
         {
-            var source = Resources.Load<GameObject>("Vehicle/Cloudline");
+            var source = SharedRaceAssets.Load<GameObject>("Vehicle/Cloudline");
             if (source == null) throw new InvalidOperationException("Missing Cloudline C05 vehicle asset");
             var root = new GameObject("Cloudline C05 static vehicle");
             root.transform.SetParent(parent, false);
@@ -44,7 +44,7 @@ namespace StarRacingPrototype
             foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
             {
                 // Exported object names are the ten authored material names.
-                var material = Resources.Load<Material>("Vehicle/CloudlineMaterials/" + renderer.name);
+                var material = SharedRaceAssets.Load<Material>("Vehicle/CloudlineMaterials/" + renderer.name);
                 if (material == null) throw new InvalidOperationException("Missing Cloudline C05 material: " + renderer.name);
                 renderer.sharedMaterial = material;
                 renderer.shadowCastingMode = ShadowCastingMode.On;
@@ -57,6 +57,8 @@ namespace StarRacingPrototype
         }
 
         static Bounds[] contactProfile;
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetContactProfile(){contactProfile=null;}
         const string ProfileAlgorithm="c05-longitudinal-5-v1";
         static readonly float[] ProfileCuts={-2.1f,-1.65f,-1.25f,1.25f,1.65f,2.1f};
         static readonly int[] ProfileOrder={2,0,1,3,4};
@@ -67,7 +69,7 @@ namespace StarRacingPrototype
         }
         public Bounds[] ContactProfile() {
             if(contactProfile!=null)return contactProfile;
-            var asset=Resources.Load<TextAsset>("Vehicle/CloudlineContactProfile");
+            var asset=SharedRaceAssets.Load<TextAsset>("Vehicle/CloudlineContactProfile");
             if(asset==null)throw new InvalidOperationException("Missing baked C05 contact profile");
             var data=JsonUtility.FromJson<ProfileDocument>(asset.text);
             if(data==null||data.version!=1||data.algorithm!=ProfileAlgorithm||data.sourceRevision!=SourceRevision||data.fitWidth!=VehicleGeometry.VisualFitWidth||data.fitLength!=VehicleGeometry.VisualFitLength||data.chassisMinY!=VehicleGeometry.ChassisMinY||data.skin!=.005f||data.cuts==null||data.cuts.Length!=6||data.order==null||data.order.Length!=5||data.sections==null||data.sections.Length!=5)
