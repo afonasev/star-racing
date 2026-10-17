@@ -166,7 +166,8 @@ namespace StarRacingPrototype.Distribution {
    }catch(Exception e){StartupApplying=false;Status="Обновление не установлено: "+SafeError(e);Debug.LogWarning("DESKTOP_UPDATE_APPLY "+e);}
   }
   internal static string[] RestartArguments(IEnumerable<string> current,string version)=>current.Where(x=>!x.StartsWith("--star-racing-apply-attempt=")).Concat(new[]{"--star-racing-apply-attempt="+version}).ToArray();
-  static bool GetMenuState(){var director=FindFirstObjectByType<RaceDirector>();return director!=null&&director.InPreparationMenu;}
+  RaceDirector menuDirector;
+  bool GetMenuState(){if(menuDirector==null)menuDirector=FindFirstObjectByType<RaceDirector>();return menuDirector!=null&&menuDirector.InPreparationMenu;}
   static string SafeError(Exception error)=>error is UnauthorizedAccessException?"Нет доступа к папке обновления":error is IOException||error is InvalidDataException||error is CryptographicException||error is TimeoutException?error.Message:"Проверьте подключение и свободное место";
   void OnDestroy(){download?.Cancel();source?.Dispose();if(Instance==this)Instance=null;}
  }

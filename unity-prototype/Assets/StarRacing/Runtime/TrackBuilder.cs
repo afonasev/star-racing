@@ -51,15 +51,20 @@ namespace StarRacingPrototype {
                 bounceCombine = PhysicsMaterialCombine.Minimum
             };
             yield return ProceduralTrackMesh.BuildSteps(transform, Route, roadMaterial, railMaterial);
+            var budget=new LoadingWork.Budget();
             foreach(var collider in GetComponentsInChildren<MeshCollider>())
+            {
+                if(budget.Due){yield return null;budget.Restart();}
                 if(collider.sharedMesh!=null && collider.sharedMesh.name=="Procedural guard rails")
                 {
                     collider.gameObject.layer=BarrierCollisionLayer;
                     collider.sharedMaterial=barrierContactMaterial;
                     barriers.Add(collider);
                 }
+            }
             roadSurfaces=GetComponentsInChildren<TrackSurface>();roadColliders=new MeshCollider[roadSurfaces.Length];
             for(int i=0;i<roadSurfaces.Length;i++) {
+                if(budget.Due){yield return null;budget.Restart();}
                 var surface=roadSurfaces[i];roadColliders[i]=surface.GetComponent<MeshCollider>();
                 surface.gameObject.layer=RoadCollisionLayer;
                 surface.owner=this;
@@ -67,8 +72,11 @@ namespace StarRacingPrototype {
                 surface.GetComponent<MeshCollider>().sharedMaterial = roadContactMaterial;
             }
             foreach (var collider in GetComponentsInChildren<MeshCollider>())
+            {
+                if(budget.Due){yield return null;budget.Restart();}
                 if (collider.sharedMesh != null && (collider.sharedMesh.name == RoadVolumeMesh.BottomName || collider.sharedMesh.name == RoadVolumeMesh.ExteriorName || collider.sharedMesh.name == RoadVolumeMesh.SupportName))
                     collider.sharedMaterial = roadContactMaterial;
+            }
             // Only the active road collider inventory of this build enters airborne gravity.
             nearestRoad = new RoadSurfaceQuery((TrackSurface[])roadSurfaces.Clone(), this, buildRevision);
             var marks = new GameObject("Drift tire marks"); marks.transform.SetParent(transform, false);
@@ -77,11 +85,15 @@ namespace StarRacingPrototype {
             foreach (var sample in Route.Samples) markBounds.Encapsulate(new Bounds(sample.position, Vector3.one * (sample.halfWidth * 2 + 40)));
             TireMarks.Initialize(markBounds);
             foreach(var filter in GetComponentsInChildren<MeshFilter>()) {
+                if(budget.Due){yield return null;budget.Restart();}
                 var mesh=filter.sharedMesh;
                 if(mesh!=null&&(mesh.name=="Procedural road"||mesh.name=="Procedural guard rails"||mesh.name==RoadVolumeMesh.MeshName))ownedMeshes.Add(mesh);
             }
             foreach(var collider in GetComponentsInChildren<MeshCollider>())
+            {
+                if(budget.Due){yield return null;budget.Restart();}
                 if(collider.sharedMesh!=null && (collider.sharedMesh.name==RoadVolumeMesh.BottomName || collider.sharedMesh.name==RoadVolumeMesh.ExteriorName || collider.sharedMesh.name==RoadVolumeMesh.SupportName))ownedMeshes.Add(collider.sharedMesh);
+            }
             if (!Route.IsClosed) {
                 BuildLine(Route.StartDistance, "START", Color.cyan);
                 BuildLine(Route.FinishDistance, "FINISH", Color.white);
@@ -147,7 +159,9 @@ namespace StarRacingPrototype {
                 yield return IndependentTrackMesh.BuildSteps(root.transform,graph,buildRevision,roadMaterial,railMaterial,null,commonVertical,commonCatalog,value=>GraphSurface=value);
                 var marks=new GameObject("Graph drift tire marks");marks.transform.SetParent(transform,false);TireMarks=marks.AddComponent<DriftTireMarks>();
                 initializeMarks(TireMarks,new GraphEnvironmentGeometry(graph).Bounds);
+                var budget=new LoadingWork.Budget();
                 foreach(var collider in root.GetComponentsInChildren<MeshCollider>()) {
+                    if(budget.Due){yield return null;budget.Restart();}
                     bool rail=collider.sharedMesh!=null && collider.sharedMesh.name=="Independent guard rails";
                     collider.sharedMaterial=rail?barrierContactMaterial:roadContactMaterial;
                     collider.gameObject.layer=rail?BarrierCollisionLayer:RoadCollisionLayer;
@@ -211,11 +225,12 @@ namespace StarRacingPrototype {
         }
 
         void DisposeResources() {
+            var inventory=new HashSet<Mesh>(ownedMeshes);
             foreach(var filter in GetComponentsInChildren<MeshFilter>(true)) {
-                var mesh=filter.sharedMesh;if(mesh!=null&&(mesh.name=="Procedural road"||mesh.name=="Procedural guard rails"||mesh.name==RoadVolumeMesh.MeshName)&&!ownedMeshes.Contains(mesh))ownedMeshes.Add(mesh);
+                var mesh=filter.sharedMesh;if(mesh!=null&&(mesh.name=="Procedural road"||mesh.name=="Procedural guard rails"||mesh.name==RoadVolumeMesh.MeshName)&&inventory.Add(mesh))ownedMeshes.Add(mesh);
             }
             foreach(var collider in GetComponentsInChildren<MeshCollider>(true)) {
-                var mesh=collider.sharedMesh;if(mesh!=null&&(mesh.name==RoadVolumeMesh.BottomName||mesh.name==RoadVolumeMesh.ExteriorName||mesh.name==RoadVolumeMesh.SupportName)&&!ownedMeshes.Contains(mesh))ownedMeshes.Add(mesh);
+                var mesh=collider.sharedMesh;if(mesh!=null&&(mesh.name==RoadVolumeMesh.BottomName||mesh.name==RoadVolumeMesh.ExteriorName||mesh.name==RoadVolumeMesh.SupportName)&&inventory.Add(mesh))ownedMeshes.Add(mesh);
             }
             barriers.Clear();
 

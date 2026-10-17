@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 namespace StarRacingPrototype {
  [DefaultExecutionOrder(-100)]
- public sealed class RaceDirector : MonoBehaviour {
+ public sealed partial class RaceDirector : MonoBehaviour {
   public ReleaseBalance Balance {get;private set;}
   public LabSnapshot RaceBalanceSnapshot {get;private set;}
   public RaceGraphicsSettings Graphics {get;private set;}
@@ -74,10 +74,11 @@ namespace StarRacingPrototype {
   LoadingWork activePreparation;bool pauseDuringPreparation;
   public void BeginLoading(){pauseDuringPreparation=false;}
   public void ApplyLoadingPause(){if(pauseDuringPreparation&&Started&&Session!=null){Paused=true;Session.Paused=true;Input?.Block();Time.timeScale=0;}}
-  void Awake(){if(GetComponent<RaceStartup>()==null)LoadingWork.Drain(InitializeSteps(false));}
+  // Eager synchronous initialization is retained for existing Editor tooling.
+  void Awake(){Application.lowMemory+=ReleaseInactiveWorlds;if(GetComponent<RaceStartup>()==null)LoadingWork.Drain(InitializeSteps(false,true));}
   LoadingWork OwnPreparation(IEnumerator steps){if(activePreparation!=null&&activePreparation.IsPending)throw new InvalidOperationException("Подготовка уже идёт");if(GetComponent<RaceMenu>()?.Loading!=true)BeginLoading();return activePreparation=new LoadingWork(steps);}
-  public LoadingWork InitializeForLoading()=>OwnPreparation(InitializeSteps(true));
-  IEnumerator InitializeSteps(bool background){
+  public LoadingWork InitializeForLoading()=>OwnPreparation(InitializeSteps(true,false));
+  IEnumerator InitializeSteps(bool background,bool eagerWorld){
    using(var freeze=new LoadingWork.Freeze()) {
    yield return "Загружаем меню";
    if(background)yield return DesignLabRuntime.Prepare();
@@ -86,14 +87,17 @@ namespace StarRacingPrototype {
    Application.targetFrameRate=UserSettingsStore.Current.frameLimit==0?-1:UserSettingsStore.Current.frameLimit;Time.fixedDeltaTime=.01f;Time.maximumDeltaTime=.1f;
    Graphics=UserSettingsStore.Current.graphics;var bindings=Resources.Load<RaceGraphicsBindings>("GraphicsRuntimeBindings");if(bindings==null)throw new InvalidOperationException("GraphicsRuntimeBindings resource missing");graphicsLease=bindings.Acquire();graphicsLease.Apply(Graphics.contactShadows);
    var initial=LocalRaceConfig.Load();initial.humans=Mathf.Max(1,initial.humans);ApplyValues(initial);
-   Track=new GameObject("Track").AddComponent<TrackBuilder>();
-   yield return GenerateInitialSteps(background);
-   yield return Track.BuildNativeSteps(Course);
-   yield return BuildDecorSteps(environment,Track,Course,TrackSeed,ResolvedTheme(AppliedConfig),background);
+   if(eagerWorld){
+    Track=new GameObject("Track").AddComponent<TrackBuilder>();
+    yield return GenerateInitialSteps(background);
+    yield return Track.BuildNativeSteps(Course);
+    yield return BuildDecorSteps(environment,Track,Course,TrackSeed,ResolvedTheme(AppliedConfig),background);
+   }
    for(int i=0;i<4;i++){
     var c=new GameObject("Camera "+(i+1)).AddComponent<Camera>();c.rect=new Rect(i*.5f,0,.5f,1);c.fieldOfView=65;c.nearClipPlane=.2f;c.farClipPlane=1800;
     c.backgroundColor=new Color(.018f,.027f,.06f);c.GetUniversalAdditionalCameraData().renderPostProcessing=true;
     cameras[i]=c.gameObject.AddComponent<ChaseCamera>();
+    c.enabled=false;cameras[i].enabled=false;
     c.gameObject.AddComponent<NitroEdgeBlur>().director=this;
    }
    sun=new GameObject("Sun").AddComponent<Light>();sun.type=LightType.Directional;sun.shadows=LightShadows.Soft;
@@ -101,7 +105,12 @@ namespace StarRacingPrototype {
    ApplyLighting();
    var volume=new GameObject("Color and bloom").AddComponent<Volume>();volume.isGlobal=true;volume.profile=ScriptableObject.CreateInstance<VolumeProfile>();
    graphicsVolume=volume;graphicsVolumeProfile=volume.profile;var bloom=volume.profile.Add<Bloom>();graphicsBloom=bloom;bloom.intensity.Override(.25f);bloom.threshold.Override(1.1f);volume.profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);ApplyGraphicsSettings();
-   ApplyUserSettings();yield return CreateRosterSteps();gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;Restart(false);if(!StartupAudioDisabled(Environment.GetCommandLineArgs()))gameObject.AddComponent<RaceAudioCoordinator>();
+   ApplyUserSettings();
+   if(eagerWorld){yield return CreateRosterSteps();RegisterInitialWorld();}
+   else {Cars=Array.Empty<MagneticVehicle>();Drivers=Array.Empty<AiDriver>();RaceGeneration=1;}
+   gameObject.AddComponent<RaceMenu>().director=this;gameObject.AddComponent<RaceHud>().director=this;
+   if(eagerWorld)Restart(false);
+   if(!StartupAudioDisabled(Environment.GetCommandLineArgs()))gameObject.AddComponent<RaceAudioCoordinator>();
    Ready=true;freeze.Keep(0);
    }
   }
@@ -114,7 +123,7 @@ namespace StarRacingPrototype {
    TrackSummary=$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
   }
   static IEnumerator BuildDecorSteps(TrackEnvironmentBuilder decor,TrackBuilder track,NativeTrackCourse course,uint seed,string theme,bool background)=>course.IsIndependent?decor.BuildIndependentSteps(track.GraphSurface,seed,theme,null,background):decor.BuildSteps(track.Route,track.transform,seed,background);
-  void ApplyLighting(){if(sun!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);foreach(var camera in cameras)if(camera!=null)camera.SetSkyline(environment.Plan);ApplyGraphicsSettings();}}
+  void ApplyLighting(){if(sun!=null&&environment.Plan!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);foreach(var camera in cameras)if(camera!=null)camera.SetSkyline(environment.Plan);ApplyGraphicsSettings();}}
   NativeTrackCourse GenerateCourse(LocalRaceConfig config,string theme,bool replay)=>NativeTrackGenerator.Generate(config.Seed,new Procedural.GraphCourseSettings(theme,config.rails,config.jumps),config.generatorRevision,replay&&config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback);
   static float GridDistance(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?course.Start-(slot/2)*10:RaceRoster.GridDistance(track.Route,slot);
   static float GridLateral(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?(slot%2==0?-3.5f:3.5f):RaceRoster.GridLateral(track.Route,slot);
@@ -138,39 +147,35 @@ namespace StarRacingPrototype {
    AppliedConfig=config.Copy();EntrantCount=config.entrants;HumanCount=config.humans;Handicap=false;
    TrackSeed=config.Seed;TrackThemePreference=config.theme;TrackRailMode=config.rails;TrackJumps=config.jumps;
   }
-  public bool TryStartSelected(LocalRaceConfig config,out string error){
-   using(var work=PrepareForLoading(config,false)){while(work.MoveNext()){}error=PreparationError(work);return work.Error==null&&Started&&string.IsNullOrEmpty(error);}
+  public bool TryStartSelected(LocalRaceConfig config,out string error,bool reuseWorld=true){
+   using(var work=PrepareForLoading(config,false,reuseWorld)){while(work.MoveNext()){}error=PreparationError(work);return work.Error==null&&Started&&string.IsNullOrEmpty(error);}
   }
-  public LoadingWork PrepareForLoading(LocalRaceConfig config,bool background=true)=>OwnPreparation(PrepareSteps(config,background));
+  // Tools can explicitly request a cold construction for exact parity checks.
+  public LoadingWork PrepareForLoading(LocalRaceConfig config,bool background=true,bool reuseWorld=true)=>OwnPreparation(PrepareSteps(config,background,reuseWorld));
   public string PreparationError(LoadingWork work){
    if(work.Error!=null){StartError="Не удалось подготовить гонку. Измените параметры трассы.";Debug.LogException(work.Error);}
    return StartError;
   }
-  IEnumerator PrepareSteps(LocalRaceConfig config,bool background){
+  IEnumerator PrepareSteps(LocalRaceConfig config,bool background,bool reuseWorld){
    StartError="";if(Started){StartError="Гонка уже идёт";yield break;}
    LabSnapshot balanceSnapshot=null;ReleaseBalance nextBalance=null;
    try{balanceSnapshot=DesignLabRuntime.Current.Capture();nextBalance=ReleaseBalance.Parse(balanceSnapshot.Json);}catch(Exception e){StartError=e.Message;}
    if(!string.IsNullOrEmpty(StartError))yield break;
    var input=new LocalInputRouter();if(!input.TryBind(config,out var bindingError)){StartError=bindingError;yield break;}
-   GameObject root=null;TrackEnvironmentBuilder decor=null;
-   using(var freeze=new LoadingWork.Freeze())try{
+   GameObject root=null;TrackWorld borrowedWorld=null;bool worldWasActive=false;
+   using(var freeze=new LoadingWork.Freeze(throughput:true))try{
     var snapshot=config.Copy();snapshot.handicap=false;int count=snapshot.entrants,humans=snapshot.humans,generation=RaceGeneration+1;
     string theme=snapshot.theme=="random"?(snapshot.Seed%2==0?"cloud-city":"space-station"):snapshot.theme;
-    yield return "Рассчитываем трассу";
-    NativeTrackCourse course;
-    if(background){var settings=new Procedural.GraphCourseSettings(theme,snapshot.rails,snapshot.jumps);bool fallback=snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme)&&snapshot.replay.fallback;
-     var task=LoadingWork.Background(()=>NativeTrackGenerator.GenerateData(snapshot.Seed,settings,snapshot.generatorRevision,fallback));while(!task.IsCompleted)yield return null;course=task.GetAwaiter().GetResult().Complete();}
-    else course=GenerateCourse(snapshot,theme,true);
+    TrackWorld prepared=null;
+    yield return AcquireWorldSteps(snapshot,background,reuseWorld,value=>prepared=value);
+    leasedWorld=borrowedWorld=prepared;worldWasActive=prepared.Root.activeSelf;prepared.Root.SetActive(true);Physics.SyncTransforms();
+    var course=prepared.Course;var track=prepared.Track;var decor=prepared.Decor;
     var roster=new RaceRoster(count,humans,snapshot.Seed);roster.Shuffle(unchecked(snapshot.Seed+(uint)generation*7919));
     var route=course.IsIndependent?null:new TrackRoute(course.Single);
     var distances=new float[count];var lanes=new float[count];
     for(int i=0;i<count;i++){distances[i]=course.IsIndependent?course.Start-(roster.Entrants[i].GridSlot/2)*10:RaceRoster.GridDistance(route,roster.Entrants[i].GridSlot);lanes[i]=course.IsIndependent?(roster.Entrants[i].GridSlot%2==0?-3.5f:3.5f):RaceRoster.GridLateral(route,roster.Entrants[i].GridSlot);}
     // Staging colliders stay active for admission; the freeze lease prevents all simulation until publication.
     root=new GameObject("Prepared race");
-    var trackObject=new GameObject("Track");trackObject.transform.SetParent(root.transform);var track=trackObject.AddComponent<TrackBuilder>();
-    yield return "Строим трассу";yield return track.BuildNativeSteps(course);
-    decor=new TrackEnvironmentBuilder();yield return "Оформляем мир";
-    yield return BuildDecorSteps(decor,track,course,snapshot.Seed,theme,background);decor.Root.SetParent(root.transform,true);
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
     yield return "Готовим участников";
     for(int i=0;i<count;i++){
@@ -188,21 +193,23 @@ namespace StarRacingPrototype {
     if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
     yield return "Проверяем старт";
     if(!input.TryBind(snapshot,out bindingError))throw new InvalidOperationException(bindingError);
-    var oldTrack=Track;var oldCars=Cars;var oldDecor=environment;var oldRoot=activeRaceRoot;
+    var oldCars=Cars;var oldRoot=activeRaceRoot;
     // Publish only after generation, bindings, placement and resource construction succeeded.
     Balance=nextBalance;RaceBalanceSnapshot=balanceSnapshot;ApplyValues(snapshot);Course=course;Track=track;GraphWorld=null;Cars=cars;Drivers=drivers;Roster=roster;Session=session;World=world;Input=input;environment=decor;
     observations=seen;decisionTimers=timers;decisionRevisions=revisions;lastDecisionTimes=times;botCommands=commands;contactObservations=contacts;contactPolicy=policy;
-    RaceGeneration=generation;activeRaceRoot=root;root=null;decor=null;
-    oldTrack.gameObject.SetActive(false);foreach(var car in oldCars)car.gameObject.SetActive(false);
+    RaceGeneration=generation;activeRaceRoot=root;root=null;
+    if(activeWorld!=null&&activeWorld!=prepared)activeWorld.Root.SetActive(false);
+    activeWorld=prepared;TouchWorld(prepared);prepared.Root.SetActive(true);track.TireMarks?.Clear();
+    foreach(var car in oldCars)car.gameObject.SetActive(false);
     activeRaceRoot.SetActive(true);Physics.SyncTransforms();
     for(int i=0;i<count;i++){ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);observations[i]=Observation(i);decisionRevisions[i]=cars[i].PositionRevision;}
     Session.Reset(observations);Session.Begin();Input.PrepareStart();Started=true;Paused=pauseDuringPreparation;Session.Paused=Paused;Time.timeScale=0;
     pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
     ApplyLighting();TrackSummary=$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
-    oldDecor.Clear();if(oldRoot!=null)Destroy(oldRoot);else{Destroy(oldTrack.gameObject);foreach(var car in oldCars)Destroy(car.gameObject);}
+    if(oldRoot!=null)Destroy(oldRoot);else foreach(var car in oldCars)Destroy(car.gameObject);
     StartError="";freeze.Keep(Paused?0:1);
-   }finally{if(root!=null)root.SetActive(false);if(decor!=null)decor.Clear();if(root!=null)Destroy(root);}
+   }finally{if(root!=null)root.SetActive(false);if(root!=null)Destroy(root);if(borrowedWorld!=null&&borrowedWorld!=activeWorld&&!worldWasActive&&borrowedWorld.Root!=null)borrowedWorld.Root.SetActive(false);leasedWorld=null;}
   }
   // Experimental graph callers supply common start/finish; normal Generator11
   // still selects the exact legacy session and never activates independent roads.
@@ -261,6 +268,7 @@ namespace StarRacingPrototype {
   void OnApplicationFocus(bool focus){if(!focus)RequestBackgroundPause();}
   void OnApplicationPause(bool paused){if(paused)RequestBackgroundPause();}
   void Update(){
+   TickWorldPrewarm();
    if(!Ready||LoadingWork.SimulationFrozen||Input==null||GetComponent<RaceMenu>().Loading)return;Input.Refresh();var k=Keyboard.current;
    if(!Started)return;
    if(Input.MissingDevice&&!Paused)SetPaused(true);
@@ -350,10 +358,11 @@ namespace StarRacingPrototype {
    }
   }
   public void CancelPendingInitialization(){if(!Ready){activePreparation?.Dispose();ReleaseOwnedResources();}}
-  void OnDisable(){activePreparation?.Dispose();if(!Ready)ReleaseOwnedResources();}
-  void OnDestroy(){activePreparation?.Dispose();Time.timeScale=1;ReleaseOwnedResources();}
+  void OnDisable(){CancelWorldPrewarm();activePreparation?.Dispose();if(!Ready)ReleaseOwnedResources();}
+  void OnDestroy(){Application.lowMemory-=ReleaseInactiveWorlds;CancelWorldPrewarm();activePreparation?.Dispose();Time.timeScale=1;ReleaseOwnedResources();}
   void ReleaseOwnedResources(){
    graphicsLease?.Dispose();graphicsLease=null;
+   CancelWorldPrewarm();ReleaseAllWorlds();
    if(graphicsVolume!=null)Destroy(graphicsVolume.gameObject);if(graphicsVolumeProfile!=null)Destroy(graphicsVolumeProfile);environment.Clear();
    if(activeRaceRoot!=null)Destroy(activeRaceRoot);else {if(Track!=null)Destroy(Track.gameObject);if(Cars!=null)foreach(var car in Cars)if(car!=null)Destroy(car.gameObject);}
    foreach(var camera in cameras)if(camera!=null)Destroy(camera.gameObject);if(sun!=null)Destroy(sun.gameObject);if(spaceFill!=null)Destroy(spaceFill.gameObject);

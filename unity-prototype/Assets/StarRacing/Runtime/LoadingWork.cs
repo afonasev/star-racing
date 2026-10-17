@@ -33,17 +33,19 @@ namespace StarRacingPrototype {
   public void Reset()=>throw new NotSupportedException();
   internal static Task<T> Background<T>(Func<T> action){var task=Task.Run(action);_=task.ContinueWith(t=>{var ignored=t.Exception;},TaskContinuationOptions.OnlyOnFaulted);return task;}
   internal static void Drain(IEnumerator steps){using(var work=new LoadingWork(steps)){while(work.MoveNext()){}if(work.Error!=null)throw work.Error;}}
-  public static bool SimulationFrozen=>freezes>0;static int freezes;
-  [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetFreezes(){freezes=0;}
+  public static bool SimulationFrozen=>freezes>0;static int freezes,throughputFreezes;
+  // Main-thread scheduling only. Background generation never consumes budgets.
+  static double BudgetSeconds=>throughputFreezes>0?.012:.004;
+  [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetFreezes(){freezes=throughputFreezes=0;}
   internal sealed class Freeze : IDisposable {
-   float restore=UnityEngine.Time.timeScale;bool disposed;
-   public Freeze(){freezes++;UnityEngine.Time.timeScale=0;}
+   float restore=UnityEngine.Time.timeScale;bool disposed;readonly bool throughput;
+   public Freeze(bool throughput=false){this.throughput=throughput;freezes++;if(throughput)throughputFreezes++;UnityEngine.Time.timeScale=0;}
    public void Keep(float value){restore=value;}
-   public void Dispose(){if(disposed)return;disposed=true;freezes--;UnityEngine.Time.timeScale=freezes>0?0:restore;}
+   public void Dispose(){if(disposed)return;disposed=true;freezes--;if(throughput)throughputFreezes--;UnityEngine.Time.timeScale=freezes>0?0:restore;}
   }
   internal sealed class Budget {
    long started=Stopwatch.GetTimestamp();
-   public bool Due=>(Stopwatch.GetTimestamp()-started)/(double)Stopwatch.Frequency>=.004;
+   public bool Due=>(Stopwatch.GetTimestamp()-started)/(double)Stopwatch.Frequency>=BudgetSeconds;
    public void Restart(){started=Stopwatch.GetTimestamp();}
   }
  }

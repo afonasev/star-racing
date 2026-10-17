@@ -137,12 +137,12 @@ namespace StarRacingPrototype {
    Check(CloudlineSkin.CopyrightText=="© 2026 Evgeniy Afonasev · afonasev.tech · Made with Codex","exact footer");
    foreach(var config in new[]{Config("cloud-city",11,8),Config("cloud-city",12,8,true),Config("space-station",12,64,true),Config("space-station",10,8)}) {
     Trace("parity "+config.theme+" rev="+config.generatorRevision+" count="+config.entrants);
-    generation=director.RaceGeneration;overlay=host.AddComponent<RaceLoading>();work=director.PrepareForLoading(config);long steps=RacePhysicsStepper.NativeSteps;int frameCount=0;var seen=new HashSet<string>();
+    generation=director.RaceGeneration;overlay=host.AddComponent<RaceLoading>();work=director.PrepareForLoading(config,reuseWorld:false);long steps=RacePhysicsStepper.NativeSteps;int frameCount=0;var seen=new HashSet<string>();
     using(work){while(work.MoveNext()){overlay.Status=work.Status;seen.Add(work.Status);Observe(overlay,"parity-"+config.generatorRevision+"-"+config.theme);Check(LoadingWork.SimulationFrozen&&Time.timeScale==0&&steps==RacePhysicsStepper.NativeSteps,"staged race never simulates");frameCount++;yield return null;}}
     Check(work.Error==null&&work.Succeeded&&director.Started,"async preparation success "+work.Error);Check(frameCount>8&&overlay.RenderedFrames>3&&seen.Count>=4,"frames cover real generation/mesh/decor/car stages");
     overlay.enabled=false;Destroy(overlay);overlay=null;director.SetPaused(true);string asynchronous=Signature(director);string replay=director.AppliedConfig.replay.fullIdentity;
     Check(director.ExitToMenu(),"exit async race");typeof(RaceDirector).GetProperty("RaceGeneration").SetValue(director,generation);
-    Check(director.TryStartSelected(config.Copy(),out var error),"sync preparation retained "+error);director.SetPaused(true);
+    Check(director.TryStartSelected(config.Copy(),out var error,reuseWorld:false),"sync preparation retained "+error);director.SetPaused(true);
     Check(asynchronous==Signature(director),"exact mesh/collider/metadata/decor/roster/placement parity "+config.theme+config.generatorRevision);Check(replay==director.AppliedConfig.replay.fullIdentity,"exact replay parity");
     Check(director.ExitToMenu(),"exit sync race");yield return Frames();
    }
@@ -152,6 +152,11 @@ namespace StarRacingPrototype {
   IEnumerator Remaining(){
    int generation;
    if(!LoadingPlayModeChecks.LateOnly){
+   // Pin a different published world and evict inactive entries: cancellation
+   // below must still exercise real cold construction with its original seed.
+   using(var alternate=director.PrepareForLoading(Config("space-station",11,8))){while(alternate.MoveNext())yield return null;Check(alternate.Succeeded&&alternate.Error==null,"cold cancellation baseline prepared");}
+   director.SetPaused(true);Check(director.ExitToMenu(),"exit cancellation baseline");menu.Open(RaceMenuScreen.Main);
+   typeof(RaceDirector).GetMethod("ReleaseInactiveWorlds",Private).Invoke(director,null);yield return Frames();
    foreach(bool duringBuild in new[]{false,true}){
     var roots=PreparedRoots();Select(Config("cloud-city",11,8));generation=director.RaceGeneration;menu.StartSelected();
     if(duringBuild){int count=0;while(menu.Loading){var loading=host.GetComponent<RaceLoading>();if(loading!=null&&loading.Status=="Строим трассу"&&++count==4)break;yield return null;}Check(menu.Loading,"actual mesh staging reached before cancellation");}
@@ -181,8 +186,8 @@ namespace StarRacingPrototype {
    Destroy(host);host=null;yield return Frames();
    foreach(bool startupFirstDisable in new[]{true,false}){
     Config("cloud-city",11,8).Save();host=new GameObject("Cancelled startup");var startup=host.AddComponent<RaceStartup>();
-    while((director=host.GetComponent<RaceDirector>())==null||director.Cars==null||director.Cars[0]==null)yield return null;
-    Check(!director.Ready,"startup cancellation reached actual partial car allocation");
+    while((director=host.GetComponent<RaceDirector>())==null)yield return null;
+    Check(!director.Ready&&director.Track==null,"startup cancellation reached pending light initialization");
     if(startupFirstDisable){startup.enabled=false;director.enabled=false;}else {director.enabled=false;startup.enabled=false;}
     yield return Frames();Check(!LoadingWork.SimulationFrozen,"both startup teardown orders release freeze");Check(FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0&&FindObjectsByType<MagneticVehicle>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0,"cancelled startup frees track and cars outside host");
     Check(host.GetComponent<RaceLoading>()!=null,"cancelled startup not presented as successful menu");Trace("startup cancellation passed startupFirst="+startupFirstDisable);Destroy(host);host=null;yield return Frames();

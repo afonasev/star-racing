@@ -157,29 +157,31 @@ namespace StarRacingPrototype
                     if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
-            public void Create(Transform parent, Material material,int bottomIndices,bool graph=false)
+            public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false)
             {
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
                 mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
                 mesh.RecalculateNormals(); mesh.RecalculateBounds();
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                go.AddComponent<MeshRenderer>().sharedMaterial = material;
-                var bottom=new Mesh {name=BottomName,indexFormat=IndexFormat.UInt32};
-                bottom.SetVertices(vertices);bottom.SetTriangles(triangles.GetRange(0,bottomIndices),0);bottom.RecalculateBounds();
-                // An empty graph collider carrier avoids AddComponent automatically
-                // cooking the multi-million-triangle visual shell before assigning
-                // the actual bottom/exterior inventories.
+                // Add both empty colliders before the visual MeshFilter exists.
+                // Otherwise Unity cooks the entire visual shell on AddComponent,
+                // only to discard it when sharedMesh receives the real inventory.
                 var collisionObject=go;
                 if(graph){collisionObject=new GameObject("Graph shell collision");collisionObject.transform.SetParent(go.transform,false);}
                 var bottomCollider=collisionObject.AddComponent<MeshCollider>();
+                var exteriorCollider=collisionObject.AddComponent<MeshCollider>();
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                go.AddComponent<MeshRenderer>().sharedMaterial = material;
+                yield return null;
+                var bottom=new Mesh {name=BottomName,indexFormat=IndexFormat.UInt32};
+                bottom.SetVertices(vertices);bottom.SetTriangles(triangles.GetRange(0,bottomIndices),0);bottom.RecalculateBounds();
                 if(graph)bottomCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
                 bottomCollider.sharedMesh = bottom;
+                yield return null;
                 // Preserve the exact exterior triangle boundary at hull seams/tips.
                 // Contained convex supports supply the small-motion CCD contacts.
                 var exterior=new Mesh {name=ExteriorName,indexFormat=IndexFormat.UInt32};
                 exterior.SetVertices(vertices);exterior.SetTriangles(triangles.GetRange(bottomIndices,triangles.Count-bottomIndices),0);exterior.RecalculateBounds();
-                var exteriorCollider=collisionObject.AddComponent<MeshCollider>();
                 if(graph)exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
                 exteriorCollider.sharedMesh=exterior;
                 collisionObject.AddComponent<RoadSupportContact>().InitializeMesh(exteriorCollider,repairable.GetRange(bottomIndices/3,(triangles.Count-bottomIndices)/3).ToArray());
@@ -273,7 +275,7 @@ namespace StarRacingPrototype
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
             yield return null;budget.Restart();
-            shell.Create(parent,material,bottomIndices,portNormal!=null);
+            yield return shell.CreateSteps(parent,material,bottomIndices,portNormal!=null);
             yield return null;budget.Restart();
             if(supports!=null)foreach(var triangle in supports){CreateSupport(parent,triangle);if(budget.Due){yield return null;budget.Restart();}}
         }
