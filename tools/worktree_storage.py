@@ -31,11 +31,18 @@ def location(root):
     return root, gitdir.resolve(), common.resolve()
 
 
-def policy(root):
+def policy(root, revision=None):
     """Read the selected checkout's profile, including before its first checkout."""
     root, _, common = location(root)
     path = root / 'tools/worktree_storage.json'
-    if path.is_file():
+    if revision is not None:
+        # A commit guard must use the profile being committed, never an
+        # unstaged working-copy exception or another checkout's profile.
+        try:
+            raw = git(root, 'show', revision + ':tools/worktree_storage.json')
+        except subprocess.CalledProcessError:
+            raw = b'{}'
+    elif path.is_file():
         raw = path.read_bytes()
     else:
         try:
@@ -116,7 +123,7 @@ def violations(root, base=None):
         names = git(root, 'diff', '--cached', '--name-only', '-z',
                     '--diff-filter=ACMRT', '--', 'docs', 'artifacts')
         revision = ''
-    _, source_directories = policy(root)
+    _, source_directories = policy(root, revision)
     found = []
     for raw in names.split(b'\0'):
         if not raw:
