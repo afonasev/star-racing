@@ -14,3 +14,5 @@ distribution/**/obj/
 
 # Unity Performance Testing generates these during ordinary Player builds.
 unity-prototype/Assets/Resources/PerformanceTestRun*
+
+/.local/
