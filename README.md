@@ -47,3 +47,5 @@ STAR_RACING_LOADING_QA_DIR=/absolute/owned-loading-qa ./tools/unity.sh shared -n
 ```
 
 Проверка требует graphics-enabled Editor для PNG; создаёт изолированные QA-настройки, сохраняет и восстанавливает выбранную конфигурацию гонки. Прозрачный wordmark: `unity-prototype/Assets/StarRacing/Resources/UI/LoadingWordmark.png`, подготовлен из принятого визуального эскиза. Блик маскируется альфа-каналом букв и не затрагивает фон.
+
+Local development: see [worktree and evidence storage](docs/WORKTREE_STORAGE.md).

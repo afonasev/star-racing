@@ -1,0 +1,8 @@
+{
+  "sparse_patterns": [
+    "/*",
+    "!/artifacts/",
+    "!/docs/evidence/"
+  ],
+  "source_directories": []
+}

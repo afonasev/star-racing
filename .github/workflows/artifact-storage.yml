@@ -1,0 +1,20 @@
+name: Artifact storage
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'artifacts/**'
+      - 'tools/worktree_storage.py'
+      - 'tools/worktree_storage.json'
+      - '.github/workflows/artifact-storage.yml'
+permissions:
+  contents: read
+jobs:
+  compact-documents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check added or changed documentation payloads
+        run: python3 tools/worktree_storage.py check --base "${{ github.event.pull_request.base.sha }}"
