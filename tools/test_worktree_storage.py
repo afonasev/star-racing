@@ -156,6 +156,9 @@ class WorktreeStorageTests(unittest.TestCase):
         self.write('docs/new.png', b'QA image')
         self.git('add', 'docs/audio/approved.flac', 'docs/new.png')
         self.assertEqual(['docs/new.png'], [v['path'] for v in storage.violations(self.root)])
+        profile['source_directories'].append({'path': 'docs/new.png', 'reason': 'Unstaged exception'})
+        self.write('tools/worktree_storage.json', json.dumps(profile).encode())
+        self.assertEqual(['docs/new.png'], [v['path'] for v in storage.violations(self.root)])
         old = self.base / 'older-ref'
         storage.create(self.root, old, 'older-ref', self.initial)
         self.assertFalse((old / 'artifacts').exists())
