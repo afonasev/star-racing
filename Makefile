@@ -26,3 +26,7 @@ build:
 
 check-player: check-full
 	$(MAKE) build
+
+.PHONY: storage-check
+storage-check:
+	python3 tools/worktree_storage.py check
