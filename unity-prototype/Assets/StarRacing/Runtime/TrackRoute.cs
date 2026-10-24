@@ -20,6 +20,8 @@ namespace StarRacingPrototype {
         public float FinishDistance { get; private set; }
 
         const float HalfWidth = 8f;
+        // One binary can compare the old arithmetic with prepared coefficients.
+        static readonly bool preparedProjection = Array.IndexOf(Environment.GetCommandLineArgs(), "--race-projection-baseline") < 0;
 
         public TrackRoute(Procedural.Definition definition) {
             IsClosed = false;
@@ -213,17 +215,24 @@ namespace StarRacingPrototype {
                 for (int i = Mathf.Max(0, bestSegment - 1); i <= Mathf.Min(Samples.Length - 2, bestSegment + 1); i++) {
                     var a = Samples[i]; var b = Samples[i + 1];
                     float span = b.distance - a.distance;
+                    // Only this synchronous query owns these coefficients. Rebuild them
+                    // for each segment so edits to public Samples cannot leave a cache stale.
+                    var curve = preparedProjection ? new ProjectionCurve(a.position, b.position, derivatives[i], derivatives[i + 1], span) : default;
                     float t = Mathf.Clamp01(Vector3.Dot(position - a.position, b.position - a.position) /
                         (b.position - a.position).sqrMagnitude);
                     for (int iteration = 0; iteration < 5; iteration++) {
-                        Curve(i, t, out var point, out var first, out var second);
+                        Vector3 point, first, second;
+                        if (preparedProjection) curve.Evaluate(t, out point, out first, out second);
+                        else Curve(i, t, out point, out first, out second);
                         float denominator = first.sqrMagnitude + Vector3.Dot(point - position, second);
                         if (Mathf.Abs(denominator) < .00001f) break;
                         t = Mathf.Clamp01(t - Vector3.Dot(point - position, first) / denominator);
                     }
                     float candidate = a.distance + span * t;
                     if (Mathf.Abs(WrappedDelta(candidate, previous)) > window) continue;
-                    Curve(i, t, out var nearest, out _, out _);
+                    Vector3 nearest;
+                    if (preparedProjection) curve.Evaluate(t, out nearest, out _, out _);
+                    else Curve(i, t, out nearest, out _, out _);
                     float score = (position - nearest).sqrMagnitude;
                     if (score < bestScore) { bestScore = score; bestDistance = candidate; }
                 }
@@ -266,6 +275,21 @@ namespace StarRacingPrototype {
             position = a.position + (-2*t3+3*t2)*chord + (t3-2*t2+t)*m0 + (t3-t2)*m1;
             first = (-6*t2+6*t)*chord + (3*t2-4*t+1)*m0 + (3*t2-2*t)*m1;
             second = (-12*t+6)*chord + (6*t-4)*m0 + (6*t-2)*m1;
+        }
+
+        // Same arithmetic and evaluation order as Curve; segment-invariant work is
+        // shared by the Newton iterations, without retaining state between queries.
+        readonly struct ProjectionCurve {
+            readonly Vector3 origin, chord, m0, m1;
+            public ProjectionCurve(Vector3 a, Vector3 b, Vector3 first, Vector3 second, float span) {
+                origin = a; chord = b - a; m0 = first * span; m1 = second * span;
+            }
+            public void Evaluate(float t, out Vector3 position, out Vector3 first, out Vector3 second) {
+                float t2 = t * t, t3 = t2 * t;
+                position = origin + (-2*t3+3*t2)*chord + (t3-2*t2+t)*m0 + (t3-t2)*m1;
+                first = (-6*t2+6*t)*chord + (3*t2-4*t+1)*m0 + (3*t2-2*t)*m1;
+                second = (-12*t+6)*chord + (6*t-4)*m0 + (6*t-2)*m1;
+            }
         }
 
         public float WrappedDelta(float target, float from) {

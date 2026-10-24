@@ -80,5 +80,39 @@ namespace StarRacingPrototype {
    }
    Debug.Log("TRACK_PROJECTION_EXACT_PARITY_OK cases="+cases+" exhaustiveBaseline=true tolerances=none");
   }
+
+  public static void RunPreparedCoefficients() {
+   int cases=0;var random=new System.Random(211933141);
+   void Exact(TrackFrame expected,TrackFrame actual) {
+    void Float(float a,float b){if(BitConverter.SingleToInt32Bits(a)!=BitConverter.SingleToInt32Bits(b))throw new Exception("Prepared projection changed float bits at case "+cases);}
+    void Vector(Vector3 a,Vector3 b){Float(a.x,b.x);Float(a.y,b.y);Float(a.z,b.z);}
+    Float(expected.distance,actual.distance);Float(expected.halfWidth,actual.halfWidth);
+    Vector(expected.position,actual.position);Vector(expected.tangent,actual.tangent);Vector(expected.normal,actual.normal);Vector(expected.right,actual.right);
+    if(expected.gap!=actual.gap||expected.segmentId!=actual.segmentId)throw new Exception("Prepared projection changed metadata");
+    cases++;
+   }
+   foreach(uint seed in new uint[]{211933141,77}) {
+    var source=BasisCompatibilityChecks.Course(false,seed).Single;
+    foreach(bool transformed in new[]{false,true}) {
+     var route=new TrackRoute(transformed?BasisNativeExperiment.Transform(source):source);
+     for(int i=0;i<256;i++) {
+      float progress=i<4?new[]{0f,30f,route.Length-.001f,route.Length}[i]:(float)random.NextDouble()*route.Length;
+      var basis=route.Evaluate(progress);
+      var position=basis.position+basis.right*((float)random.NextDouble()*60-30)+basis.normal*((float)random.NextDouble()*80-40);
+      float window=new[]{0f,.001f,20f,30f,-1f,route.Length*2,float.NaN,float.PositiveInfinity}[i%8];
+      Exact(Reference(route,position,progress,window),route.Project(position,progress,window));
+     }
+     // A prior query must not retain coefficients after public source edits.
+     int index=route.Samples.Length/2;var original=route.Samples[index];
+     for(int repeat=0;repeat<4;repeat++) {
+      var sample=original;sample.position+=new Vector3(repeat*.125f,repeat*-.25f,repeat*.5f);route.Samples[index]=sample;
+      var position=sample.position+sample.normal*.37f;
+      Exact(Reference(route,position,sample.distance,30),route.Project(position,sample.distance,30));
+     }
+     route.Samples[index]=original;
+    }
+   }
+   Debug.Log("PREPARED_PROJECTION_EXACT_BITS_OK cases="+cases+" canonicalAndBasis=true mutableSamples=true");
+  }
  }
 }
