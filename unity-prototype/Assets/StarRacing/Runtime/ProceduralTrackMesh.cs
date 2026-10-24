@@ -41,7 +41,7 @@ public static class ProceduralTrackMesh
             faces.Add(face);
             faces.Add(face);
         }
-        public void Create(Transform parent, string name, Material material, bool road)
+        public void Create(Transform parent, string name, Material material, bool road,bool renderOnly=false)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -57,6 +57,10 @@ public static class ProceduralTrackMesh
             mesh.RecalculateBounds();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = material;
+            if(renderOnly){
+                if(road){var data=go.AddComponent<RoadRenderSource>();data.triangleSamples=samples.ToArray();data.triangleFaces=faces.ToArray();}
+                return;
+            }
             var collider=go.AddComponent<MeshCollider>();
             // Legacy midphase preserves this exact top while avoiding opposing
             // internal-edge normals observed on the generated Space loop.
@@ -105,7 +109,7 @@ public static class ProceduralTrackMesh
     }
     public static void Build(Transform parent, TrackRoute route, Material roadMaterial, Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null)
     {LoadingWork.Drain(BuildSteps(parent,route,roadMaterial,railMaterial,observer));}
-    internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,Material roadMaterial,Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null)
+    internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,Material roadMaterial,Material railMaterial,System.Action<RoadVolumeMesh.SupportTriangle> observer=null,bool renderOnly=false)
     {
         var budget=new LoadingWork.Budget();
         var road = new Geometry();
@@ -221,10 +225,10 @@ public static class ProceduralTrackMesh
             }
         }
         yield return null;
-        road.Create(parent, "Procedural road", roadMaterial, true);
+        road.Create(parent, "Procedural road", roadMaterial, true,renderOnly);
         yield return null;
-        yield return RoadVolumeMesh.BuildSteps(parent, route, road.vertices, road.faces,road.triangles, roadMaterial,observer);
-        rails.Create(parent, "Procedural guard rails", railMaterial, false);
+        yield return RoadVolumeMesh.BuildSteps(parent, route, road.vertices, road.faces,road.triangles, roadMaterial,observer,renderOnly);
+        rails.Create(parent, "Procedural guard rails", railMaterial, false,renderOnly);
     }
 }
 }

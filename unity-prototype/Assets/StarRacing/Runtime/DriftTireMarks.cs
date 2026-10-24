@@ -46,6 +46,7 @@ namespace StarRacingPrototype {
    view=gameObject.AddComponent<MeshRenderer>();view.sharedMaterial=material;view.shadowCastingMode=ShadowCastingMode.Off;view.receiveShadows=false;
    view.lightProbeUsage=LightProbeUsage.Off;view.reflectionProbeUsage=ReflectionProbeUsage.Off;Clear();
   }
+  internal void SetRenderBounds(Bounds bounds){if(mesh==null)return;var sub=mesh.GetSubMesh(0);sub.bounds=bounds;mesh.SetSubMesh(0,sub,UploadFlags);mesh.bounds=bounds;}
   public static float SlipIntensity(Vector3 velocity,Vector3 forward,Vector3 normal,ref bool active) {
    if(normal.sqrMagnitude<.5f){active=false;return 0;}normal.Normalize();
    Vector3 planar=Vector3.ProjectOnPlane(velocity,normal),body=Vector3.ProjectOnPlane(forward,normal).normalized;
@@ -72,7 +73,7 @@ namespace StarRacingPrototype {
     hit.triangleIndex>=0&&hit.triangleIndex<surface.triangleFaces.Length&&
     graphRoute.Raycast(hit.point+hit.normal*.5f,-hit.normal,1,out var proven)&&proven.collider==hit.collider&&(proven.point-hit.point).sqrMagnitude<.0004f;
    if(!current||hit.distance>=1.12f||hit.normal.sqrMagnitude<.5f){trails[stream]=default;return;}
-   Sample(stream,hit.point,hit.normal,intensity,now);
+   Sample(stream,track.ToPresentation(hit.point),track.ToPresentation(hit.normal),intensity,now);
   }
   // Geometry fixture entry; production only samples validated current road contacts.
   public void Sample(int stream,Vector3 point,Vector3 normal,float intensity,float now) {

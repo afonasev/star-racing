@@ -702,7 +702,7 @@ namespace StarRacingPrototype
                         car.Body.angularVelocity=rotation*axis*6;int revision=car.PositionRevision;
                         for(int step=0;step<24;step++)Simulate(.01f);
                         Check(box.enabled && car.PositionRevision==revision,"angular matrix was masked by recovery");cases++;
-                    }catch(Exception e){failed++;Debug.Log("ROAD_VOLUME_EXTENDED_FAILED "+e.Message);if(sentinels)throw;}finally {UnityEngine.Object.DestroyImmediate(obj);}
+                    }catch(Exception e){failed++;Debug.Log("ROAD_VOLUME_EXTENDED_FAILED "+e.Message);if(sentinels||basisPhysicalWitness)throw;}finally {UnityEngine.Object.DestroyImmediate(obj);}
                 }
                 foreach(float speed in new[]{42f,139f,300f}) {
                     if(Environment.GetEnvironmentVariable("STAR_RACING_ROAD_CRITICAL")=="1"&&(speed==42||Quaternion.Angle(rotation,f.Rotation*Quaternion.Euler(-25,-17,31))>.01f))continue;
@@ -722,7 +722,7 @@ namespace StarRacingPrototype
                         b.Body.linearVelocity=-outward*speed;int revision=a.PositionRevision;
                         for(int step=0;step<24;step++)Simulate(.01f);
                         Check(box.enabled && a.PositionRevision==revision,"impulse matrix was masked by recovery");cases++;
-                    }catch(Exception e){failed++;Debug.Log("ROAD_VOLUME_EXTENDED_FAILED "+e.Message);if(sentinels)throw;}finally {UnityEngine.Object.DestroyImmediate(receiver);UnityEngine.Object.DestroyImmediate(donor);}
+                    }catch(Exception e){failed++;Debug.Log("ROAD_VOLUME_EXTENDED_FAILED "+e.Message);if(sentinels||basisPhysicalWitness)throw;}finally {UnityEngine.Object.DestroyImmediate(receiver);UnityEngine.Object.DestroyImmediate(donor);}
                 }
             }
             Debug.Log("ROAD_VOLUME_ANGULAR_IMPULSE_MATRIX_RESULT passed="+cases+" failed="+failed+" faces=6 orientations=3 alongShift="+alongShift+" capLateral="+capLateral+" maxPenetration="+maxObservedPenetration);
@@ -865,17 +865,32 @@ namespace StarRacingPrototype
         }
         public static void Run()=>RunCore(true);
         public static void RunFlat()=>RunCore(false);
-        static void RunCore(bool generated)
+        static bool basisPhysicalWitness;
+        public static void RunFlatDefinition(Procedural.Definition definition) {
+            basisPhysicalWitness=true;
+            try {RunCore(false,definition);} finally {basisPhysicalWitness=false;}
+        }
+        static void RunCore(bool generated,Procedural.Definition flatDefinition=null)
         {
             ValidateFlatClosure();ValidateSlabOracle();impacts=probes=0;var mode=Physics.simulationMode;float dt=Time.fixedDeltaTime;
             try {
                 Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;
                 var root=new GameObject("flat road volume fixture");
-                try { var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(FlatRoad()));Geometry(track);RoadNativeContactObserver.Begin(root);substepTrack=track;FlatImpacts(track);AngularAndImpulse(track);AngularImpulseMatrix(track); }
+                try { var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(flatDefinition??FlatRoad()));Geometry(track);RoadNativeContactObserver.Begin(root);substepTrack=track;FlatImpacts(track);AngularAndImpulse(track);AngularImpulseMatrix(track); }
                 finally { RoadNativeContactObserver.End();substepTrack=null;UnityEngine.Object.DestroyImmediate(root); }
                 if(generated)RunGenerated();
             } finally { Physics.simulationMode=mode;Time.fixedDeltaTime=dt; }
             Debug.Log((generated?"ROAD_VOLUME_CHECKS_OK":"ROAD_VOLUME_FLAT_CHECKS_OK")+" impacts="+impacts+" probes="+probes+" maxImpactSpeed=1000m/s noRespawnMasking=true");
+        }
+        public static void RunGeneratedDefinition(Procedural.Definition definition) {
+            var mode=Physics.simulationMode;float dt=Time.fixedDeltaTime;impacts=probes=0;
+            var root=new GameObject("basis generated course quality");basisPhysicalWitness=true;
+            try {
+                Physics.simulationMode=SimulationMode.Script;Time.fixedDeltaTime=.01f;
+                var track=root.AddComponent<TrackBuilder>();track.Build(new TrackRoute(definition));
+                Geometry(track);RoadNativeContactObserver.Begin(root);BranchAndJumpImpacts(track);
+                Debug.Log("BASIS_GENERATED_PHYSICAL_OK impacts="+impacts+" probes="+probes);
+            } finally {RoadNativeContactObserver.End();basisPhysicalWitness=false;UnityEngine.Object.DestroyImmediate(root);Physics.simulationMode=mode;Time.fixedDeltaTime=dt;}
         }
         public static void RunGenerated()
         {

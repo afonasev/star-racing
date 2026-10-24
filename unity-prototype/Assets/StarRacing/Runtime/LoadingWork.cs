@@ -14,10 +14,26 @@ namespace StarRacingPrototype {
   public bool Succeeded {get;private set;}
   public object Current=>null;
   public LoadingWork(IEnumerator work){stack.Push(work);}
+#if UNITY_EDITOR
+  // Optional diagnostic observer; absent from shipped Players.
+  public static Action<string,double> StepMeasured;
+  static bool Advance(IEnumerator step){
+   if(StepMeasured==null)return step.MoveNext();
+   long began=Stopwatch.GetTimestamp();
+   try{return step.MoveNext();}
+   finally{StepMeasured?.Invoke(step.GetType().FullName,(Stopwatch.GetTimestamp()-began)/(double)Stopwatch.Frequency);}
+  }
+#endif
   public bool MoveNext(){
    if(disposed)return false;
    try {
-    while(stack.Count>0){var step=stack.Peek();if(!step.MoveNext()){stack.Pop();(step as IDisposable)?.Dispose();continue;}
+    while(stack.Count>0){var step=stack.Peek();
+#if UNITY_EDITOR
+     bool more=Advance(step);
+#else
+     bool more=step.MoveNext();
+#endif
+     if(!more){stack.Pop();(step as IDisposable)?.Dispose();continue;}
      if(step.Current is IEnumerator nested){stack.Push(nested);continue;}
      if(step.Current is string text)Status=text;return true;
     }

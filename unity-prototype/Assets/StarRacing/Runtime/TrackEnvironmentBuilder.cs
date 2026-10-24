@@ -17,6 +17,7 @@ namespace StarRacingPrototype {
         MeshRenderer railRenderer;
         bool railRendererOriginalEnabled;
         public EnvironmentPlan Plan { get; private set; }
+        public bool PartitionRoadVisuals { get; set; } = true;
         public int LampCount { get; private set; }
         public struct LampPlacement { public float distance; public int side; public Vector3 basePoint; }
         public readonly List<LampPlacement> Lamps = new List<LampPlacement>();
@@ -34,6 +35,7 @@ namespace StarRacingPrototype {
             try {
             yield return null;BuildRoadDistricts(route, roadRoot);
             yield return null;BuildRailSurfaces(roadRoot);
+            if(Plan.theme=="cloud-city"){yield return null;BuildShellSections(roadRoot);}
             if (Plan.theme == "cloud-city") yield return BuildCitySteps(route);
             else yield return BuildSpaceSteps(route);
             yield return null;
@@ -45,6 +47,7 @@ namespace StarRacingPrototype {
 
         public void Clear() {
             ClearGraphRenderers();
+            foreach(var item in sectionSources)if(item.renderer!=null)item.renderer.enabled=item.enabled;sectionSources.Clear();
             Sky?.Clear(); Sky = null;
             if (roadRenderer != null) roadRenderer.enabled = roadRendererOriginalEnabled;
             if (railRenderer != null) railRenderer.enabled = railRendererOriginalEnabled;
@@ -116,7 +119,10 @@ namespace StarRacingPrototype {
             if (sourceFilter == null) return;
             var source = sourceFilter.sharedMesh;
             var surface = sourceFilter.GetComponent<TrackSurface>();
-            if (surface == null || surface.triangleSamples.Length != source.triangles.Length / 3) return;
+            var renderSource=sourceFilter.GetComponent<RoadRenderSource>();
+            var samples=renderSource!=null?renderSource.triangleSamples:surface?.triangleSamples;
+            var faces=renderSource!=null?renderSource.triangleFaces:surface?.triangleFaces;
+            if (samples == null || samples.Length != source.triangles.Length / 3) return;
             var triangles = source.triangles;
             var visual = new Mesh { name = "Environment road visual", indexFormat = source.indexFormat };
             visual.vertices = source.vertices;
@@ -124,7 +130,7 @@ namespace StarRacingPrototype {
             // Render-only mapping uses authored face distances and lateral edges, including ramps
             // and branches. The original collision mesh and its metadata remain untouched.
             var uv = new Vector2[source.vertexCount];
-            foreach (var face in surface.triangleFaces) {
+            foreach (var face in faces) {
                 int at = face.quad * 4;
                 uv[at] = new Vector2(face.leftStart / 8f, face.startDistance / 8f);
                 uv[at + 1] = new Vector2(face.leftEnd / 8f, face.endDistance / 8f);
@@ -134,19 +140,17 @@ namespace StarRacingPrototype {
             visual.uv = uv;
             visual.triangles = triangles;
             visual.RecalculateTangents();
-            visual.RecalculateBounds(); meshes.Add(visual);
+            visual.RecalculateBounds();
             var material = SurfaceMaterial("RoadBlend", false);
             // UVs retain their certified /8 metre mapping; material ST maps the atlas.
             material.mainTextureScale = new Vector2(8f / 32f, 8f / 288f);
-            var road = new GameObject("Visual road districts"); road.transform.SetParent(root.transform, false);
-            road.AddComponent<MeshFilter>().sharedMesh = visual;
-            road.AddComponent<MeshRenderer>().sharedMaterial = material;
+            PublishRoadVisual("Visual road districts",visual,material);
             roadRenderer = sourceFilter.GetComponent<MeshRenderer>();
             if (roadRenderer != null) {
                 roadRendererOriginalEnabled = roadRenderer.enabled;
                 roadRenderer.enabled = false;
             }
-            // The copied render mesh has the exact original vertices and triangles. The collider stays on the original object.
+            // Sections retain every original triangle and vertex attribute. The collider stays on the original object.
         }
 
         Material SurfaceMaterial(string texture, bool rail) {
@@ -171,19 +175,17 @@ namespace StarRacingPrototype {
             if (source == null) return;
             // A render-only clone preserves both collider topology and TrackBuilder ownership.
             var visual = Object.Instantiate(source.sharedMesh);
-            visual.name = "Environment rail visual"; meshes.Add(visual);
+            visual.name = "Environment rail visual";
             var uv = visual.uv;
             // Each rail cell has two vertical quads followed by its narrow top quad.
             // Keep the full top in the light cap instead of restarting at the dark base.
             for (int i = 0; i < uv.Length; i++) if (i % 12 >= 8) uv[i].y = 1.3f / 4f * .95f;
             visual.uv = uv;
             visual.RecalculateTangents();
-            var go = new GameObject("Visual rail surfaces"); go.transform.SetParent(root.transform, false);
-            go.AddComponent<MeshFilter>().sharedMesh = visual;
             var material = SurfaceMaterial("RailBlend", true);
             // Source UV x is distance/4; y is physical face width/4.
             material.mainTextureScale = new Vector2(4f / 288f, 4f / 1.3f);
-            go.AddComponent<MeshRenderer>().sharedMaterial = material;
+            PublishRoadVisual("Visual rail surfaces",visual,material);
             railRenderer = source.GetComponent<MeshRenderer>();
             if (railRenderer != null) {
                 railRendererOriginalEnabled = railRenderer.enabled;
@@ -197,8 +199,6 @@ namespace StarRacingPrototype {
             var facade = Lit(new Color(.86f, .94f, 1f), .22f, false, "Facade", .38f);
             var blue = Lit(new Color(.65f, .8f, .95f), .22f, false, "Facade", .38f);
             var dark = Lit(new Color(.6f, .73f, .84f), .22f, false, "Facade", .38f);
-            var teal = Lit(new Color(.12f, .86f, .8f), .05f, true);
-            var amber = Lit(new Color(1, .65f, .24f), .05f, true);
             var batches = new CityBatches(this);
             for (int i = 0; i < Plan.towers.Count; i++) {
                 if(budget.Due){yield return null;budget.Restart();}
@@ -206,20 +206,31 @@ namespace StarRacingPrototype {
                 var material = i % 3 == 0 ? facade : i % 3 == 1 ? blue : dark;
                 var top = tower.position + Vector3.up * (tower.height * .5f);
                 if(i<10) {
-                    Shape("City tower", cube, material, tower.position, Quaternion.identity,
+                    var body = Shape("City tower", cube, material, tower.position, Quaternion.identity,
                           new Vector3(tower.width,tower.height,tower.width), true);
+                    RemoveCoveredTowerTop(body.GetComponent<MeshFilter>());
                     BuildTowerTrim(tower.position,top,tower.width,tower.height,silver);
                 } else {
-                    batches.Box(material,tower.position,new Vector3(tower.width,tower.height,tower.width),12);
+                    batches.Box(material,tower.position,new Vector3(tower.width,tower.height,tower.width),12,true);
                     batches.Box(silver,top-Vector3.up*2,new Vector3(tower.width*1.12f,4,tower.width*1.12f),4);
                     for(int floor=1;floor<=4;floor++)batches.Box(silver,
                         new Vector3(tower.position.x,Plan.cityBaseY+tower.height*floor/5f,tower.position.z),
                         new Vector3(tower.width*1.015f,.65f,tower.width*1.015f),4);
                 }
-                if(i%3==0)batches.Box(tower.amber?amber:teal,top+Vector3.up*1.5f,new Vector3(2.2f,3f,2.2f),4);
-
             }
             yield return batches.FlushSteps();
+        }
+
+        // The roof cap owns the top plane. A second body face at the same height
+        // made the facade texture fight with the roof material as the camera moved.
+        void RemoveCoveredTowerTop(MeshFilter filter) {
+            var mesh = Object.Instantiate(filter.sharedMesh); mesh.name = "City tower body";
+            var normals = mesh.normals; var source = mesh.triangles; var triangles = new List<int>();
+            for (int i = 0; i < source.Length; i += 3) {
+                if (normals[source[i]].y > .5f) continue;
+                triangles.Add(source[i]); triangles.Add(source[i + 1]); triangles.Add(source[i + 2]);
+            }
+            mesh.SetTriangles(triangles, 0); meshes.Add(mesh); filter.sharedMesh = mesh;
         }
 
         void BuildTowerTrim(Vector3 center, Vector3 top, float width, float height, Material silver) {

@@ -133,12 +133,13 @@ namespace StarRacingPrototype
         StaticVehicleVisual visual;
         Transform presentationRoot; readonly VehiclePresentation presentation=new VehiclePresentation();
         bool presentationCaptured;
-        public Pose RenderPose=>presentationCaptured?presentation.Sample(Time.timeAsDouble):Body!=null?new Pose(Body.position,Body.rotation):new Pose(transform.position,transform.rotation);
+        Pose SimulationRenderPose=>presentationCaptured?presentation.Sample(Time.timeAsDouble):Body!=null?new Pose(Body.position,Body.rotation):new Pose(transform.position,transform.rotation);
+        public Pose RenderPose=>track!=null&&track.UsesBasis?BasisNativeExperiment.ToCanonical(SimulationRenderPose):SimulationRenderPose;
         public int PresentationEpoch=>presentation.Epoch;
         public TrackFrame RenderFrame=>ProjectPresentationFrame(RenderPose.position);
-        public TrackFrame ProjectPresentationFrame(Vector3 position)=>graphRoute==null ? track.Route.Project(position,Distance,30f) : FromGraph(graphRoute.ProjectPresentation(position));
+        public TrackFrame ProjectPresentationFrame(Vector3 position)=>graphRoute==null ? track.PresentationRoute.Project(position,Distance,30f) : FromGraph(graphRoute.ProjectPresentation(position));
         internal void CapturePresentation(double time,float step){presentation.Capture(new Pose(Body.position,Body.rotation),time,step);presentationCaptured=true;}
-        public void ResetPresentation(){if(Body==null)return;presentation.Reset(new Pose(Body.position,Body.rotation));presentationCaptured=false;if(presentationRoot!=null)presentationRoot.SetPositionAndRotation(Body.position,Body.rotation);}
+        public void ResetPresentation(){if(Body==null)return;presentation.Reset(new Pose(Body.position,Body.rotation));presentationCaptured=false;if(presentationRoot!=null){var pose=RenderPose;presentationRoot.SetPositionAndRotation(pose.position,pose.rotation);}}
         void UpdatePresentation(){if(presentationRoot==null)return;var pose=RenderPose;presentationRoot.SetPositionAndRotation(pose.position,pose.rotation);}
         float pendingThrottle;bool pendingNitro,acceptedBoost;
         public ExhaustEnvelope DriveFeedback => visual?.Exhaust.Envelope;
@@ -453,6 +454,11 @@ namespace StarRacingPrototype
                 size.y-=.01f;origin.y+=.005f;
                 var guard=roadCcdFaces[i];guard.size=size;guard.center=origin;
                 guard.sharedMaterial=roadSafeMaterial;
+                // Keep every shape of this body in the modifiable-contact path.
+                // PhysX 4.1 can weld a modified pair into a following unmodified
+                // pair, re-reading uninitialized material indices after a normal
+                // split and discarding the callback's friction/restitution.
+                guard.hasModifiableContacts=true;
                 // The fitted body sections own car pairs, including ghost/fall.
                 // Every guard remains inside the centre. Side faces retain top CCD; end
                 // faces reinforce exterior/bottom contacts without duplicate top contacts.
@@ -512,6 +518,7 @@ namespace StarRacingPrototype
         public event System.Action<Collision> ContactObserved;
         void FixedUpdate()
         {
+            using var cpuScope=RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Vehicle);
             ClearPreparedForces();roadProtection=false;
             if(initialized && graphRoute!=null && !HasRoute){Hold(true);return;}
             if (!initialized || !HasRoute || Body.isKinematic) { track?.TireMarks?.Break(Seat); return; }

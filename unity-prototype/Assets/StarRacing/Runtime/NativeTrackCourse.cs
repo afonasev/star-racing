@@ -8,7 +8,19 @@ namespace StarRacingPrototype {
  // graph. Replay content is finalized against the actual built gate layout.
  public sealed class NativeTrackCourse {
   public const int Schema=1,Revision=12;
+#if UNITY_EDITOR
+  // Editor-only coordinate-basis experiment. Hook runs before immutable course/cache construction.
+  public static Func<Procedural.Definition,Procedural.Definition> EditorDefinitionTransform;
+#endif
   public readonly Procedural.Definition Single;
+  internal readonly Procedural.Definition SimulationSingle;
+  public readonly bool UsesBasis;
+  readonly string simulationContent;
+  internal void VerifySimulation(TrackBuilder track) {
+   if(UsesBasis&&(track.BoundCourse!=this||!track.BindingCurrent||track.Route==null||
+      JsonUtility.ToJson(SimulationSingle)!=simulationContent||JsonUtility.ToJson(track.Route.Definition)!=simulationContent||
+      JsonUtility.ToJson(track.PresentationRoute.Definition)!=singleContent))throw new ArgumentException("Native simulation/canonical build binding changed");
+  }
   public readonly Procedural.GraphCourseDefinition Independent;
   public readonly Procedural.GraphCourseSettings Settings;
   public readonly Procedural.IndependentGraph Graph;
@@ -22,6 +34,13 @@ namespace StarRacingPrototype {
   public float Finish=>IsIndependent?(float)(Graph.CommonLength-160):(float)Single.totalLength+30;
   internal NativeTrackCourse(Procedural.Definition single,Procedural.GraphCourseDefinition independent,Procedural.GraphCourseSettings settings) {
    if((single==null)==(independent==null))throw new ArgumentException("Exactly one course representation required");
+   #if UNITY_EDITOR
+   if(single!=null&&EditorDefinitionTransform!=null)single=EditorDefinitionTransform(single);
+#endif
+   UsesBasis=single!=null&&single.version==12&&BasisNativeExperiment.Enabled;
+   SimulationSingle=single;
+   if(single!=null&&(UsesBasis||BasisNativeExperiment.Audit))SimulationSingle=BasisNativeExperiment.Prepare(single,UsesBasis);
+   simulationContent=SimulationSingle==null?null:JsonUtility.ToJson(SimulationSingle);
    Single=single;Independent=independent;Settings=settings;singleContent=single==null?null:JsonUtility.ToJson(single);
    Graph=independent?.graph??Procedural.IndependentGraph.SingleRoad(single);
    RequestedSeed=independent?.requestedSeed??single.requestedSeed;ActualSeed=independent?.actualSeed??single.seed;UsedFallback=independent?.usedFallback??single.usedFallback;
@@ -39,6 +58,7 @@ namespace StarRacingPrototype {
   }
   public string ReplayIdentity(TrackBuilder track) {
    if(track==null)throw new ArgumentNullException(nameof(track));
+   VerifySimulation(track);
    if(Single!=null&&JsonUtility.ToJson(Single)!=singleContent)throw new ArgumentException("Native single-route content changed after generation");
    using(var buffer=new MemoryStream()) {
     using(var writer=new BinaryWriter(buffer,Encoding.UTF8,true)) {
@@ -47,9 +67,9 @@ namespace StarRacingPrototype {
       if(track.GraphSurface==null||track.GraphSurface.Graph.Identity!=Graph.Identity)throw new ArgumentException("Built graph content mismatch");
       writer.Write(new GraphRaceCourse(track.GraphSurface,Start,Finish).ReplayIdentity(Independent));
      } else {
-      if(track.Route==null||JsonUtility.ToJson(track.Route.Definition)!=singleContent)throw new ArgumentException("Built single-route content mismatch");
-      WriteFrame(writer,track.Route.Evaluate(Start));int count=(int)Math.Ceiling((Finish-Start)/50);writer.Write(count);
-      for(int i=1;i<=count;i++)WriteFrame(writer,track.Route.Evaluate(Mathf.Min(Start+i*50,Finish)));
+      if(track.PresentationRoute==null||JsonUtility.ToJson(track.PresentationRoute.Definition)!=singleContent)throw new ArgumentException("Built single-route content mismatch");
+      WriteFrame(writer,track.PresentationRoute.Evaluate(Start));int count=(int)Math.Ceiling((Finish-Start)/50);writer.Write(count);
+      for(int i=1;i<=count;i++)WriteFrame(writer,track.PresentationRoute.Evaluate(Mathf.Min(Start+i*50,Finish)));
      }
     }
     return Digest(buffer.ToArray());

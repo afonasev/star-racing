@@ -7,6 +7,24 @@ namespace StarRacingPrototype {
     /// <summary>Builds procedural surfaces. Route data remains usable without this component.</summary>
     public sealed class TrackBuilder : MonoBehaviour {
         public TrackRoute Route;
+        TrackRoute canonicalRoute,boundSimulationRoute;
+        TrackFrame[] boundSimulationSamples;float boundLength,boundLoopStart,boundLoopEnd,boundJumpStart,boundJumpEnd;
+        Transform canonicalRenderRoot;
+        Mesh cubeVisualMesh;
+        internal NativeTrackCourse BoundCourse {get;private set;}
+        internal int BoundRevision {get;private set;}
+        internal bool BindingCurrent {
+            get {
+                if(BoundRevision!=BuildRevision||!ReferenceEquals(Route,boundSimulationRoute)||Route.Samples.Length!=boundSimulationSamples.Length||
+                   Route.Length!=boundLength||Route.LoopStart!=boundLoopStart||Route.LoopEnd!=boundLoopEnd||Route.JumpStart!=boundJumpStart||Route.JumpEnd!=boundJumpEnd)return false;
+                for(int i=0;i<boundSimulationSamples.Length;i++)if(!Route.Samples[i].Equals(boundSimulationSamples[i]))return false;
+                return true;
+            }
+        }
+        public bool UsesBasis=>BoundCourse!=null&&BoundCourse.UsesBasis;
+        public TrackRoute PresentationRoute=>canonicalRoute??Route;
+        public Transform PresentationRoot=>canonicalRenderRoot!=null?canonicalRenderRoot:transform;
+        public Vector3 ToPresentation(Vector3 value)=>UsesBasis?BasisNativeExperiment.ToCanonical(value):value;
         public GraphRoadSurface GraphSurface { get; private set; }
         public const int RoadCollisionLayer=9;
         public const int BarrierCollisionLayer=10;
@@ -111,23 +129,49 @@ namespace StarRacingPrototype {
         void BuildLine(float distance, string label, Color color) {
             BuildFrameLine(Route.Evaluate(distance),label,color);
         }
-        void BuildFrameLine(TrackFrame frame,string label,Color color) {
+        GameObject Cube(bool physical) {
+            if(physical){var go=GameObject.CreatePrimitive(PrimitiveType.Cube);cubeVisualMesh=go.GetComponent<MeshFilter>().sharedMesh;return go;}
+            if(cubeVisualMesh==null)throw new System.InvalidOperationException("Missing canonical marker mesh source");
+            var visual=new GameObject();visual.AddComponent<MeshFilter>().sharedMesh=cubeVisualMesh;visual.AddComponent<MeshRenderer>();return visual;
+        }
+        void BuildFrameLine(TrackFrame frame,string label,Color color,Transform parent=null,bool physical=true) {
             var material = CreateMaterial(color, 0);
             for (int i = 0; i < 16; i++) {
-                var mark = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                mark.name = label + " line"; mark.transform.SetParent(transform, false);
+                var mark = Cube(physical);
+                mark.name = label + " line"; mark.transform.SetParent(parent!=null?parent:transform, false);
                 mark.transform.position = frame.position + frame.right * (i - 7.5f) + frame.normal * .025f;
                 mark.transform.rotation = frame.Rotation;
                 mark.transform.localScale = new Vector3(.9f, .025f, .7f);
                 mark.GetComponent<Renderer>().sharedMaterial = i % 2 == 0 ? material : roadMaterial;
-                var markerCollider=mark.GetComponent<Collider>();markerCollider.enabled=false;
-                if (Application.isPlaying) Destroy(markerCollider); else DestroyImmediate(markerCollider);
+                if(physical){var markerCollider=mark.GetComponent<Collider>();markerCollider.enabled=false;
+                if (Application.isPlaying) Destroy(markerCollider); else DestroyImmediate(markerCollider);}
             }
         }
 
         public void BuildNativeCourse(NativeTrackCourse course)=>LoadingWork.Drain(BuildNativeSteps(course));
         internal IEnumerator BuildNativeSteps(NativeTrackCourse course) {
-            if(!course.IsIndependent){yield return BuildSteps(new TrackRoute(course.Single));yield break;}
+            if(!course.IsIndependent){
+                yield return BuildSteps(new TrackRoute(course.SimulationSingle));
+                BoundCourse=course;BoundRevision=BuildRevision;boundSimulationRoute=Route;
+                boundSimulationSamples=(TrackFrame[])Route.Samples.Clone();boundLength=Route.Length;boundLoopStart=Route.LoopStart;boundLoopEnd=Route.LoopEnd;boundJumpStart=Route.JumpStart;boundJumpEnd=Route.JumpEnd;
+                if(course.UsesBasis){
+                    canonicalRoute=new TrackRoute(course.Single);
+                    foreach(var renderer in GetComponentsInChildren<MeshRenderer>())if(renderer.GetComponent<DriftTireMarks>()==null)renderer.enabled=false;
+                    var root=new GameObject("Canonical track presentation");root.transform.SetParent(transform,false);canonicalRenderRoot=root.transform;
+                    yield return ProceduralTrackMesh.BuildSteps(canonicalRenderRoot,canonicalRoute,roadMaterial,railMaterial,null,true);
+                    if(!canonicalRoute.IsClosed){
+                        BuildFrameLine(canonicalRoute.Evaluate(canonicalRoute.StartDistance),"START",Color.cyan,canonicalRenderRoot,false);
+                        BuildFrameLine(canonicalRoute.Evaluate(canonicalRoute.FinishDistance),"FINISH",Color.white,canonicalRenderRoot,false);
+                        var canonicalEnd=canonicalRoute.Evaluate(canonicalRoute.Length);var canonicalWall=Cube(false);canonicalWall.name="Finish wall";canonicalWall.transform.SetParent(canonicalRenderRoot,false);
+                        canonicalWall.transform.position=canonicalEnd.position+canonicalEnd.normal*1.5f+canonicalEnd.tangent*.5f;canonicalWall.transform.rotation=canonicalEnd.Rotation;
+                        canonicalWall.transform.localScale=new Vector3(canonicalEnd.halfWidth*2,3,1);canonicalWall.GetComponent<Renderer>().sharedMaterial=railMaterial;
+                    }
+                    var bounds=new Bounds(canonicalRoute.Samples[0].position,Vector3.one*40);
+                    foreach(var sample in canonicalRoute.Samples)bounds.Encapsulate(new Bounds(sample.position,Vector3.one*(sample.halfWidth*2+40)));
+                    TireMarks.SetRenderBounds(bounds);
+                }
+                course.VerifySimulation(this);yield break;
+            }
             yield return BuildIndependentSteps(course.Graph,(marks,bounds)=>marks.Initialize(bounds),true,true);
             TrackFrame Frame(Procedural.GraphFrame f)=>new TrackFrame{distance=(float)f.distance,position=f.position.Float,tangent=f.tangent.Float,normal=f.normal.Float,right=-f.right.Float,halfWidth=(float)f.halfWidth};
             BuildFrameLine(Frame(course.Graph.Road(0).Evaluate(course.Start)),"START",Color.cyan);
@@ -244,7 +288,7 @@ namespace StarRacingPrototype {
         }
         void OnDestroy()=>DisposeResources();
         void ClearGenerated() {
-            TireMarks=null;
+            TireMarks=null;BoundCourse=null;BoundRevision=0;canonicalRoute=boundSimulationRoute=null;boundSimulationSamples=null;canonicalRenderRoot=null;
             DisposeResources();
             for (int i = transform.childCount - 1; i >= 0; i--) {
                 GameObject child = transform.GetChild(i).gameObject;

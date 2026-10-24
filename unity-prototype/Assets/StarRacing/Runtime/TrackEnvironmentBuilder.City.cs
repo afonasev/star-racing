@@ -13,7 +13,7 @@ namespace StarRacingPrototype {
             public CityBatches(TrackEnvironmentBuilder owner) {
                 this.owner=owner;vertices=owner.cube.vertices;normals=owner.cube.normals;triangles=owner.cube.triangles;
             }
-            public void Box(Material material,Vector3 position,Vector3 scale,float tile) {
+            public void Box(Material material,Vector3 position,Vector3 scale,float tile,bool coveredTop=false) {
                 int x=Mathf.FloorToInt(position.x/ChunkSize),z=Mathf.FloorToInt(position.z/ChunkSize);
                 var key=(x,z,material);
                 if(!batches.TryGetValue(key,out var batch))batches.Add(key,batch=new Batch{origin=new Vector3(x*ChunkSize,0,z*ChunkSize),material=material});
@@ -22,7 +22,10 @@ namespace StarRacingPrototype {
                     batch.vertices.Add(position-batch.origin+Vector3.Scale(vertices[i],scale));batch.normals.Add(normals[i]);
                     batch.uv.Add(CubeUv(vertices[i],normals[i],scale,tile));
                 }
-                foreach(int index in triangles)batch.triangles.Add(start+index);
+                for(int i=0;i<triangles.Length;i+=3) {
+                    if(coveredTop&&normals[triangles[i]].y>.5f)continue;
+                    batch.triangles.Add(start+triangles[i]);batch.triangles.Add(start+triangles[i+1]);batch.triangles.Add(start+triangles[i+2]);
+                }
             }
             public IEnumerator FlushSteps() {
                 foreach(var batch in batches.Values) {

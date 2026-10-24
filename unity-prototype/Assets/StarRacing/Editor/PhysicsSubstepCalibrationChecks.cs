@@ -52,6 +52,21 @@ namespace StarRacingPrototype
                 Check((long)interval.GetValue(car)==initial+1,"native substeps repeated controller tick");
                 Check(RacePhysicsStepper.NativeSteps-native==8 && Math.Abs(RacePhysicsStepper.SimulatedSeconds-time-.01)<1e-7,"substeps changed simulated time");
                 Check(car.Body.linearVelocity.y<-.17f,"prepared gravity was not replayed");
+                // Accounting must observe each native call without consuming the pending impact twice.
+                air();car.Body.angularVelocity=new Vector3(0,10,0);
+                typeof(MagneticVehicle).GetField("pendingAngularImpact",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(car,true);
+                RaceCpuDiagnostics.Start();
+                try {
+                    native=RacePhysicsStepper.NativeSteps;time=RacePhysicsStepper.SimulatedSeconds;
+                    RacePhysicsStepper.Simulate(.01f);
+                    var counted=RaceCpuDiagnostics.Drain();
+                    Check(counted.nativeCalls==RacePhysicsStepper.NativeSteps-native,"diagnostic native count");
+                    Check(counted.baseSlices+counted.angularSlices+counted.pairSlices==counted.nativeCalls,"adaptive reason count");
+                    Check(counted.angularSlices>0&&counted.pairSlices==0&&counted.strongestSeat==car.Seat&&counted.strongestOtherSeat==-1,"angular winner attribution");
+                    Check(Math.Abs(RacePhysicsStepper.SimulatedSeconds-time-.01)<1e-7,"diagnostic changed simulated time");
+                    Debug.Log("ADAPTIVE_ACCOUNTING_OK native="+counted.nativeCalls+" angular="+counted.angularSlices+" base="+counted.baseSlices);
+                }finally {RaceCpuDiagnostics.Stop();}
+                car.ResetAt(80,0);
                 air();prepare();car.Hold(false);RacePhysicsStepper.Simulate(.01f);Check(car.Body.linearVelocity.y<-.17f,"repeated release discarded prepared gravity");
                 air();RacePhysicsStepper.Simulate(.01f);Check(car.Body.linearVelocity.sqrMagnitude<1e-10f,"previous force packet leaked into next tick");
                 prepare();car.ResetAt(80,0);air();RacePhysicsStepper.Simulate(.01f);Check(car.Body.linearVelocity.sqrMagnitude<1e-10f,"reset retained stale forces");

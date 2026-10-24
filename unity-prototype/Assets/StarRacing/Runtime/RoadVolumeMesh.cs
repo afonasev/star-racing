@@ -16,23 +16,36 @@ namespace StarRacingPrototype
         public const string ExteriorName = "Road exterior boundary";
         const float Tolerance = .0001f;
 
-        // Integers in units of 2^-149 represent every finite float exactly.
-        // These predicates run during track construction, never during physics.
+        // Exact dyadic coordinates: (x,y,z) * 2^exponent. Keeping a local
+        // exponent avoids multiplying the 149 trailing bits of the old global
+        // float scale. Every arithmetic operation remains integer-exact.
         readonly struct ExactPoint
         {
-            readonly BigInteger x,y,z;
-            ExactPoint(BigInteger x,BigInteger y,BigInteger z) {this.x=x;this.y=y;this.z=z;}
-            public ExactPoint(Vector3 p):this(Integer(p.x),Integer(p.y),Integer(p.z)) {}
-            static BigInteger Integer(float value)
-            {
-                uint bits=(uint)System.BitConverter.SingleToInt32Bits(value);
-                int exponent=(int)((bits>>23)&255);if(exponent==255)throw new System.ArgumentException("Nonfinite support coordinate");
-                BigInteger mantissa=bits&0x7fffff;if(exponent!=0)mantissa=(mantissa+0x800000)<<(exponent-1);
-                return (bits&0x80000000)==0?mantissa:-mantissa;
+            readonly BigInteger x,y,z;readonly int exponent;
+            ExactPoint(BigInteger x,BigInteger y,BigInteger z,int exponent) {this.x=x;this.y=y;this.z=z;this.exponent=exponent;}
+            static (int mantissa,int exponent) Parts(float value) {
+                int bits=System.BitConverter.SingleToInt32Bits(value),e=(bits>>23)&255,m=bits&0x7fffff;
+                if(e==255)throw new System.ArgumentException("Nonfinite support coordinate");
+                if(e!=0)m|=0x800000;return (bits<0?-m:m,e==0?-149:e-150);
             }
-            public static ExactPoint operator -(ExactPoint a,ExactPoint b)=>new ExactPoint(a.x-b.x,a.y-b.y,a.z-b.z);
-            public static ExactPoint Cross(ExactPoint a,ExactPoint b)=>new ExactPoint(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);
-            public static BigInteger Dot(ExactPoint a,ExactPoint b)=>a.x*b.x+a.y*b.y+a.z*b.z;
+            public ExactPoint(Vector3 p) {
+                var a=Parts(p.x);var b=Parts(p.y);var c=Parts(p.z);
+                int e=System.Math.Min(a.mantissa==0?int.MaxValue:a.exponent,System.Math.Min(b.mantissa==0?int.MaxValue:b.exponent,c.mantissa==0?int.MaxValue:c.exponent));
+                exponent=e==int.MaxValue?0:e;
+                x=a.mantissa==0?BigInteger.Zero:new BigInteger(a.mantissa)<<(a.exponent-exponent);
+                y=b.mantissa==0?BigInteger.Zero:new BigInteger(b.mantissa)<<(b.exponent-exponent);
+                z=c.mantissa==0?BigInteger.Zero:new BigInteger(c.mantissa)<<(c.exponent-exponent);
+            }
+            bool Zero=>x.IsZero&&y.IsZero&&z.IsZero;
+            static BigInteger Shift(BigInteger value,int bits)=>bits==0||value.IsZero?value:value<<bits;
+            public static ExactPoint operator -(ExactPoint a,ExactPoint b) {
+                if(b.Zero)return a;if(a.Zero)return new ExactPoint(-b.x,-b.y,-b.z,b.exponent);
+                int e=System.Math.Min(a.exponent,b.exponent),sa=a.exponent-e,sb=b.exponent-e;
+                return new ExactPoint(Shift(a.x,sa)-Shift(b.x,sb),Shift(a.y,sa)-Shift(b.y,sb),Shift(a.z,sa)-Shift(b.z,sb),e);
+            }
+            public static ExactPoint Cross(ExactPoint a,ExactPoint b)=>new ExactPoint(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x,a.exponent+b.exponent);
+            // Dot's omitted scale is strictly positive; only its sign is consumed.
+            public static int DotSign(ExactPoint a,ExactPoint b)=>(a.x*b.x+a.y*b.y+a.z*b.z).Sign;
         }
 
         public sealed class SupportCell
@@ -47,7 +60,7 @@ namespace StarRacingPrototype
                     for(int i=0;i<exactNormals.Length;i++)exactNormals[i]=ExactPoint.Cross(exactCorners[triangles[i*3+1]]-exactCorners[triangles[i*3]],exactCorners[triangles[i*3+2]]-exactCorners[triangles[i*3]]);
                 }
                 var point=new ExactPoint(apex);
-                for(int i=0;i<exactNormals.Length;i++)if(ExactPoint.Dot(point-exactCorners[triangles[i*3]],exactNormals[i])>0)return false;
+                for(int i=0;i<exactNormals.Length;i++)if(ExactPoint.DotSign(point-exactCorners[triangles[i*3]],exactNormals[i])>0)return false;
                 return true;
             }
             public SupportCell(int id,RoadFace face,Vector3[] top,Vector3[] normals,int[] perimeter,IList<int> topTriangles,int topOffset)
@@ -84,7 +97,7 @@ namespace StarRacingPrototype
                 double inset=(side>=0?.02:.5)/System.Math.Sqrt(nx*nx+ny*ny+nz*nz);
                 Vector3 apex=new Vector3((float)(diagonal.x-nx*inset),(float)(diagonal.y-ny*inset),(float)(diagonal.z-nz*inset));
                 var origin=new ExactPoint(a);var normal=ExactPoint.Cross(new ExactPoint(b)-origin,new ExactPoint(c)-origin);
-                fallback=!owner.ContainsApex(apex) || ExactPoint.Dot(new ExactPoint(apex)-origin,normal)>=0;
+                fallback=!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0;
                 if(fallback) {
                     double x=0,y=0,z=0;foreach(var p in owner.corners){x+=p.x*.125;y+=p.y*.125;z+=p.z*.125;}
                     var centroid=new Vector3((float)x,(float)y,(float)z);
@@ -93,9 +106,9 @@ namespace StarRacingPrototype
                     double dx=x-diagonal.x,dy=y-diagonal.y,dz=z-diagonal.z;
                     double fraction=System.Math.Min(1,.02/System.Math.Sqrt(dx*dx+dy*dy+dz*dz));
                     apex=new Vector3((float)(diagonal.x+dx*fraction),(float)(diagonal.y+dy*fraction),(float)(diagonal.z+dz*fraction));
-                    if(!owner.ContainsApex(apex) || ExactPoint.Dot(new ExactPoint(apex)-origin,normal)>=0)apex=centroid;
+                    if(!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0)apex=centroid;
                 }
-                if(!owner.ContainsApex(apex) || ExactPoint.Dot(new ExactPoint(apex)-origin,normal)>=0)
+                if(!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0)
                     throw new System.InvalidOperationException("No inward kernel apex for road owner "+owner.id+" side "+side);
                 return apex;
             }
@@ -157,7 +170,7 @@ namespace StarRacingPrototype
                     if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
-            public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false)
+            public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false,bool renderOnly=false)
             {
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
@@ -166,6 +179,7 @@ namespace StarRacingPrototype
                 // Add both empty colliders before the visual MeshFilter exists.
                 // Otherwise Unity cooks the entire visual shell on AddComponent,
                 // only to discard it when sharedMesh receives the real inventory.
+                if(renderOnly){go.AddComponent<MeshFilter>().sharedMesh=mesh;go.AddComponent<MeshRenderer>().sharedMaterial=material;yield break;}
                 var collisionObject=go;
                 if(graph){collisionObject=new GameObject("Graph shell collision");collisionObject.transform.SetParent(go.transform,false);}
                 var bottomCollider=collisionObject.AddComponent<MeshCollider>();
@@ -198,14 +212,14 @@ namespace StarRacingPrototype
         {
             LoadingWork.Drain(BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal));
         }
-        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null);
+        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null,bool renderOnly=false)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null,renderOnly);
         internal static IEnumerator BuildGraphSteps(Transform parent,System.Func<RoadFace,float,TrackFrame> evaluate,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer,System.Func<int,Vector3> portNormal)=>BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
         static IEnumerator BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
-            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal)
+            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal,bool renderOnly=false)
         {
             var budget=new LoadingWork.Budget();
-            var supports=observer==null?new List<SupportTriangle>():null;
-            var shell = new Geometry(observer??(triangle=>supports.Add(triangle)));
+            var supports=!renderOnly&&observer==null?new List<SupportTriangle>():null;
+            var shell = new Geometry(renderOnly?null:observer??(triangle=>supports.Add(triangle)));
             // Section edges may have different subdivisions on their two sides.
             var sections = new Dictionary<(int,int), List<Edge>>();
             // Emission uses the same .5m longitudinal stations for ramps and lanes.
@@ -275,13 +289,24 @@ namespace StarRacingPrototype
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
             yield return null;budget.Restart();
-            yield return shell.CreateSteps(parent,material,bottomIndices,portNormal!=null);
+            yield return shell.CreateSteps(parent,material,bottomIndices,portNormal!=null,renderOnly);
             yield return null;budget.Restart();
             if(supports!=null)foreach(var triangle in supports){CreateSupport(parent,triangle);if(budget.Due){yield return null;budget.Restart();}}
         }
+#if UNITY_EDITOR
+        public static System.Action<string,double> WorkMeasured;
+        static long BeginMeasurement()=>WorkMeasured==null?0:System.Diagnostics.Stopwatch.GetTimestamp();
+        static void Measured(string name,long began){if(began!=0)WorkMeasured?.Invoke(name,(System.Diagnostics.Stopwatch.GetTimestamp()-began)/(double)System.Diagnostics.Stopwatch.Frequency);}
+#endif
         public static MeshCollider CreateSupport(Transform parent,SupportTriangle triangle)
         {
+#if UNITY_EDITOR
+            long total=BeginMeasurement(),timer=total;
+#endif
             Vector3 apex=triangle.SelectApex(out _),origin=triangle.a;
+#if UNITY_EDITOR
+            Measured("support.apex",timer);timer=BeginMeasurement();
+#endif
             var world=new[]{triangle.a,triangle.b,triangle.c,apex};
             // Sterbenz subtraction is exact when same-sign coordinates differ
             // by at most a factor of two. Use zero on any axis crossing that
@@ -296,18 +321,27 @@ namespace StarRacingPrototype
             local[0]=triangle.a-origin;
             for(int i=0;i<4;i++)if(!(origin+local[i]).Equals(world[i]))throw new System.InvalidOperationException("Support local coordinates changed authored vertex");
             var localOrigin=new ExactPoint(local[0]);
-            if(ExactPoint.Dot(new ExactPoint(local[3])-localOrigin,ExactPoint.Cross(new ExactPoint(local[1])-localOrigin,new ExactPoint(local[2])-localOrigin))>=0)
+            if(ExactPoint.DotSign(new ExactPoint(local[3])-localOrigin,ExactPoint.Cross(new ExactPoint(local[1])-localOrigin,new ExactPoint(local[2])-localOrigin))>=0)
                 throw new System.InvalidOperationException("Support local tetrahedron lost volume");
+#if UNITY_EDITOR
+            Measured("support.local-exact",timer);timer=BeginMeasurement();
+#endif
             mesh.vertices=local;
             mesh.triangles=new[]{0,1,2,0,3,1,1,3,2,2,3,0};mesh.RecalculateBounds();
             // Exact predicates above reject coplanar apexes. Each hull has four
             // distinct vertices and four nondegenerate faces; preserve tiny cap tips.
             var options=MeshColliderCookingOptions.CookForFasterSimulation|MeshColliderCookingOptions.UseFastMidphase;
             Physics.BakeMesh(mesh.GetEntityId(),true,options);
+#if UNITY_EDITOR
+            Measured("support.mesh-and-bake",timer);timer=BeginMeasurement();
+#endif
             var go=new GameObject(SupportName);go.transform.SetParent(parent,false);go.transform.localPosition=origin;
             var collider=go.AddComponent<MeshCollider>();collider.convex=true;collider.cookingOptions=options;collider.sharedMesh=mesh;
             if(triangle.side>=0&&!triangle.owner.sections[triangle.side])
                 go.AddComponent<RoadSupportContact>().Initialize(collider,parent.TransformPoint(triangle.a),parent.TransformPoint(triangle.b),parent.TransformPoint(triangle.c));
+#if UNITY_EDITOR
+            Measured("support.publish",timer);Measured("support.total",total);
+#endif
             return collider;
             } catch {
                 if(Application.isPlaying)Object.Destroy(mesh);else Object.DestroyImmediate(mesh);

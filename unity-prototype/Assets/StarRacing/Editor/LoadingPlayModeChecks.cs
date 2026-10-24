@@ -23,18 +23,20 @@ namespace StarRacingPrototype {
    Debug.Log("LOADING_INTERRUPTED_PREFERENCES_RESTORED");
   }
   [Serializable] sealed class RestoreBackup{public bool existed;public string value;}
+  public static bool BasisOnly=>SessionState.GetBool(Key+"Basis",false);
+  public static void RunBasisRemainder(){SessionState.SetBool(Key+"Basis",true);SessionState.SetBool(Key+"Remainder",true);SessionState.SetBool(Key+"Late",false);RunInternal();}
   public static bool RemainderOnly=>SessionState.GetBool(Key+"Remainder",false);
   public static bool LateOnly=>SessionState.GetBool(Key+"Late",false);
-  public static void RunRemainder(){SessionState.SetBool(Key+"Remainder",true);SessionState.SetBool(Key+"Late",false);RunInternal();}
-  public static void RunTeardown(){SessionState.SetBool(Key+"Remainder",true);SessionState.SetBool(Key+"Late",true);RunInternal();}
-  public static void Run(){SessionState.SetBool(Key+"Remainder",false);SessionState.SetBool(Key+"Late",false);RunInternal();}
+  public static void RunRemainder(){SessionState.SetBool(Key+"Basis",false);SessionState.SetBool(Key+"Remainder",true);SessionState.SetBool(Key+"Late",false);RunInternal();}
+  public static void RunTeardown(){SessionState.SetBool(Key+"Basis",false);SessionState.SetBool(Key+"Remainder",true);SessionState.SetBool(Key+"Late",true);RunInternal();}
+  public static void Run(){SessionState.SetBool(Key+"Basis",false);SessionState.SetBool(Key+"Remainder",false);SessionState.SetBool(Key+"Late",false);RunInternal();}
   static void RunInternal(){try{Begin();}catch(Exception e){Debug.LogException(e);if(!string.IsNullOrEmpty(Output)){Directory.CreateDirectory(Output);File.WriteAllText(Path.Combine(Output,"failure.txt"),e.ToString());}EditorApplication.Exit(1);}}
   static void Begin(){
    if(string.IsNullOrEmpty(Output))throw new Exception("STAR_RACING_LOADING_QA_DIR required");
    if(!Environment.GetCommandLineArgs().Contains("-noaudio")||!Environment.GetCommandLineArgs().Contains("-muted"))throw new Exception("Loading QA requires -noaudio -muted from startup");
    Directory.CreateDirectory(Output);
    // Selected neighbors only: existing HUD, shell geometry/physics, silent startup.
-   RaceHudChecks.Run();ShellGeometry();SilentStartupChecks.Run();
+   if(!BasisOnly){RaceHudChecks.Run();ShellGeometry();SilentStartupChecks.Run();}
    SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",true);
    EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
    if(!Application.isBatchMode){var view=EditorWindow.GetWindow(typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView"));view.position=new Rect(0,0,800,470);view.Show();view.maximized=true;}
@@ -92,6 +94,10 @@ namespace StarRacingPrototype {
    Check(observed>=2&&last>first,"real rendered moving frames during "+context);Check(!LoadingWork.SimulationFrozen,"freeze released after "+context);
   }
   LocalRaceConfig Config(string theme,int revision,int count,bool jumps=false){
+   if(LoadingPlayModeChecks.BasisOnly){
+    uint basisSeed=theme=="cloud-city"?211933141:Enumerable.Range(0,256).Select(i=>(uint)i).First(i=>NativeTrackGenerator.FamilyFor(i,theme)=="vertical");
+    return new LocalRaceConfig{theme=theme,generatorRevision=12,humans=1,entrants=32,seed=basisSeed.ToString(),rails="normal",jumps=true,devices=new[]{-2,-1,0,1}};
+   }
    uint seed=77;if(revision==12){seed=0;while(NativeTrackGenerator.FamilyFor(seed,theme)!="path-choice")seed++;}
    return new LocalRaceConfig{theme=theme,generatorRevision=revision,humans=1,entrants=count,seed=seed.ToString(),rails="normal",jumps=jumps,devices=new[]{-2,-1,0,1}};
   }
@@ -103,6 +109,11 @@ namespace StarRacingPrototype {
    IEnumerator Outer(){try{yield return Middle();}finally{released++;throw new InvalidOperationException("outer cleanup");}}
    using(var cleanup=new LoadingWork(Outer())){Check(cleanup.MoveNext(),"nested operation entered");cleanup.Dispose();Check(released==3&&cleanup.Error is AggregateException,"all nested cleanup runs despite two errors");Check(!cleanup.Succeeded&&!cleanup.MoveNext(),"disposed operation cannot publish success");}
    Check(RaceLoading.BarRect.y-RaceLoading.WordmarkRect.yMax>=80,"approved generous logo/loading spacing");
+   if(LoadingPlayModeChecks.BasisOnly){
+    BasisNativeExperiment.EditorOverride=false;Config("cloud-city",12,32,true).Save();host=new GameObject("Basis loading lifecycle");director=host.AddComponent<RaceDirector>();menu=host.GetComponent<RaceMenu>();
+    Check(director.Ready&&!director.Started&&Time.timeScale==0,"basis baseline initialized");
+    yield return BasisLifecycle();yield return Remaining();yield break;
+   }
    if(LoadingPlayModeChecks.LateOnly&&Application.isBatchMode){
     // Dedicated lifecycle supplement: real construction/cancellation, no rendering claim.
     Config("cloud-city",11,8).Save();host=new GameObject("Teardown QA host");director=host.AddComponent<RaceDirector>();menu=host.GetComponent<RaceMenu>();
@@ -147,6 +158,40 @@ namespace StarRacingPrototype {
     Check(director.ExitToMenu(),"exit sync race");yield return Frames();
    }
    yield return Remaining();
+  }
+  IEnumerator BasisLifecycle(){
+   var config=Config("cloud-city",12,32,true);string canonical=null,replay=null;TrackBuilder previous=null;
+   foreach(bool candidate in new[]{false,true}){
+    BasisNativeExperiment.EditorOverride=candidate;
+    var keyMethod=typeof(RaceDirector).GetMethod("WorldKey",BindingFlags.Static|BindingFlags.NonPublic);
+    string key=(string)keyMethod.Invoke(null,new object[]{config});
+    Check(key.EndsWith("basis="+candidate),"cache key separates representations");
+    long memoryBefore=UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();var clock=System.Diagnostics.Stopwatch.StartNew();
+    var seen=new HashSet<string>();using(var cold=director.PrepareForLoading(config.Copy(),reuseWorld:candidate)){
+     while(cold.MoveNext()){seen.Add(cold.Status);yield return null;}
+     Check(cold.Succeeded&&cold.Error==null,"basis cold construction "+cold.Error);
+    }
+    clock.Stop();director.SetPaused(true);
+    Check(seen.Contains("Строим трассу"),"new representation actually constructs geometry");
+    Check(director.Track.UsesBasis==candidate&&director.Course.UsesBasis==candidate,"published world uses selected representation");
+    Check(director.Cars.Length==32,"basis roster32");Check(previous==null||!ReferenceEquals(previous,director.Track),"different basis cannot reuse old world");
+    if(canonical==null){canonical=director.Course.GeometryIdentity;replay=director.AppliedConfig.replay.fullIdentity;}
+    Check(canonical==director.Course.GeometryIdentity&&replay==director.AppliedConfig.replay.fullIdentity,"both worlds retain exact canonical replay");
+    File.AppendAllText(Path.Combine(Output,"basis-loading.txt"),$"candidate={candidate} coldMs={clock.Elapsed.TotalMilliseconds:R} allocatedBefore={memoryBefore} allocatedAfter={UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong()} replay={replay}\n");
+    var track=director.Track;var course=director.Course;int revision=track.BuildRevision;int generation=director.RaceGeneration;
+    Check(director.ExitToMenu(),"exit before basis warm start");generation=director.RaceGeneration;seen.Clear();clock.Restart();
+    using(var warm=director.PrepareForLoading(config.Copy())){while(warm.MoveNext()){seen.Add(warm.Status);yield return null;}Check(warm.Succeeded&&warm.Error==null,"basis warm start");}
+    clock.Stop();director.SetPaused(true);
+    Check(seen.Contains("Используем готовую трассу")&&!seen.Contains("Строим трассу"),"warm path reuses geometry");
+    Check(ReferenceEquals(track,director.Track)&&ReferenceEquals(course,director.Course)&&revision==track.BuildRevision,"warm world identity and generation stable");
+    Check(director.RaceGeneration==generation+1&&director.AppliedConfig.replay.fullIdentity==replay,"warm new race same replay");
+    File.AppendAllText(Path.Combine(Output,"basis-loading.txt"),$"candidate={candidate} warmMs={clock.Elapsed.TotalMilliseconds:R} allocatedAfter={UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong()}\n");
+    generation=director.RaceGeneration;
+    using(var repeat=director.RepeatForLoading()){while(repeat.MoveNext())yield return null;Check(repeat.Succeeded&&repeat.Error==null,"basis repeat completes");}
+    director.SetPaused(true);Check(director.RaceGeneration==generation+1&&ReferenceEquals(track,director.Track)&&ReferenceEquals(course,director.Course)&&revision==track.BuildRevision,"repeat new race stable geometry");
+    Check(director.AppliedConfig.replay.fullIdentity==replay,"repeat replay stable");
+    Check(director.ExitToMenu(),"exit basis repeat");previous=track;Trace("basis cold warm repeat passed candidate="+candidate);
+   }
   }
   static int[] PreparedRoots()=>FindObjectsByType<Transform>(FindObjectsInactive.Include,FindObjectsSortMode.None).Where(t=>t.parent==null&&t.name=="Prepared race").Select(t=>t.GetInstanceID()).OrderBy(i=>i).ToArray();
   IEnumerator Remaining(){
@@ -211,7 +256,7 @@ namespace StarRacingPrototype {
     w.Flush();buffered.Flush();stream.FlushFinalBlock();return BitConverter.ToString(sha.Hash);
    }
   }
-  void Restore(){if(restored)return;restored=true;work?.Dispose();if(overlay!=null)Destroy(overlay);if(host!=null)Destroy(host);if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);if(had)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,preferences);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();UserSettingsStore.OverridePath=settingsPath;UserSettingsStore.Replace(settings);Time.timeScale=1;Application.runInBackground=background;}
+  void Restore(){if(restored)return;restored=true;if(LoadingPlayModeChecks.BasisOnly)BasisNativeExperiment.EditorOverride=null;work?.Dispose();if(overlay!=null)Destroy(overlay);if(host!=null)Destroy(host);if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);if(had)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,preferences);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();UserSettingsStore.OverridePath=settingsPath;UserSettingsStore.Replace(settings);Time.timeScale=1;Application.runInBackground=background;}
   void OnDestroy(){Restore();}
  }
 }

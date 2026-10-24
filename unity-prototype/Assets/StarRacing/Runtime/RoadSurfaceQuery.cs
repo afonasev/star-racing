@@ -5,7 +5,7 @@ using UnityEngine;
 namespace StarRacingPrototype
 {
     /// <summary>Nearest point on the actual road meshes, independent of race progress.</summary>
-    public sealed class RoadSurfaceQuery
+    public sealed partial class RoadSurfaceQuery
     {
         public struct Hit
         {
@@ -40,6 +40,7 @@ namespace StarRacingPrototype
         readonly Vector3[] vertices, normals;
         readonly Triangle[] triangles;
         readonly Node[] nodes;
+        readonly bool requiresSortedBounds;
 
         public int TriangleCount => triangles.Length;
 
@@ -127,6 +128,9 @@ namespace StarRacingPrototype
             vertices = points.ToArray();
             normals = authoredNormals.ToArray();
             triangles = faces.ToArray();
+            // Vector3.Min/Max retain an operand's signed zero on equal bounds.
+            // Keep the original fold order for that rare inventory.
+            requiresSortedBounds = HasSignedZeroBounds(triangles);
             var tree = new List<Node>();
             if (triangles.Length > 0) BuildNode(tree, 0, triangles.Length);
             nodes = tree.ToArray();
@@ -134,7 +138,20 @@ namespace StarRacingPrototype
 
         static float Coordinate(Vector3 v, int axis) => axis == 0 ? v.x : axis == 1 ? v.y : v.z;
 
-        int BuildNode(List<Node> tree, int start, int count)
+        static bool NegativeZero(Vector3 v) => BitConverter.SingleToInt32Bits(v.x) == int.MinValue ||
+            BitConverter.SingleToInt32Bits(v.y) == int.MinValue || BitConverter.SingleToInt32Bits(v.z) == int.MinValue;
+
+        static bool HasSignedZeroBounds(Triangle[] faces)
+        {
+            foreach (var face in faces)
+                if (NegativeZero(face.min) || NegativeZero(face.max) || NegativeZero(face.center)) return true;
+            return false;
+        }
+
+        int BuildNode(List<Node> tree, int start, int count) => requiresSortedBounds
+            ? BuildSortedNode(tree, start, count) : BuildPartitionNode(tree, start, count, -1);
+
+        int BuildSortedNode(List<Node> tree, int start, int count)
         {
             Vector3 min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
             Vector3 max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
@@ -157,11 +174,44 @@ namespace StarRacingPrototype
             int axis = span.x >= span.y && span.x >= span.z ? 0 : span.y >= span.z ? 1 : 2;
             Array.Sort(triangles, start, count, new CenterComparer(axis));
             int half = count / 2;
-            int left = BuildNode(tree, start, half);
-            int right = BuildNode(tree, start + half, count - half);
+            int left = BuildSortedNode(tree, start, half);
+            int right = BuildSortedNode(tree, start + half, count - half);
             tree[index] = new Node { min = min, max = max, left = left, right = right };
             return index;
         }
+
+        int BuildPartitionNode(List<Node> tree, int start, int count, int parentAxis)
+        {
+            Vector3 min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity);
+            Vector3 max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+            Vector3 centerMin = min, centerMax = max;
+            for (int i = start; i < start + count; i++)
+            {
+                min = Vector3.Min(min, triangles[i].min);
+                max = Vector3.Max(max, triangles[i].max);
+                centerMin = Vector3.Min(centerMin, triangles[i].center);
+                centerMax = Vector3.Max(centerMax, triangles[i].center);
+            }
+            int index = tree.Count;
+            tree.Add(default);
+            if (count <= 8)
+            {
+                // The old builder leaves each leaf in its parent's total order.
+                if (parentAxis >= 0) Array.Sort(triangles, start, count, Comparers[parentAxis]);
+                tree[index] = new Node { min = min, max = max, start = start, count = count };
+                return index;
+            }
+            Vector3 span = centerMax - centerMin;
+            int axis = span.x >= span.y && span.x >= span.z ? 0 : span.y >= span.z ? 1 : 2;
+            int half = count / 2;
+            PartitionMedian(triangles, start, count, start + half, Comparers[axis]);
+            int left = BuildPartitionNode(tree, start, half, axis);
+            int right = BuildPartitionNode(tree, start + half, count - half, axis);
+            tree[index] = new Node { min = min, max = max, left = left, right = right };
+            return index;
+        }
+
+        static readonly CenterComparer[] Comparers = { new CenterComparer(0), new CenterComparer(1), new CenterComparer(2) };
 
         static float BoundsDistanceSquared(Vector3 p, Vector3 min, Vector3 max)
         {

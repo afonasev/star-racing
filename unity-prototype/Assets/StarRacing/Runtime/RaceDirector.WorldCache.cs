@@ -29,7 +29,7 @@ namespace StarRacingPrototype {
    catch(System.ComponentModel.Win32Exception){return 0;}
   }
   static bool ForcedFallback(LocalRaceConfig config,string theme)=>config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback;
-  static string WorldKey(LocalRaceConfig config)=>config.Seed+"|"+ResolvedTheme(config)+"|"+config.rails+"|"+config.jumps+"|"+config.generatorRevision+"|"+ForcedFallback(config,ResolvedTheme(config));
+  static string WorldKey(LocalRaceConfig config)=>config.Seed+"|"+ResolvedTheme(config)+"|"+config.rails+"|"+config.jumps+"|"+config.generatorRevision+"|"+ForcedFallback(config,ResolvedTheme(config))+"|basis="+BasisNativeExperiment.Enabled;
   void RegisterInitialWorld(){
    var root=new GameObject("Retained track world");Track.transform.SetParent(root.transform,true);environment.Root.SetParent(root.transform,true);
    var generated=AppliedConfig.Copy();generated.replay=null;

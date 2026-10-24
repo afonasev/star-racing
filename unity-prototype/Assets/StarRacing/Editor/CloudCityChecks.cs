@@ -11,7 +11,9 @@ namespace StarRacingPrototype {
         static int assertions;
         static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_CITY_QA_DIR");
         static void Check(bool ok,string message){assertions++;if(!ok)throw new Exception("METROPOLIS: "+message);}
-        public static void Run() {
+        public static void Run() => Run(false);
+        public static void RunGeometry() => Run(true);
+        static void Run(bool geometryOnly) {
             Directory.CreateDirectory(Output);assertions=0;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);
             foreach(uint seed in new uint[]{77,78,139}) {
@@ -19,14 +21,18 @@ namespace StarRacingPrototype {
                 Plan(EnvironmentPlan.Create(route),EnvironmentPlan.Create(route),route.Samples,(c,e,m)=>EnvironmentPlan.ClearOfRoute(route,c,e,m));
                 var space=new TrackRoute(Procedural.Generator.Generate(seed,"full","space-station",true,true));
                 Check(EnvironmentPlan.Create(space).hash==CloudCityBaseline.EnvironmentPlan.Create(space).hash,"exact unchanged space presentation hash");
-                Build(route,null,"legacy-"+seed,seed==77);
+                Build(route,null,"legacy-"+seed,!geometryOnly&&seed==77);
             }
             foreach(bool transformed in new[]{false,true})foreach(string mode in new[]{"normal","full","none"}) {
                 var graph=GraphCommonCatalogChecks.Geometry(mode,true,transformed);var geometry=new GraphEnvironmentGeometry(graph);var identity=graph.Identity;
                 Plan(EnvironmentPlan.Create(geometry,20,"cloud-city"),EnvironmentPlan.Create(geometry,20,"cloud-city"),geometry.Samples,geometry.Clear);
                 Check(identity==graph.Identity&&graph.Validate().Length==0,"graph identity/topology untouched");
                 Check(EnvironmentPlan.Create(geometry,20,"space-station").hash==CloudCityBaseline.EnvironmentPlan.Create(geometry,20,"space-station").hash,"exact space graph hash");
-                Build(null,graph,"native-"+mode+"-"+transformed,!transformed&&mode=="normal");
+                Build(null,graph,"native-"+mode+"-"+transformed,!geometryOnly&&!transformed&&mode=="normal");
+            }
+            if(geometryOnly) {
+                File.WriteAllText(Path.Combine(Output,"geometry-contracts.json"),"{\"success\":true,\"assertions\":"+assertions+",\"cases\":9}");
+                Debug.Log("CLOUD_CITY_GEOMETRY_OK assertions="+assertions);return;
             }
             EnvironmentTextureChecks.Run();SkyboxChecks.Run();DaylightVisualChecks.Run();
             File.WriteAllText(Path.Combine(Output,"contracts.json"),"{\"success\":true,\"assertions\":"+assertions+",\"cases\":9,\"spaceBaselineExact\":true}");
@@ -58,7 +64,7 @@ namespace StarRacingPrototype {
                 for(int i=0;i<meshes.Length;i++)Check(filters[i].sharedMesh==meshes[i]&&meshes[i].vertices.SequenceEqual(vertices[i])&&meshes[i].triangles.SequenceEqual(indices[i]),"physical road bytes unchanged");
                 var city=env.Root.GetComponentsInChildren<MeshRenderer>().Where(r=>r.name=="City tower"||r.name=="City tower trim"||r.name=="City district").ToArray();
                 int triangles=city.Sum(r=>r.GetComponent<MeshFilter>().sharedMesh.triangles.Length/3);int materials=city.Select(r=>r.sharedMaterial).Distinct().Count();
-                Check(city.Length<=192&&triangles<=40000&&materials==6,"bounded city opaque resources "+city.Length+" / "+triangles+" / "+materials);
+                Check(city.Length<=192&&triangles<=40000&&materials==4,"bounded city opaque resources "+city.Length+" / "+triangles+" / "+materials);
                 Check(city.Count(r=>r.shadowCastingMode!=ShadowCastingMode.Off)==10,"existing shadow caster budget");
                 var mist=env.Root.GetComponentsInChildren<MeshRenderer>().Where(r=>r.name=="Tower cloud mist").ToArray();Check(mist.Length<=72,"bounded transparent mist");
                 env.Sky.SetMistEnabled(false);Check(mist.All(r=>!r.enabled),"mist off");env.Sky.SetMistEnabled(true);Check(mist.All(r=>r.enabled),"mist on");
