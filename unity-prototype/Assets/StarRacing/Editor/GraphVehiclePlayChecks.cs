@@ -12,8 +12,11 @@ namespace StarRacingPrototype {
         public static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_GRAPH_PLAY_QA_DIR");
         static GraphVehiclePlayChecks(){EditorApplication.playModeStateChanged+=Changed;}
         public static void Run() {
+            GraphVehicleRouteChecks.Run();RunPlayMode();
+        }
+        public static void RunPlayMode() {
             if(string.IsNullOrEmpty(Output))throw new Exception("Explicit evidence directory required");
-            Directory.CreateDirectory(Output);GraphVehicleRouteChecks.Run();SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);
+            Directory.CreateDirectory(Output);SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);startup=0;EditorApplication.update+=Enter;
         }
         static void Enter(){if(++startup<15)return;EditorApplication.update-=Enter;EditorApplication.isPlaying=true;}

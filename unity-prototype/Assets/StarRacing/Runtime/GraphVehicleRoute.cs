@@ -315,9 +315,20 @@ namespace StarRacingPrototype {
                 buildRevision=owner.buildRevision;positionRevision=owner.PositionRevision;bodyHeight=height;
             }
         }
+        bool HasRecoveryRunway(Pose pose) {
+            if (!IsSplit(Cursor.roadId) || CommittedBranch != 0) return true;
+            // Physical support alone admits the centre immediately before the
+            // opening. Keep the earlier checkpoint through that approach zone;
+            // a car already aligned with either side may still save its pose.
+            const double runway = 40;
+            var tip = split.stations.Last(s=>s.gapHalf==0);
+            double z = Z(split,pose.position);
+            double lateral = Math.Abs(DVec.Dot(D(pose.position)-split.origin,split.right));
+            return z < tip.z-runway || z > tip.z || lateral >= tip.outer*.5-CheckpointAdmission.HalfWidth;
+        }
         public bool TryCaptureSafePose(Pose pose,out SafePose safe,float bodyHeight=VehicleGeometry.AdheredBodyHeight) {
             safe=null;
-            if(IsFlying || graph.jumps.Any(j=>j.roadId==Cursor.roadId && Cursor.localPhysicalDistance>=j.rampStart-80 && Cursor.localPhysicalDistance<=j.ballisticLanding) || !continuous || !CheckPose(Cursor,CommittedBranch,pose,bodyHeight))return false;
+            if(IsFlying || graph.jumps.Any(j=>j.roadId==Cursor.roadId && Cursor.localPhysicalDistance>=j.rampStart-80 && Cursor.localPhysicalDistance<=j.ballisticLanding) || !continuous || !HasRecoveryRunway(pose) || !CheckPose(Cursor,CommittedBranch,pose,bodyHeight))return false;
             safe=new SafePose(this,pose,bodyHeight);return true;
         }
         public bool TryRestore(SafePose safe,int newPositionRevision,long tick,out Pose pose) {

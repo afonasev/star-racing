@@ -107,6 +107,30 @@ namespace StarRacingPrototype {
             Check(divider.Observe(PoseAt(graph,11,at+.35),2,2) && divider.CommittedBranch==2 && !divider.RequiresRecovery &&
                 !divider.LastObservationContinuous && divider.LastPhysicalDelta==0,"first nonzero recovery step commits divider without credit or loop");
         }
+        static void SplitRecoveryRunway(GraphRoadSurface surface) {
+            var graph=surface.Graph;var split=graph.junctions.Single(j=>!j.merging);
+            double tip=split.stations.Last(s=>s.gapHalf==0).z;
+            foreach(int road in new[]{IndependentGraph.SplitTechnical,IndependentGraph.SplitSpeed}) {
+                Pose Centre(double z)=>new Pose((split.Point(0,z)+split.normal*VehicleGeometry.AdheredBodyHeight).Float,
+                    Quaternion.LookRotation(split.tangent.Float,split.normal.Float));
+                var initial=Centre(tip-55);
+                var projected=graph.ProjectCandidates(graph.Cursor(road,tip-55),new DVec(initial.position.x,initial.position.y,initial.position.z),30).First(p=>p.cursor.roadId==road);
+                Check(GraphVehicleRoute.TryCreate(surface,projected.cursor,initial,1,0,out var route),"centre runway spawn "+road);
+                Check(route.TryCaptureSafePose(initial,out var safe),"earlier centre runway remains available "+road);
+                long tick=0;
+                for(double z=tip-53;z<=tip-5;z+=2) {
+                    var pose=Centre(z);
+                    Check(route.Observe(pose,1,++tick),"supported centre approach "+road+" z="+z);
+                    if(z>=tip-15)Check(!route.TryCaptureSafePose(pose,out _),"centre before opening cannot replace checkpoint "+road+" z="+z);
+                }
+                for(int episode=0;episode<3;episode++) {
+                    Check(route.TryRestore(safe,route.PositionRevision+1,++tick,out var restored),"repeat recovery retains earlier runway "+road);
+                    Check(Vector3.Distance(restored.position,initial.position)<.001f,"recovery never advances into divider approach");
+                    Check(route.Observe(Centre(tip-54.5),route.PositionRevision,++tick) && !route.LastObservationContinuous && route.LastPhysicalDelta==0,
+                        "runway recovery first movement suppresses race credit");
+                }
+            }
+        }
         static void InvalidObservations(GraphRoadSurface surface) {
             var graph=surface.Graph;var route=Spawn(surface,1,100);long tick=0;
             var lost=Spawn(surface,0,159);
@@ -153,7 +177,7 @@ namespace StarRacingPrototype {
             try {
                 var surface=IndependentTrackMesh.Build(root.transform,graph,71,null,null,(_,__)=>{});
                 Physics.SyncTransforms();
-                Traverse(surface,1);Traverse(surface,2);SplitChoice(surface);RecoveryBoundary(surface);InvalidObservations(surface);
+                Traverse(surface,1);Traverse(surface,2);SplitChoice(surface);RecoveryBoundary(surface);SplitRecoveryRunway(surface);InvalidObservations(surface);
                 Debug.Log("GRAPH_VEHICLE_CASE_OK "+label+" assertions="+assertions);
             } finally {UnityEngine.Object.DestroyImmediate(root);}
         }

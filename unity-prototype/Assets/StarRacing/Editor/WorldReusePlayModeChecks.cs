@@ -198,7 +198,7 @@ namespace StarRacingPrototype {
    lease=SharedRaceAssets.Acquire();SharedRaceAssets.TickPrewarm();Check(Loads==1,"One asynchronous prefab request");
    int prefab=SharedRaceAssets.Load<GameObject>("Vehicle/Cloudline").GetInstanceID();Check(Loads==1,"Sync tooling consumes same pending request");
    using(var prepare=new LoadingWork(SharedRaceAssets.EnsureSteps(true))){while(prepare.MoveNext())yield return null;Check(prepare.Succeeded&&prepare.Error==null,"Finite manifest preloaded");}
-   Trace("manifest preloaded");int count=Loads;Check(Warm&&count==45&&AssetCount==45,"Only 45 shared source assets retained");
+   Trace("manifest preloaded");int count=Loads;Check(Warm&&count==47&&AssetCount==47,"Only 47 shared source assets retained");
    var unload=Resources.UnloadUnusedAssets();while(!unload.isDone)yield return null;
    Check(SharedRaceAssets.Load<GameObject>("Vehicle/Cloudline").GetInstanceID()==prefab&&Loads==count,"Shared source retained independently of worlds");
    lease.Dispose();lease=null;Check(AssetCount==0,"Final owner releases references");
@@ -207,7 +207,7 @@ namespace StarRacingPrototype {
    var a=Config("cloud-city",77,11);var b=Config("space-station",5,12);a.Save();host=new GameObject("Current level and shared sources");host.AddComponent<RaceStartup>();
    while((director=host.GetComponent<RaceDirector>())==null||!director.Ready)yield return null;menu=host.GetComponent<RaceMenu>();
    Check(director.Track==null&&!Warm,"Menu ready before world/assets preparation completes");Check(SilentStartup.Enabled&&host.GetComponent<RaceAudioCoordinator>()==null,"Startup stays silent");
-   Trace("asset lifecycle complete");yield return Prepare(a);Trace("initial legacy ready");Check(director.Track.GraphSurface==null,"Legacy case");int loaded=Loads;Check(Warm&&loaded==45,"Race waited for shared imports");
+   Trace("asset lifecycle complete");yield return Prepare(a);Trace("initial legacy ready");Check(director.Track.GraphSurface==null,"Legacy case");int loaded=Loads;Check(Warm&&loaded==47,"Race waited for shared imports");
    int modelId=SharedRaceAssets.Load<GameObject>("Vehicle/Cloudline").GetInstanceID();int textureId=SharedRaceAssets.Load<Texture2D>("Environment/Textures/Road").GetInstanceID();var paint=SharedRaceAssets.Load<Material>("Vehicle/CloudlineMaterials/Liquid_Silver");var paintColor=paint.color;
    var oldTrack=director.Track;var oldMesh=oldTrack.GetComponentInChildren<MeshFilter>().sharedMesh;var oldMaterial=oldTrack.GetComponentInChildren<MeshRenderer>().sharedMaterial;
    using(var repeat=director.RepeatForLoading()){while(repeat.MoveNext())yield return null;Check(repeat.Succeeded&&repeat.Error==null,"Repeat succeeds");}director.SetPaused(true);Check(ReferenceEquals(oldTrack,director.Track)&&oldMesh!=null&&Loads==loaded,"Repeat reuses current world and source assets");yield return ContactGate();
