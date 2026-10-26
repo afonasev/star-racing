@@ -27,6 +27,7 @@ namespace StarRacingPrototype {
    Check(renderer.rendererFeatures.IndexOf(nitro)<renderer.rendererFeatures.IndexOf(ssao),"Nitro feature and order are preserved");
    var serialized=new SerializedObject(ssao);
    Check(ssao.isActive,"SSAO is active");
+   Check(serialized.FindProperty("m_Settings.Downsample").boolValue,"half-resolution AO sampling");
    Check(Mathf.Approximately(serialized.FindProperty("m_Settings.Radius").floatValue,VehicleContactShadowsRendererFeature.Radius),"small selected radius");
    Check(Mathf.Approximately(serialized.FindProperty("m_Settings.Intensity").floatValue,VehicleContactShadowsRendererFeature.Intensity),"moderate selected intensity");
    Check(Mathf.Approximately(serialized.FindProperty("m_Settings.DirectLightingStrength").floatValue,0),"direct lighting strength stays zero");

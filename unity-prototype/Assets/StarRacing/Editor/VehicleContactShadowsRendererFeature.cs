@@ -29,7 +29,9 @@ namespace StarRacingPrototype {
    if(!feature.isActive){feature.SetActive(true);changed=true;}
    var serialized=new SerializedObject(feature);
    changed|=Set(serialized,SettingsPath+"AOMethod",0);
-   changed|=Set(serialized,SettingsPath+"Downsample",false);
+   // Half width/height for the AO sampling pass; retain the existing normals,
+   // contact radius and composite so split views do not pay full-resolution AO.
+   changed|=Set(serialized,SettingsPath+"Downsample",true);
    changed|=Set(serialized,SettingsPath+"AfterOpaque",false);
    changed|=Set(serialized,SettingsPath+"Source",1);
    changed|=Set(serialized,SettingsPath+"NormalSamples",1);
