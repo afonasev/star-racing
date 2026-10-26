@@ -48,8 +48,17 @@ namespace StarRacingPrototype
         const int CpuFrameBound = 8192;
         int ringAt;
         double matchedSimulationSeconds;
+        int expectedEntrants = 32;
         public bool Completed { get; private set; }
         public string Failure => report?.failure;
+
+        // Separate exact witness. The original cloud32 entry point keeps its contract.
+        public void BeginComparison16(string directory, RaceDirector source)
+        {
+            if (began) throw new InvalidOperationException("Frame diagnostics already started");
+            expectedEntrants = 16;
+            Begin(directory, source, true, true, 60);
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Install()
@@ -107,7 +116,7 @@ namespace StarRacingPrototype
                 if (report.entrants == 0)
                 {
                     report.entrants = director.Cars.Length;
-                    if (report.entrants != 32) throw new InvalidOperationException("Exact cloud32 diagnostic requires 32 entrants");
+                    if (report.entrants != expectedEntrants) throw new InvalidOperationException("Exact frame diagnostic requires " + expectedEntrants + " entrants");
                     report.appliedConfig = JsonUtility.ToJson(director.AppliedConfig);
                 }
                 if (observedBegan < 0) { observedBegan = real; observedSim = simulated; }
