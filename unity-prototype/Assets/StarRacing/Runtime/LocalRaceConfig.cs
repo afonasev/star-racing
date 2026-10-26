@@ -21,12 +21,17 @@ namespace StarRacingPrototype {
   public bool jumps,handicap;
   // New configurations use Native12; explicit saved legacy revisions remain replayable.
   public int generatorRevision=12;
+  public string courseId="";
+  public int courseRevision;
+  public bool IsAuthored=>!string.IsNullOrEmpty(courseId);
   public NativeCourseReplay replay;
   public uint Seed=>uint.Parse(seed);
-  public LocalRaceConfig Copy()=>JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(this));
+  public LocalRaceConfig Copy(){var copy=JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(this));if(replay==null)copy.replay=null;return copy;}
   public bool Validate(out string error){
    error="";
-   if(generatorRevision!=10&&generatorRevision!=11&&generatorRevision!=12)error="Неизвестная версия трассы";
+   if(IsAuthored&&(courseId!=AuthoredCloudCityCourse.Id||courseRevision!=AuthoredCloudCityCourse.Revision))error="Неизвестная версия авторской трассы";
+   else if(IsAuthored&&(theme!="cloud-city"||rails!="full"||jumps||generatorRevision!=12))error="Параметры авторской трассы не совпадают с её версией";
+   else if(generatorRevision!=10&&generatorRevision!=11&&generatorRevision!=12)error="Неизвестная версия трассы";
    else if(version!=1)error="Неизвестная версия настроек";
    else if(humans<0||humans>4||devices==null||devices.Length!=4||names==null||names.Length!=4)error="Выберите до 4 игроков";
    else if(Array.IndexOf(ParticipantCounts,entrants)<0)error="Выберите 8, 16, 32 или 64 участника";
@@ -41,6 +46,9 @@ namespace StarRacingPrototype {
   }
   public static LocalRaceConfig Normalize(LocalRaceConfig config){
    config=config??new LocalRaceConfig();if(config.generatorRevision!=10&&config.generatorRevision!=11&&config.generatorRevision!=12)config.generatorRevision=12;config.version=1;config.handicap=false;
+   // Unity serializes null inline classes as empty records. Only the empty record
+   // denotes absence; a populated but incompatible replay must still fail visibly.
+   if(config.replay!=null&&config.replay.IsEmpty)config.replay=null;
    config.humans=Mathf.Clamp(config.humans,0,4);
    if(config.devices==null||config.devices.Length!=4)config.devices=new[]{-2,-1,0,1};
    for(int i=0;i<4;i++){if(config.devices[i]<-2)config.devices[i]=i-2;

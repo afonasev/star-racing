@@ -212,7 +212,7 @@ public static class Validator
             check(d.checkpoints[i].sampleIndex <= d.checkpoints[i - 1].sampleIndex ||
                   d.checkpoints[i].distance <= d.checkpoints[i - 1].distance, "composition-checkpoints");
     }
-    static bool Support(Definition d)
+    internal static bool Support(Definition d)
     {
         for (int i = 0; i < d.samples.Length - 1; i++)
         {

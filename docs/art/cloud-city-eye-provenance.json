@@ -1,0 +1,12 @@
+{
+  "asset": "unity-prototype/Assets/StarRacing/Resources/Environment/Textures/EyeGlass.png",
+  "source": "OpenAI built-in image_gen, 2026-10-26, this task",
+  "sha256": "774eafd4d173498e1949b7aa62cd33fee29cb2c44437397f154680373d755256",
+  "prompt": "Square seamless flat orthographic architectural facade albedo. Rectangular blue-grey glass, thin pale silver mullions, occasional ivory ceramic spandrels. Four bays by three storeys, crisp technical panels, no text/logos/environment/perspective. Subtle glass variation, no photographic reflections, seamless edges.",
+  "role": "New authored tower facade; all road, rail, cloud and other materials reuse existing sources.",
+  "menuPreview": {
+    "asset": "unity-prototype/Assets/StarRacing/Resources/UI/CloudCityEye.png",
+    "source": "Actual Unity render, AuthoredCoursePreview section 2, current authored v1",
+    "sha256": "8934ef7c5d64d9002e3a4afd4061d203c1f6df886898e69ac52d30f3caa50019"
+  }
+}

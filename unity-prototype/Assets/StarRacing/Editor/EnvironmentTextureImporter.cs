@@ -8,9 +8,10 @@ namespace StarRacingPrototype {
                 !assetPath.EndsWith(".png")) return;
             var importer = (TextureImporter)assetImporter;
             bool normal = assetPath.EndsWith("Normal.png");
+            bool eye = assetPath.EndsWith("/EyeGlass.png");
             bool space = System.IO.Path.GetFileNameWithoutExtension(assetPath) is "SpaceHull" or "SpaceHullNormal" or "SpaceRock" or "SpaceRockNormal";
             // Preserve generated source detail (1254px); never silently downsample it to 1024.
-            if (space) importer.npotScale = TextureImporterNPOTScale.None;
+            if (space || eye) importer.npotScale = TextureImporterNPOTScale.None;
             bool finish = assetPath.EndsWith("Finish.png");
             importer.textureType = normal ? TextureImporterType.NormalMap : TextureImporterType.Default;
             importer.convertToNormalmap = space && normal;
@@ -25,10 +26,10 @@ namespace StarRacingPrototype {
             importer.filterMode = UnityEngine.FilterMode.Trilinear;
             // Long cyclic blend atlases need metre-scale texel density at grazing angles.
             bool blendAtlas = assetPath.Contains("/RoadBlend") || assetPath.Contains("/RailBlend");
-            importer.anisoLevel = blendAtlas ? 16 : 8;
+            importer.anisoLevel = blendAtlas || eye ? 16 : 8;
             importer.mipmapEnabled = true;
             importer.isReadable = false;
-            importer.maxTextureSize = space ? 2048 : normal || finish ? 4096 : blendAtlas ? 8192 : 1024;
+            importer.maxTextureSize = space || eye ? 2048 : normal || finish ? 4096 : blendAtlas ? 8192 : 1024;
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
         }
     }

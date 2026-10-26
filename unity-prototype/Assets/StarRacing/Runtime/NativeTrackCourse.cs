@@ -13,6 +13,9 @@ namespace StarRacingPrototype {
   public static Func<Procedural.Definition,Procedural.Definition> EditorDefinitionTransform;
 #endif
   public readonly Procedural.Definition Single;
+  public readonly string CourseId;
+  public readonly int ContentRevision;
+  public bool IsAuthored=>!string.IsNullOrEmpty(CourseId);
   internal readonly Procedural.Definition SimulationSingle;
   public readonly bool UsesBasis;
   readonly string simulationContent;
@@ -32,22 +35,24 @@ namespace StarRacingPrototype {
   public bool IsIndependent=>Independent!=null;
   public float Start=>IsIndependent?(float)Procedural.GraphNativeCatalog.GridStart:30f;
   public float Finish=>IsIndependent?(float)(Graph.CommonLength-160):(float)Single.totalLength+30;
-  internal NativeTrackCourse(Procedural.Definition single,Procedural.GraphCourseDefinition independent,Procedural.GraphCourseSettings settings) {
+  internal NativeTrackCourse(Procedural.Definition single,Procedural.GraphCourseDefinition independent,Procedural.GraphCourseSettings settings,string courseId=null,int contentRevision=0) {
    if((single==null)==(independent==null))throw new ArgumentException("Exactly one course representation required");
+   CourseId=courseId;ContentRevision=contentRevision;
+   if(IsAuthored&&(courseId!=AuthoredCloudCityCourse.Id||contentRevision!=AuthoredCloudCityCourse.Revision||!AuthoredCloudCityCourse.Is(single)))throw new ArgumentException("Unknown authored course revision");
    #if UNITY_EDITOR
-   if(single!=null&&EditorDefinitionTransform!=null)single=EditorDefinitionTransform(single);
+   if(!IsAuthored&&single!=null&&EditorDefinitionTransform!=null)single=EditorDefinitionTransform(single);
 #endif
-   UsesBasis=single!=null&&single.version==12&&BasisNativeExperiment.Enabled;
+   UsesBasis=!IsAuthored&&single!=null&&single.version==12&&BasisNativeExperiment.Enabled;
    SimulationSingle=single;
-   if(single!=null&&(UsesBasis||BasisNativeExperiment.Audit))SimulationSingle=BasisNativeExperiment.Prepare(single,UsesBasis);
+   if(!IsAuthored&&single!=null&&(UsesBasis||BasisNativeExperiment.Audit))SimulationSingle=BasisNativeExperiment.Prepare(single,UsesBasis);
    simulationContent=SimulationSingle==null?null:JsonUtility.ToJson(SimulationSingle);
    Single=single;Independent=independent;Settings=settings;singleContent=single==null?null:JsonUtility.ToJson(single);
    Graph=independent?.graph??Procedural.IndependentGraph.SingleRoad(single);
    RequestedSeed=independent?.requestedSeed??single.requestedSeed;ActualSeed=independent?.actualSeed??single.seed;UsedFallback=independent?.usedFallback??single.usedFallback;
    GeneratorRevision=independent!=null?Revision:single.version;Family=independent!=null?Procedural.GraphCourseDefinition.Family:single.family??"legacy";
-   Attempt=independent?.attempt??SingleAttempt(single);
+   Attempt=IsAuthored?0:independent?.attempt??SingleAttempt(single);
    using(var buffer=new MemoryStream()) {
-    using(var writer=new BinaryWriter(buffer,Encoding.UTF8,true)){writer.Write(Schema);writer.Write(GeneratorRevision);writer.Write(Family);writer.Write(RequestedSeed);writer.Write(ActualSeed);writer.Write(UsedFallback);writer.Write(Attempt);writer.Write(settings.theme);writer.Write(settings.rails);writer.Write(settings.jumps);writer.Write(Graph.Identity);writer.Write(independent?.Identity??singleContent);}
+    using(var writer=new BinaryWriter(buffer,Encoding.UTF8,true)){writer.Write(Schema);writer.Write(GeneratorRevision);writer.Write(Family);writer.Write(RequestedSeed);writer.Write(ActualSeed);writer.Write(UsedFallback);writer.Write(Attempt);writer.Write(settings.theme);writer.Write(settings.rails);writer.Write(settings.jumps);writer.Write(Graph.Identity);writer.Write(independent?.Identity??singleContent);if(IsAuthored){writer.Write("authored");writer.Write(CourseId);writer.Write(ContentRevision);}}
     GeometryIdentity=Digest(buffer.ToArray());
    }
   }
@@ -83,7 +88,8 @@ namespace StarRacingPrototype {
   public static string FamilyFor(uint seed,string theme)=>Families[new Procedural.SeedRandom(seed^(theme=="space-station"?0x5a710a1eu:0u)).Int(0,3)];
   internal sealed class Generated {
    internal Procedural.Definition single;internal Procedural.GraphCourseDefinition independent;internal Procedural.GraphCourseSettings settings;
-   internal NativeTrackCourse Complete()=>new NativeTrackCourse(single,independent,settings);
+   internal string courseId;internal int contentRevision;
+   internal NativeTrackCourse Complete()=>new NativeTrackCourse(single,independent,settings,courseId,contentRevision);
   }
   public static NativeTrackCourse Generate(uint seed,Procedural.GraphCourseSettings settings,int revision=12,bool fallback=false)=>GenerateData(seed,settings,revision,fallback).Complete();
   // Pure managed generation only. NativeTrackCourse serialization is finalized on main thread.

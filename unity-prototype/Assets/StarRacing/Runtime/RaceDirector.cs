@@ -115,17 +115,17 @@ namespace StarRacingPrototype {
    Ready=true;freeze.Keep(0);
    }
   }
-  static string ResolvedTheme(LocalRaceConfig config)=>config.theme=="random"?(config.Seed%2==0?"cloud-city":"space-station"):config.theme;
+  static string ResolvedTheme(LocalRaceConfig config)=>config.IsAuthored?"cloud-city":config.theme=="random"?(config.Seed%2==0?"cloud-city":"space-station"):config.theme;
   IEnumerator GenerateInitialSteps(bool background){
    string theme=ResolvedTheme(AppliedConfig);
-   if(background){var seed=TrackSeed;var settings=new Procedural.GraphCourseSettings(theme,AppliedConfig.rails,AppliedConfig.jumps);int revision=AppliedConfig.generatorRevision;
-    var task=LoadingWork.Background(()=>NativeTrackGenerator.GenerateData(seed,settings,revision));while(!task.IsCompleted)yield return null;Course=task.GetAwaiter().GetResult().Complete();}
+   if(background){var sourceConfig=AppliedConfig.Copy();
+    var task=LoadingWork.Background(()=>CourseSource.GenerateData(sourceConfig,theme));while(!task.IsCompleted)yield return null;Course=task.GetAwaiter().GetResult().Complete();}
    else Course=GenerateCourse(AppliedConfig,theme,false);
-   TrackSummary=$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
+   TrackSummary=Course.IsAuthored?$"{AuthoredCloudCityCourse.Title} · {Course.Finish-Course.Start:0} м":$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
   }
   static IEnumerator BuildDecorSteps(TrackEnvironmentBuilder decor,TrackBuilder track,NativeTrackCourse course,uint seed,string theme,bool background)=>course.IsIndependent?decor.BuildIndependentSteps(track.GraphSurface,seed,theme,null,background):decor.BuildSteps(track.PresentationRoute,track.PresentationRoot,seed,background);
   void ApplyLighting(){if(sun!=null&&environment.Plan!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);foreach(var camera in cameras)if(camera!=null)camera.SetSkyline(environment.Plan);ApplyGraphicsSettings();}}
-  NativeTrackCourse GenerateCourse(LocalRaceConfig config,string theme,bool replay)=>NativeTrackGenerator.Generate(config.Seed,new Procedural.GraphCourseSettings(theme,config.rails,config.jumps),config.generatorRevision,replay&&config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback);
+  NativeTrackCourse GenerateCourse(LocalRaceConfig config,string theme,bool replay)=>CourseSource.GenerateData(config,theme,replay&&config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback).Complete();
   static float GridDistance(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?course.Start-(slot/2)*10:RaceRoster.GridDistance(track.Route,slot);
   static float GridLateral(NativeTrackCourse course,TrackBuilder track,int slot)=>course.IsIndependent?(slot%2==0?-3.5f:3.5f):RaceRoster.GridLateral(track.Route,slot);
   static void ResetCar(MagneticVehicle car,NativeTrackCourse course,TrackBuilder track,float distance,float lane){if(course.IsIndependent)car.ResetOnGraph(course.Graph.Cursor(0,distance),lane);else car.ResetAt(distance,lane);}
@@ -191,6 +191,7 @@ namespace StarRacingPrototype {
     var timers=new float[count];var revisions=new int[count];for(int i=0;i<count;i++){timers[i]=i<humans?0:AiDecisionInterval*(i-humans)/Mathf.Max(1,count-humans);revisions[i]=cars[i].PositionRevision;}
     var world=new AiWorldSnapshot(count);var contacts=new DrivingContactObservation[count];var policy=new DrivingContactPolicy();
     var times=new double[count];var commands=new DrivingInput[count];
+    if(snapshot.IsAuthored&&snapshot.replay!=null&&!snapshot.replay.Matches(snapshot,theme))throw new ArgumentException("Saved authored course revision does not match selection");
     if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
     yield return "Проверяем старт";
     if(!input.TryBind(snapshot,out bindingError))throw new InvalidOperationException(bindingError);
@@ -207,7 +208,7 @@ namespace StarRacingPrototype {
     Session.Reset(observations);Session.Begin();Input.PrepareStart();Started=true;Paused=pauseDuringPreparation;Session.Paused=Paused;Time.timeScale=0;
     pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
-    ApplyLighting();TrackSummary=$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
+    ApplyLighting();TrackSummary=course.IsAuthored?$"{AuthoredCloudCityCourse.Title} · {course.Finish-course.Start:0} м":$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
     if(oldRoot!=null)Destroy(oldRoot);else foreach(var car in oldCars)Destroy(car.gameObject);
     if(oldWorld!=prepared)oldWorld?.Dispose();
     StartError="";freeze.Keep(Paused?0:1);

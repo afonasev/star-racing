@@ -11,6 +11,7 @@ namespace StarRacingPrototype {
         public const int MaximumMistTowers = 24;
         public int NearTowerCount { get; private set; }
         public const float CorridorMargin = 38f;
+        public readonly bool authored;
         public readonly uint seed;
         public readonly string theme;
         public readonly RaceLightingProfile lighting;
@@ -32,12 +33,13 @@ namespace StarRacingPrototype {
             public bool amber;
         }
 
-        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null,route.Definition.theme == "space-station" ? SpaceSceneryPlan.LegacyClearance(route) : null) {}
+        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null,route.Definition.theme == "space-station" ? SpaceSceneryPlan.LegacyClearance(route) : null,AuthoredCloudCityCourse.Is(route.Definition)) {}
 
-        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity,Func<Vector3,Vector3,float,bool> sceneryClear) {
+        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity,Func<Vector3,Vector3,float,bool> sceneryClear,bool authored=false) {
+            this.authored=authored;if(authored)skySeed=AuthoredCloudCityCourse.ScenerySeed;
             seed = sourceSeed;
             theme = sourceTheme;
-            lighting = RaceLightingProfile.Create(seed, theme);
+            lighting = authored?RaceLightingProfile.AuthoredCity():RaceLightingProfile.Create(seed, theme);
             float lowest = float.PositiveInfinity;
             float maxX = float.NegativeInfinity, maxZ = float.NegativeInfinity;
             foreach (var frame in frames) {
@@ -45,8 +47,8 @@ namespace StarRacingPrototype {
                 maxX = Mathf.Max(maxX, frame.position.x);
                 maxZ = Mathf.Max(maxZ, frame.position.z);
             }
-            cityBaseY = lowest - 240f;
-            if (theme == "cloud-city") BuildMetropolis(frames, clear);
+            cityBaseY = lowest - (authored?140f:240f);
+            if (theme == "cloud-city") {if(authored)BuildAuthoredDistricts(clear);else BuildMetropolis(frames, clear);}
             var space = new Procedural.SeedRandom(seed ^ 0x5aceu);
             var start = frames[0];
             Vector3 forward = Vector3.ProjectOnPlane(start.tangent, Vector3.up).normalized;
@@ -80,7 +82,25 @@ namespace StarRacingPrototype {
             // Preserve the approved ocean world for seed 77; consecutive seeds cycle all four worlds.
             skyPlanetVariant = (int)(((skySeed ?? seed) % SkyPlanetVariantCount + 3) % SkyPlanetVariantCount);
             if (theme == "space-station") this.space = new SpaceSceneryPlan(seed, frames, station, sceneryClear);
-            hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity);
+            hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity)+(authored?"-eye"+AuthoredCloudCityCourse.PresentationRevision:"");
+        }
+
+        void BuildAuthoredDistricts(Func<Vector3,Vector3,float,bool> clear) {
+            var random=new Procedural.SeedRandom(AuthoredCloudCityCourse.ScenerySeed);
+            var parts=AuthoredCityArchitecture.Create();
+            // Lower city leaves the authored skyline readable. Tall silhouettes stay on the perimeter.
+            for(int z=0;z<17;z++)for(int x=0;x<15;x++){
+                float px=-1600+x*310+(float)random.Range(-75,75),pz=-700+z*350+(float)random.Range(-80,80);
+                if(Mathf.Abs(px)<260&&pz>2250&&pz<3000)continue;
+                float width=(float)random.Range(38,100),height=(float)random.Range(170,430);
+                if((x<3||x>11||z<2||z>14)&&random.Next()<.3)height=(float)random.Range(520,720);
+                var position=new Vector3(px,cityBaseY+height*.5f,pz);
+                var tower=new CityTower{position=position,width=width,height=height};var extents=TowerExtents(tower);
+                if(!clear(position,extents,CorridorMargin))continue;
+                bool overlaps=false;foreach(var part in parts){var d=position-part.center;var size=extents+part.size*.5f+Vector3.one*30;if(Mathf.Abs(d.x)<size.x&&Mathf.Abs(d.y)<size.y&&Mathf.Abs(d.z)<size.z){overlaps=true;break;}}
+                if(!overlaps)towers.Add(tower);
+            }
+            NearTowerCount=Mathf.Min(16,towers.Count);
         }
 
         void BuildMetropolis(TrackFrame[] frames, Func<Vector3, Vector3, float, bool> clear) {
@@ -190,6 +210,14 @@ namespace StarRacingPrototype {
         public Vector3 sunPosition;
         public Color sunColor, ambientColor, ambientEquatorColor, ambientGroundColor, skyColor, fogColor;
         public float sunIntensity, fogDensity, reflectionIntensity;
+
+        public static RaceLightingProfile AuthoredCity() {
+            var p=Create(AuthoredCloudCityCourse.ScenerySeed,"cloud-city");
+            p.sunRotation=Quaternion.Euler(38,-38,0);p.sunPosition=-(p.sunRotation*Vector3.forward)*900;
+            p.sunColor=new Color(1,.94f,.83f);p.sunIntensity=1.95f;
+            p.ambientColor=new Color(.59f,.70f,.83f);p.ambientEquatorColor=new Color(.46f,.53f,.62f);p.ambientGroundColor=new Color(.31f,.35f,.42f);
+            p.fogDensity=.00024f;p.reflectionIntensity=.55f;return p;
+        }
 
         public static RaceLightingProfile Create(uint seed, string theme) {
             var random = new Procedural.SeedRandom(seed ^ 0x51a710c7u);

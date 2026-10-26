@@ -170,7 +170,7 @@ namespace StarRacingPrototype
                     if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
-            public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false,bool renderOnly=false)
+            public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false,bool renderOnly=false,bool authored=false)
             {
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
@@ -189,14 +189,17 @@ namespace StarRacingPrototype
                 yield return null;
                 var bottom=new Mesh {name=BottomName,indexFormat=IndexFormat.UInt32};
                 bottom.SetVertices(vertices);bottom.SetTriangles(triangles.GetRange(0,bottomIndices),0);bottom.RecalculateBounds();
-                if(graph)bottomCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+                // Unity 6000.3 warns on this source at 2,481,210 indices (827,070
+                // triangles). Bound the index buffer conservatively, preserving
+                // all geometry while using the supported legacy acceleration structure.
+                if(graph||(authored&&bottomIndices>2097152))bottomCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
                 bottomCollider.sharedMesh = bottom;
                 yield return null;
                 // Preserve the exact exterior triangle boundary at hull seams/tips.
                 // Contained convex supports supply the small-motion CCD contacts.
                 var exterior=new Mesh {name=ExteriorName,indexFormat=IndexFormat.UInt32};
                 exterior.SetVertices(vertices);exterior.SetTriangles(triangles.GetRange(bottomIndices,triangles.Count-bottomIndices),0);exterior.RecalculateBounds();
-                if(graph)exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+                if(graph||(authored&&triangles.Count-bottomIndices>2097152))exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
                 exteriorCollider.sharedMesh=exterior;
                 collisionObject.AddComponent<RoadSupportContact>().InitializeMesh(exteriorCollider,repairable.GetRange(bottomIndices/3,(triangles.Count-bottomIndices)/3).ToArray());
             }
@@ -212,10 +215,10 @@ namespace StarRacingPrototype
         {
             LoadingWork.Drain(BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal));
         }
-        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null,bool renderOnly=false)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null,renderOnly);
+        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null,bool renderOnly=false)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null,renderOnly,AuthoredCloudCityCourse.Is(route.Definition));
         internal static IEnumerator BuildGraphSteps(Transform parent,System.Func<RoadFace,float,TrackFrame> evaluate,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer,System.Func<int,Vector3> portNormal)=>BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
         static IEnumerator BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
-            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal,bool renderOnly=false)
+            IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal,bool renderOnly=false,bool authored=false)
         {
             var budget=new LoadingWork.Budget();
             var supports=!renderOnly&&observer==null?new List<SupportTriangle>():null;
@@ -289,7 +292,7 @@ namespace StarRacingPrototype
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
             yield return null;budget.Restart();
-            yield return shell.CreateSteps(parent,material,bottomIndices,portNormal!=null,renderOnly);
+            yield return shell.CreateSteps(parent,material,bottomIndices,portNormal!=null,renderOnly,authored);
             yield return null;budget.Restart();
             if(supports!=null)foreach(var triangle in supports){CreateSupport(parent,triangle);if(budget.Due){yield return null;budget.Restart();}}
         }

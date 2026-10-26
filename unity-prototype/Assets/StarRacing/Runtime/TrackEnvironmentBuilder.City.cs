@@ -7,11 +7,12 @@ namespace StarRacingPrototype {
         sealed class CityBatches {
             const float ChunkSize=2048;
             readonly TrackEnvironmentBuilder owner;
+            readonly bool shadows;
             readonly Dictionary<(int x,int z,Material material),Batch> batches=new Dictionary<(int,int,Material),Batch>();
             readonly Vector3[] vertices,normals;
             readonly int[] triangles;
-            public CityBatches(TrackEnvironmentBuilder owner) {
-                this.owner=owner;vertices=owner.cube.vertices;normals=owner.cube.normals;triangles=owner.cube.triangles;
+            public CityBatches(TrackEnvironmentBuilder owner,bool shadows=false) {
+                this.owner=owner;this.shadows=shadows;vertices=owner.cube.vertices;normals=owner.cube.normals;triangles=owner.cube.triangles;
             }
             public void Box(Material material,Vector3 position,Vector3 scale,float tile,bool coveredTop=false) {
                 int x=Mathf.FloorToInt(position.x/ChunkSize),z=Mathf.FloorToInt(position.z/ChunkSize);
@@ -32,7 +33,7 @@ namespace StarRacingPrototype {
                     var mesh=new Mesh{name="City district mesh"};
                     if(batch.vertices.Count>65535)mesh.indexFormat=UnityEngine.Rendering.IndexFormat.UInt32;
                     mesh.SetVertices(batch.vertices);mesh.SetNormals(batch.normals);mesh.SetUVs(0,batch.uv);mesh.SetTriangles(batch.triangles,0);mesh.RecalculateBounds();
-                    owner.meshes.Add(mesh);owner.Shape("City district",mesh,batch.material,batch.origin,Quaternion.identity,Vector3.one,false);
+                    owner.meshes.Add(mesh);owner.Shape("City district",mesh,batch.material,batch.origin,Quaternion.identity,Vector3.one,shadows);
                     yield return null;
                 }
             }

@@ -48,7 +48,8 @@ namespace StarRacingPrototype {
     Selected.Save();
    }else AssignDevice(0,device);
   }
-  public void RollSeed(){Selected.RandomizeSeed();seedText=Selected.seed;Selected.Save();}
+  public void RollSeed(){if(Selected.IsAuthored)return;Selected.RandomizeSeed();seedText=Selected.seed;Selected.Save();}
+  public void SelectCourse(bool authored){Change(()=>{Selected.replay=null;Selected.courseId=authored?AuthoredCloudCityCourse.Id:"";Selected.courseRevision=authored?AuthoredCloudCityCourse.Revision:0;if(authored){Selected.generatorRevision=12;Selected.theme="cloud-city";Selected.rails="full";Selected.jumps=false;}});}
   public bool JoinDevice(int device){
    for(int i=0;i<Selected.humans;i++)if(Selected.devices[i]==device)return false;
    if(Selected.humans==4){Error="Все четыре места заняты";return false;}
@@ -283,6 +284,8 @@ namespace StarRacingPrototype {
    Skin.Panel(new Rect(56,352,704,448));
    Skin.Text(new Rect(84,371,470,32),"Участников всего",22,true);
    for(int i=0;i<LocalRaceConfig.ParticipantCounts.Length;i++){int count=LocalRaceConfig.ParticipantCounts[i];Button("count-"+count,new Rect(84+i*161,411,149,46),count.ToString(),()=>Change(()=>Selected.entrants=count),Selected.entrants==count);}
+   Dropdown("course",new Rect(84,475,648,46),"Трасса",new[]{"Процедурная",AuthoredCloudCityCourse.Title},Selected.IsAuthored?1:0,index=>SelectCourse(index==1));
+   if(!Selected.IsAuthored){
    Dropdown("theme",new Rect(84,534,648,46),"Тема трассы",LocalRaceConfig.ThemeNames,Array.IndexOf(LocalRaceConfig.ThemeIds,Selected.theme),index=>Change(()=>Selected.theme=LocalRaceConfig.ThemeIds[index]));
    Dropdown("rails",new Rect(84,593,648,46),"Ограждения",LocalRaceConfig.RailNames,Array.IndexOf(LocalRaceConfig.RailIds,Selected.rails),index=>Change(()=>Selected.rails=LocalRaceConfig.RailIds[index]));
    Toggle("jumps",new Rect(84,652,648,46),"Трамплины и пропасти",Selected.jumps,()=>Change(()=>Selected.jumps=!Selected.jumps));
@@ -292,8 +295,14 @@ namespace StarRacingPrototype {
    if(value!=seedText){seedText=value;if(uint.TryParse(value,out var parsed))Change(()=>Selected.seed=parsed.ToString());}
    Button("seed-dice",new Rect(684,723,48,44),"",RollSeed);
    foreach(var point in new[]{new Vector2(696,734),new Vector2(718,734),new Vector2(707,745),new Vector2(696,756),new Vector2(718,756)})CloudlineSkin.Box(new Rect(point.x-2,point.y-2,4,4),CloudlineSkin.Ink,2);
+   }else{
+    Skin.Text(new Rect(84,539,648,42),"Авторский маршрут · город в облаках",21,true);
+    Skin.Text(new Rect(84,595,648,42),"Атриум → Око → нырок → двойная спираль",18,false);
+    Skin.Text(new Rect(84,650,648,42),"Непрерывная дорога с ограждениями",18,false);
+    Skin.Text(new Rect(84,710,648,42),"Одна трасса — новые траектории в каждом заезде",17,false);
+   }
    var artRect=new Rect(792,352,752,448);Skin.Panel(artRect,1);
-   var preview=Selected.theme=="random"?Skin.RandomPreview:Selected.theme=="cloud-city"?Skin.CloudPreview:Skin.SpacePreview;
+   var preview=Selected.IsAuthored?Skin.AuthoredPreview:Selected.theme=="random"?Skin.RandomPreview:Selected.theme=="cloud-city"?Skin.CloudPreview:Skin.SpacePreview;
    if(preview!=null)GUI.DrawTexture(new Rect(800,360,736,432),preview,ScaleMode.ScaleAndCrop);
    string validation=uint.TryParse(seedText,out _)?Error:"Seed: целое число от 0 до 4294967295";
    if(validation.Length==0&&!LocalInputRouter.CanBind(Selected,out var deviceError))validation=deviceError;

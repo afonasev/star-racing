@@ -55,13 +55,15 @@ public static class ProceduralTrackMesh
                 if (smoothNormals[i].sqrMagnitude > 0) normals[i] = smoothNormals[i].normalized;
             mesh.normals = normals;
             mesh.RecalculateBounds();
+            // Empty collider first: attaching it to an existing MeshFilter makes
+            // Unity cook once with default options before our intended assignment.
+            var collider=renderOnly?null:go.AddComponent<MeshCollider>();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = material;
             if(renderOnly){
                 if(road){var data=go.AddComponent<RoadRenderSource>();data.triangleSamples=samples.ToArray();data.triangleFaces=faces.ToArray();}
                 return;
             }
-            var collider=go.AddComponent<MeshCollider>();
             // Legacy midphase preserves this exact top while avoiding opposing
             // internal-edge normals observed on the generated Space loop.
             if(road)collider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;

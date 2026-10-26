@@ -29,7 +29,7 @@ namespace StarRacingPrototype {
    catch(System.ComponentModel.Win32Exception){return 0;}
   }
   static bool ForcedFallback(LocalRaceConfig config,string theme)=>config.replay!=null&&config.replay.Matches(config,theme)&&config.replay.fallback;
-  static string WorldKey(LocalRaceConfig config)=>config.Seed+"|"+ResolvedTheme(config)+"|"+config.rails+"|"+config.jumps+"|"+config.generatorRevision+"|"+ForcedFallback(config,ResolvedTheme(config))+"|basis="+BasisNativeExperiment.Enabled;
+  static string WorldKey(LocalRaceConfig config)=>config.IsAuthored?"authored|"+config.courseId+"|"+config.courseRevision+"|presentation="+AuthoredCloudCityCourse.PresentationRevision:config.Seed+"|"+ResolvedTheme(config)+"|"+config.rails+"|"+config.jumps+"|"+config.generatorRevision+"|"+ForcedFallback(config,ResolvedTheme(config))+"|basis="+BasisNativeExperiment.Enabled;
   void RegisterInitialWorld(){
    var root=new GameObject("Retained track world");Track.transform.SetParent(root.transform,true);environment.Root.SetParent(root.transform,true);
    var generated=AppliedConfig.Copy();generated.replay=null;
@@ -46,8 +46,8 @@ namespace StarRacingPrototype {
     yield return "Загружаем общие модели";yield return SharedRaceAssets.EnsureSteps(background);
     string theme=ResolvedTheme(config);yield return "Рассчитываем трассу";
     NativeTrackCourse course;
-    if(background){var settings=new Procedural.GraphCourseSettings(theme,config.rails,config.jumps);bool fallback=ForcedFallback(config,theme);
-     var task=LoadingWork.Background(()=>NativeTrackGenerator.GenerateData(config.Seed,settings,config.generatorRevision,fallback));while(!task.IsCompleted)yield return null;course=task.GetAwaiter().GetResult().Complete();}
+    if(background){bool fallback=ForcedFallback(config,theme);
+     var task=LoadingWork.Background(()=>CourseSource.GenerateData(config,theme,fallback));while(!task.IsCompleted)yield return null;course=task.GetAwaiter().GetResult().Complete();}
     else course=GenerateCourse(config,theme,true);
     staging=new TrackWorld{Key=request.Key,Root=new GameObject("Retained track world"),Course=course,Decor=new TrackEnvironmentBuilder()};
     var track=new GameObject("Track");track.transform.SetParent(staging.Root.transform,false);staging.Track=track.AddComponent<TrackBuilder>();
