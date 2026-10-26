@@ -21,18 +21,18 @@ namespace StarRacingPrototype {
     var view=RaceHudLayout.View(n,seat);var meter=RaceHudLayout.Instrument(n,seat);var position=RaceHudLayout.Position(n,seat);
     Check(view.Contains(meter.min)&&view.Contains(meter.max-Vector2.one),"instrument inside view");
     Check(view.Contains(position.min)&&view.Contains(position.max-Vector2.one),"position inside view");
-    Check(meter.width==176&&meter.height==80,"readable instrument size");
+    Check(meter.width==216&&meter.height==96,"readable Airline instrument size");
     Check(!meter.Overlaps(position),"position separate from instrument");
-    bool right=n>1&&seat%2==1,top=n>2&&seat<2;
+    bool right=n>1&&seat%2==1,positionLeft=n==1||right;
     Check(right?meter.xMin>view.center.x:meter.xMax<view.center.x,"instrument outer side");
-    Check(right?position.xMax<view.center.x:position.xMin>view.center.x,"position inner side (solo upper right)");
-    Check((top?meter.yMax<view.center.y:meter.yMin>view.center.y)&&position.yMax<view.center.y,"instrument outer corner and position at top");
-    Check(Mathf.Abs((right?position.x-view.x:view.xMax-position.xMax)-14)<.01f,"position close to inner edge");
+    Check(positionLeft?position.xMax<view.center.x:position.xMin>view.center.x,"position inner side (solo upper left)");
+    Check(meter.yMin>view.center.y&&Mathf.Abs(view.yMax-meter.yMax-24)<.01f&&position.yMax<view.center.y,"instrument at bottom of every view and position at top");
+    Check(Mathf.Abs((positionLeft?position.x-view.x:view.xMax-position.xMax)-14)<.01f,"position close to inner edge");
     Check(RaceHudLayout.View(n,seat).yMax<=900,"no reserved camera band");
    }
    Check(RaceHudLayout.ProgressArea.width==960&&RaceHudLayout.ProgressArea.center.x==800,"60 percent centered overlay");
-   Check(RaceHudLayout.ProgressLine.height<=2,"thin line");
-   Check(RaceHudLayout.InstrumentOpacity>=.7f&&RaceHudLayout.InstrumentOpacity<=.9f,"readable dark edge with inward fade");
+   Check(RaceHudLayout.ProgressLine.height==3,"readable three-pixel progress line");
+   Check(RaceHudLayout.NitroHeight>=8&&RaceHudLayout.NitroHeight<=12,"prominent nitro track without an instrument panel");
    float left=RaceHudLayout.ProgressLine.x,rightEdge=RaceHudLayout.ProgressLine.xMax;
    Check(RaceHudLayout.Marker(-1,100).x==left,"negative progress clamp");
    Check(RaceHudLayout.Marker(0,100).x==left,"start position");
@@ -127,7 +127,7 @@ namespace StarRacingPrototype {
    if(EditorApplication.timeSinceStartup<next)return;
    try{
     next=EditorApplication.timeSinceStartup+.6;
-    if(director==null){director=UnityEngine.Object.FindAnyObjectByType<RaceDirector>();if(director==null)return;menu=director.GetComponent<RaceMenu>();Check(menu!=null,"race initialization provides menu");var audio=director.GetComponent<RaceAudioCoordinator>();if(audio!=null)audio.enabled=false;}
+    if(menu==null){director=UnityEngine.Object.FindAnyObjectByType<RaceDirector>();if(director==null||!director.Ready)return;menu=director.GetComponent<RaceMenu>();Check(menu!=null,"race initialization provides menu");typeof(RaceMenu).GetField("showFps",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(menu,true);var audio=director.GetComponent<RaceAudioCoordinator>();if(audio!=null)audio.enabled=false;}
     switch(state){
      case -10: Shot("main-4k");state=-11;break;
      case -11: menu.Open(RaceMenuScreen.LocalSetup);state=-12;break;
@@ -160,7 +160,7 @@ namespace StarRacingPrototype {
       // Freeze only simulation update for readable fixture values; rendering remains actual HUD.
       director.enabled=false;Time.timeScale=0;
       for(int i=0;i<64;i++){Set(director.Session.Racers[i],"Progress",director.Session.RaceLength*(.02f+.76f*i/63));Set(director.Session.Racers[i],"Place",64-i);}
-      for(int i=0;i<humans;i++){Set(director.Session.Racers[i],"Progress",director.Session.RaceLength*(.79f-i*.14f));Set(director.Session.Racers[i],"Place",humans==4&&i==3?64:1+i*12);director.Cars[i].Telemetry.speedKmh=218-i*7;director.Cars[i].Telemetry.nitro01=.76f-i*.14f;}
+      for(int i=0;i<humans;i++){Set(director.Session.Racers[i],"Progress",director.Session.RaceLength*(.79f-i*.14f));Set(director.Session.Racers[i],"Place",humans==4&&i==3?64:1+i*12);director.Cars[i].Telemetry.speedKmh=218-i*7;director.Cars[i].Telemetry.nitro01=humans==4&&i==0?1:humans==4&&i==3?0:.76f-i*.14f;}
       state=3;break;
      case 3: Shot("race-"+humans+"-64-fixture-progress");if(Environment.GetEnvironmentVariable("STAR_RACING_HUD_4K_PROOF")=="1"){state=23;}else state=4;break;
      case 23: SetCaptureSize(1920,1080);state=24;break;

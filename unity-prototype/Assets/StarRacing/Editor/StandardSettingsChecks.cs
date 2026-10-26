@@ -26,7 +26,11 @@ namespace StarRacingPrototype {
     Check(LocalInputRouter.ApplyStickPreference(.17f,1,.18f)==0&&LocalInputRouter.ApplyStickPreference(.18f,1,.18f)==.18f,"default steering threshold changed");
     Check(LocalInputRouter.ApplyStickPreference(.5f,1,.18f)==.5f&&LocalInputRouter.ApplyStickPreference(-1,2,.18f)==-1,"stick sensitivity/default response broken");
     Check(LocalInputRouter.ApplyStickPreference(.25f,.5f,0)==.125f,"stick preference is not applied");
-    Check(RaceMenu.PadGlyph("XInputController","north")=="Y"&&RaceMenu.PadGlyph("DualSenseGamepadHID","north")=="△"&&RaceMenu.PadGlyph("SwitchProControllerHID","north")=="X"&&RaceMenu.PadGlyph("Gamepad","north")=="Верх","reset glyph family mapping");
+    Check(RaceMenu.PadGlyph("XInputController","north")=="Y"&&RaceMenu.PadGlyph("DualSenseGamepadHID","north")=="△"&&RaceMenu.PadGlyph("SwitchProControllerHID","north")=="X"&&RaceMenu.PadGlyph("Gamepad","north")=="●","reset glyph family mapping");
+    Check(RaceMenu.ShortcutPosition("local")==""&&RaceMenu.ShortcutPosition("option-0")==""&&RaceMenu.ShortcutPosition("lab-group-0")=="","ordinary menu items must not show activation hints");
+    Check(RaceMenu.ShortcutPosition("start")=="west"&&RaceMenu.ShortcutPosition("back")=="east"&&RaceMenu.ShortcutPosition("reset-all")=="north","explicit shortcut positions changed");
+    Check(RaceMenu.PadGlyph("XInputController","south")=="A"&&RaceMenu.PadGlyph("SwitchProControllerHID","south")=="B"&&RaceMenu.PadGlyph("DualSenseGamepadHID","east")=="○","face-button family mapping changed");
+    Check(RaceMenu.PadHintColor("XInputController","south")==RaceMenu.PadHintColor("SwitchProControllerHID","east"),"same letter uses different colors across controller families");
     UserSettingsStore.Replace(zeros);Check(UserSettingsStore.Save(),"first durable save");var saved=File.ReadAllText(path);UserSettingsStore.Reload();
     Check(UserSettingsStore.Current.master==0&&!UserSettingsStore.Current.display.vSync,"saved zeros/false did not survive reload");
     UserSettingsStore.Current.music=.35f;UserSettingsStore.OverridePath=Path.Combine(path,"blocked","settings.json");

@@ -42,7 +42,7 @@ namespace StarRacingPrototype {
   public static string LabSidebarLabel(string group,int changes)=>group+(changes>0?" · "+changes:"");
   void DrawLab(){
    Header("Лаборатория геймдизайна");ValidateLab();var lab=Laboratory;var selected=lab.Selected;
-   Button("lab-profile",new Rect(56,193,310,52),Skin.Ellipsis(selected?.ProfileName??"Выберите профиль",260-Skin.LabelWidth(ButtonHint("lab-profile"),20),Mathf.RoundToInt(20*UserSettingsStore.Current.textScale))+" ▾",()=>LabShow("profiles"),false,true,20);
+   Button("lab-profile",new Rect(56,193,310,52),Skin.Ellipsis(selected?.ProfileName??"Выберите профиль",260,Mathf.RoundToInt(20*UserSettingsStore.Current.textScale))+" ▾",()=>LabShow("profiles"),false,true,20);
    Button("lab-version",new Rect(382,193,216,52),selected==null?"Версия ▾":"Версия "+selected.Version+" ▾",()=>LabShow("versions"),false,selected!=null,19);
    Skin.Text(new Rect(620,193,320,52),lab.Author?"Автор · файлы проекта":selected!=null&&lab.Editable(selected.ProfileId)?"Свой профиль":"Из поставки · защищён",17,false,CloudlineSkin.Muted);
    Button("lab-copy",new Rect(1006,193,252,52),"Копировать версию",()=>LabGuard(()=>{labText="Мой эксперимент";LabShow("copy");}),false,selected!=null,18);
@@ -52,7 +52,7 @@ namespace StarRacingPrototype {
    string query=Skin.Field(new Rect(76,317,230,40),labQuery,"LabSearch",60,focus=="lab-search");if(query!=labQuery){labQuery=query;labScroll=Vector2.zero;}
    Register("lab-search",()=>{if(gamepadNavigation||activatingPad!=null){labText=labQuery;LabShow("search");}else{focusRequest="LabSearch";labTextEditing=true;}},null,new Rect(76,317,230,40));
    if(!string.IsNullOrEmpty(labQuery))Button("lab-search-clear",new Rect(76,365,230,36),"Очистить поиск",()=>{labQuery="";labScroll=Vector2.zero;},false,true,17);
-   for(int i=0;i<LabParameters.Groups.Length;i++){string group=LabParameters.Groups[i];int count=lab.Draft?.Changes.Count(p=>p.Group==group)??0;Button("lab-group-"+i,new Rect(76,414+i*51,230,42),LabSidebarLabel(group,count),()=>{labGroup=group;labQuery="";labScroll=Vector2.zero;},labGroup==group&&labQuery=="",true,18);if(gamepadNavigation&&focus=="lab-group-"+i)Skin.Text(new Rect(307,426+i*51,18,18),PadGlyph("south")=="Нижняя"?"●":PadGlyph("south"),12,true,CloudlineSkin.Blue,TextAnchor.MiddleCenter);}
+   for(int i=0;i<LabParameters.Groups.Length;i++){string group=LabParameters.Groups[i];int count=lab.Draft?.Changes.Count(p=>p.Group==group)??0;Button("lab-group-"+i,new Rect(76,414+i*51,230,42),LabSidebarLabel(group,count),()=>{labGroup=group;labQuery="";labScroll=Vector2.zero;},labGroup==group&&labQuery=="",true,18);}
    Skin.Text(new Rect(76,634,230,85),"23 действующих поля\nГруппы и поиск сохраняют черновик",16,false,CloudlineSkin.Muted,TextAnchor.UpperLeft,true);
    var fields=(string.IsNullOrWhiteSpace(labQuery)?LabParameters.All.Where(p=>p.Group==labGroup):LabParameters.Search(labQuery)).ToArray();
    Skin.Text(new Rect(374,280,762,38),string.IsNullOrWhiteSpace(labQuery)?labGroup:"Поиск · найдено "+fields.Length,25,true);

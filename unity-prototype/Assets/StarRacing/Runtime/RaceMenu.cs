@@ -182,9 +182,16 @@ namespace StarRacingPrototype {
   void Button(string id,Rect r,string text,Action action,bool primary=false,bool enabled=true,int size=23,Action<int> adjust=null){
    if(enabled)Register(id,action,adjust,r);
    if(enabled&&collect&&!gamepadNavigation&&Mouse.current!=null&&Mouse.current.delta.ReadValue().sqrMagnitude>.01f&&r.Contains(Event.current.mousePosition))focus=id;
-   if(r.width>=150)text+=ButtonHint(id);
+   string hint=r.width>=150?ButtonHint(id):"";
    if(ScreenState==RaceMenuScreen.Lab&&r.width>=150)while(size>14&&Skin.LabelWidth(text,size)>r.width-16)size--;
-   if(Skin.Button(r,text,primary,collect&&focus==id,enabled,size)&&collect){focus=id;action();}
+   if(hint.Length>0)while(size>14&&Skin.LabelWidth(text,size)>r.width-70)size--;
+   bool clicked=Skin.Button(r,hint.Length==0?text:"",primary,collect&&focus==id,enabled,size);
+   if(hint.Length>0){
+    float diameter=Mathf.Min(34,r.height-12);
+    Skin.Text(new Rect(r.x+52,r.y,r.width-70,r.height),text,size,true,!enabled?CloudlineSkin.Muted:primary?Color.white:CloudlineSkin.Ink,TextAnchor.MiddleCenter);
+    DrawPadHint(new Rect(r.x+12,r.center.y-diameter/2,diameter,diameter),hint,enabled);
+   }
+   if(clicked&&collect){focus=id;action();}
   }
   void Toggle(string id,Rect r,string text,bool value,Action action){
    Skin.Text(new Rect(r.x,r.y,r.width-95,r.height),text,21,true);Skin.Toggle(new Rect(r.xMax-70,r.y+8,64,32),value);
@@ -210,7 +217,16 @@ namespace StarRacingPrototype {
    Skin.Footer();DrawFps();if(ScreenState==RaceMenuScreen.Main&&Event.current.type==EventType.Repaint)Distribution.DesktopUpdater.Instance?.ConfirmReadyMenu();
    GUI.matrix=old;
   }
-  public void DrawFps(){if(showFps)Skin.Text(new Rect(1450,870,110,24),fps+" FPS",14,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);}
+  public void DrawFps(){
+   if(!showFps)return;
+   // Screen corner stays fixed across menu letterboxing and split-screen HUD matrices.
+   var old=GUI.matrix;GUI.matrix=Matrix4x4.Scale(new Vector3(Screen.width/1600f,Screen.height/900f,1));
+   try{
+    var r=RaceHudLayout.Fps;string text=fps+" FPS";
+    Skin.Text(new Rect(r.x+1,r.y+1,r.width,r.height),text,16,true,new Color(0,0,0,.95f),TextAnchor.MiddleRight);
+    Skin.Text(r,text,16,true,Color.white,TextAnchor.MiddleRight);
+   }finally{GUI.matrix=old;}
+  }
   void DrawMain(){
    var updater=Distribution.DesktopUpdater.Instance;
    bool applying=updater!=null&&updater.StartupApplying;
@@ -248,7 +264,10 @@ namespace StarRacingPrototype {
   void Header(string title){Button("back",new Rect(56,36,380,54),"‹  Главное меню",()=>Open(RaceMenuScreen.Main),false,true,21);Skin.Brand(new Rect(1170,34,374,60),33);Skin.Text(new Rect(56,111,1430,75),title,48,true);}
   void DrawSetup(){
    Header("Игра на одном экране");
-   if(gamepadNavigation)Skin.Text(new Rect(1040,134,505,34),PadGlyph("north")+" — присоединиться",18,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);
+   if(gamepadNavigation){
+    DrawPadHint(new Rect(1314,134,30,30),"north");
+    Skin.Text(new Rect(1354,134,191,34),"Присоединиться",18,true,CloudlineSkin.Ink,TextAnchor.MiddleRight);
+   }
    for(int i=0;i<4;i++){
     float x=56+i*378;bool active=i<Selected.humans;var accent=CloudlineSkin.PlayerColors[i];Skin.Panel(new Rect(x,212,360,112),active?.93f:.66f);
     if(!active){if(i==Selected.humans)Button("add",new Rect(x+18,244,324,54),"+  Добавить игрока",()=>ChooseDevice(-1),false,true,20);continue;}
@@ -283,10 +302,6 @@ namespace StarRacingPrototype {
    if(validation.Length>0)Skin.Text(new Rect(60,805,940,48),validation,18,true,new Color(.67f,.12f,.14f));
    Skin.Text(new Rect(778,774,766,34),"Баланс: "+(DesignLabRuntime.Current.Active?.Label??"выберите версию в лаборатории"),16,false,CloudlineSkin.Muted,TextAnchor.MiddleRight);
    Button("start",new Rect(1078,817,466,60),"Старт!",StartSelected,true,CanStartSelected,27);
-   if(!gamepadNavigation)return;
-   var shortcutColor=CanStartSelected?Color.white:CloudlineSkin.Muted;
-   CloudlineSkin.Box(new Rect(1100,830,34,34),CloudlineSkin.Alpha(shortcutColor,.22f),17);
-   Skin.Text(new Rect(1100,830,34,34),PadGlyph("west"),23,true,shortcutColor,TextAnchor.MiddleCenter);
   }
   void DrawSettings(){Header("Настройки");DrawSettingsContent();}
   public void DrawPauseSettings(){

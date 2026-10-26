@@ -17,6 +17,7 @@ namespace StarRacingPrototype {
   static string previousPath;static UserSettings previous;static int previousVsync,previousTarget;
   static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_SETTINGS_QA_DIR");
   static StandardSettingsPlayModeChecks(){EditorApplication.playModeStateChanged+=Changed;}
+  public static void RunMenuHints(){StandardSettingsChecks.Run();Run();}
   public static void Run(){
    if(string.IsNullOrEmpty(Output))throw new Exception("STAR_RACING_SETTINGS_QA_DIR required");
    Directory.CreateDirectory(Output);SessionState.SetBool(Key,true);SessionState.SetBool(Key+"Failed",false);
@@ -38,6 +39,14 @@ namespace StarRacingPrototype {
     var type=control.GetType();if((string)type.GetField("id").GetValue(control)==id){((System.Action)type.GetField("action").GetValue(control))();return;}
    }
    throw new Exception("Missing menu action "+id);
+  }
+  static void HintFamily(string family){
+   if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);
+   string layout="MenuHint"+family;
+   InputSystem.RegisterLayout("{\"name\":\""+layout+"\",\"extend\":\"Gamepad\",\"displayName\":\""+family+"\"}");
+   pad=(Gamepad)InputSystem.AddDevice(layout);
+   typeof(RaceMenu).GetField("navigationPad",Private).SetValue(menu,pad);
+   typeof(RaceMenu).GetField("gamepadNavigation",Private).SetValue(menu,true);
   }
   static void Tick(){
    try{
@@ -76,7 +85,24 @@ namespace StarRacingPrototype {
     if(ticks==240){Capture("help");Check(menu.SettingsModalOpen,"help route not modal");}
     if(ticks==245)Press(GamepadButton.East);
     if(ticks==250){Check(!menu.SettingsModalOpen,"back did not close help first");Release();menu.Open(RaceMenuScreen.Main);Check((string)typeof(RaceMenu).GetField("focus",Private).GetValue(menu)=="settings","return lost invoking main focus");}
-    if(ticks==270){
+    if(ticks==251)HintFamily("Xbox");
+    if(ticks==260)Capture("hints-xbox-main");
+    if(ticks==265){
+     // Render setup without Open/RandomizeSeed, which persist shared PlayerPrefs.
+     typeof(RaceMenu).GetProperty("ScreenState").GetSetMethod(true).Invoke(menu,new object[]{RaceMenuScreen.LocalSetup});
+     typeof(RaceMenu).GetField("focus",Private).SetValue(menu,"start");
+    }
+    if(ticks==275)Capture("hints-xbox-setup");
+    if(ticks==280)HintFamily("PlayStation");
+    if(ticks==290)Capture("hints-playstation-setup");
+    if(ticks==295)HintFamily("Nintendo");
+    if(ticks==305)Capture("hints-nintendo-setup");
+    if(ticks==310)HintFamily("Generic");
+    if(ticks==320)Capture("hints-generic-setup");
+    if(ticks==325){menu.Open(RaceMenuScreen.Main);typeof(RaceMenu).GetField("gamepadNavigation",Private).SetValue(menu,false);}
+    if(ticks==335)Capture("hints-keyboard-main");
+    if(ticks==345){
+     foreach(string name in new[]{"hints-xbox-main","hints-xbox-setup","hints-playstation-setup","hints-nintendo-setup","hints-generic-setup","hints-keyboard-main"})Check(new FileInfo(Path.Combine(Output,name+".png")).Length>1000,"missing hint screenshot "+name);
      foreach(string name in new[]{"audio","reset","screen","display-confirmation","graphics","input","interface","help","graphics-large-contrast"})Check(new FileInfo(Path.Combine(Output,name+".png")).Length>1000,"missing screenshot "+name);
      File.WriteAllText(Path.Combine(Output,"result.json"),"{\"success\":true,\"assertions\":"+assertions+",\"silent\":true,\"playerBuild\":false}\n");
      Debug.Log("STANDARD_SETTINGS_PLAYMODE_OK assertions="+assertions);Finish(false);
@@ -85,7 +111,7 @@ namespace StarRacingPrototype {
   }
   static void Finish(bool failed){
    EditorApplication.update-=Tick;SessionState.SetBool(Key+"Failed",failed);
-   if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);if(fixture!=null)UnityEngine.Object.Destroy(fixture);
+   if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);foreach(string family in new[]{"Xbox","PlayStation","Nintendo","Generic"})InputSystem.RemoveLayout("MenuHint"+family);if(fixture!=null)UnityEngine.Object.Destroy(fixture);
    UserSettingsStore.OverridePath=previousPath;if(previous!=null)UserSettingsStore.Replace(previous);QualitySettings.vSyncCount=previousVsync;Application.targetFrameRate=previousTarget;
    Time.timeScale=1;EditorApplication.isPlaying=false;
   }
