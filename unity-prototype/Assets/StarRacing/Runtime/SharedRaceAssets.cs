@@ -59,8 +59,7 @@ namespace StarRacingPrototype {
   static Source[] Manifest(){
    var result=new List<Source>();
    void Add<T>(string path) where T:UnityEngine.Object=>result.Add(new Source(typeof(T),path));
-   Add<GameObject>("Vehicle/Cloudline");Add<Material>("Vehicle/CloudlineExhaust");Add<TextAsset>("Vehicle/CloudlineContactProfile");
-   foreach(var name in new[]{"Brake_Ceramic","Cyan_Energy","Dark_Forged_Rim","Thin_Red_Taillight","Satin_Titanium","Graphite_Aero","Midnight_Glass","Liquid_Silver","Tire_Rubber","Titanium_Caliper"})Add<Material>("Vehicle/CloudlineMaterials/"+name);
+   Add<GameObject>("Vehicle/Vector");Add<Material>("Vehicle/VectorPacked");Add<Material>("Vehicle/CloudlineExhaust");Add<TextAsset>("Vehicle/CloudlineContactProfile");
    foreach(var name in new[]{"Road","Hull","Facade","RoadPanels","RoadCeramic","RoadRibbed","RoadBlend","RoadBlendFinish","RoadBlendNormal","RailPanels","RailCeramic","RailRibbed","RailBlend","RailBlendFinish","RailBlendNormal","SpaceHull","SpaceHullNormal","SpaceRock","SpaceRockNormal"})Add<Texture2D>("Environment/Textures/"+name);
    foreach(var name in new[]{"CloudSea","PlanetSky","PlanetIce","PlanetGas","PlanetRock"})Add<Texture2D>("Environment/Sky/"+name);
    foreach(var name in new[]{"DaylightReflection","SpaceReflection"})Add<Cubemap>("Environment/Sky/"+name);

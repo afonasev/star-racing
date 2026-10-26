@@ -1,0 +1,136 @@
+{
+  "model": "Vector V02",
+  "baseline": "964bd9f98ae0a226c8bce64452f43b1ec624ad34",
+  "axis": "+Y forward, +Z up, metres",
+  "triangles": 157318,
+  "render_objects": 1034,
+  "environment_sources": [
+    "unity-prototype/Assets/StarRacing/Resources/Environment/Textures/Road.png",
+    "unity-prototype/Assets/StarRacing/Resources/Environment/Textures/Facade.png",
+    "unity-prototype/Assets/StarRacing/Resources/Environment/Sky/CloudSea.png",
+    "unity-prototype/Assets/StarRacing/Resources/Environment/Sky/DaylightReflection.exr"
+  ],
+  "layout": "Representative Blender set; not exact runtime track",
+  "views": {
+    "01-front-three-quarter": [
+      [
+        6.4,
+        8.2,
+        3.0
+      ],
+      [
+        0,
+        0,
+        0.65
+      ],
+      54
+    ],
+    "02-rear-three-quarter": [
+      [
+        6.4,
+        -8.2,
+        2.85
+      ],
+      [
+        0,
+        -0.1,
+        0.64
+      ],
+      54
+    ],
+    "03-side": [
+      [
+        9.1,
+        0,
+        2.15
+      ],
+      [
+        0,
+        0,
+        0.64
+      ],
+      52
+    ],
+    "04-rear": [
+      [
+        0,
+        -8.6,
+        1.9
+      ],
+      [
+        0,
+        -0.45,
+        0.65
+      ],
+      57
+    ],
+    "05-front": [
+      [
+        0,
+        8.6,
+        1.9
+      ],
+      [
+        0,
+        0.25,
+        0.66
+      ],
+      57
+    ],
+    "06-top": [
+      [
+        5,
+        -5,
+        8.7
+      ],
+      [
+        0,
+        0,
+        0.4
+      ],
+      53
+    ],
+    "07-chase": [
+      [
+        0,
+        -10,
+        5.9
+      ],
+      [
+        0,
+        9,
+        1.1
+      ],
+      24
+    ],
+    "08-rear-detail": [
+      [
+        2.9,
+        -4.8,
+        1.7
+      ],
+      [
+        0,
+        -1.9,
+        0.69
+      ],
+      62
+    ],
+    "09-wheel-detail": [
+      [
+        3.1,
+        3.3,
+        1.1
+      ],
+      [
+        0.99,
+        1.43,
+        0.52
+      ],
+      76
+    ]
+  },
+  "chase": "ChaseCamera.cs unsplit offsets: 10m behind, focus 1.1m + 4.8m up, target 9m forward; 65 degree vertical FOV from RaceDirector.cs",
+  "runtime_integrated": false,
+  "revision_note": "F1: curved surfacing, fitted details, contiguous wheel-arch lips"
+}

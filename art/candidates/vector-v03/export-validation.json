@@ -1,0 +1,91 @@
+{
+  "fbx": {
+    "passed": true,
+    "sha256": "1819ba54c1c0f2ee2866e96dbe8c6d82b4f49686d08eb245f5c61c5285e60196",
+    "bytes": 3322396,
+    "meshes": 825,
+    "triangles": 84898,
+    "bounds_min": [
+      -1.1640000343322754,
+      -2.489518404006958,
+      -0.002000238513574004
+    ],
+    "bounds_max": [
+      1.1640000343322754,
+      2.5410001277923584,
+      1.293927550315857
+    ],
+    "dimensions_xyz_m": [
+      2.328000068664551,
+      5.030518531799316,
+      1.295927788829431
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Grille_Titanium",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "glb": {
+    "passed": true,
+    "sha256": "6649090ff1063ff17be388fb63f7068ffcc9c4186d67d7b9dbc72f2fe510a8d8",
+    "bytes": 3683632,
+    "meshes": 825,
+    "triangles": 84898,
+    "bounds_min": [
+      -1.1640000343322754,
+      -2.489518404006958,
+      -0.0020000000949949026
+    ],
+    "bounds_max": [
+      1.1640000343322754,
+      2.5410001277923584,
+      1.293927550315857
+    ],
+    "dimensions_xyz_m": [
+      2.328000068664551,
+      5.030518531799316,
+      1.2959275504108518
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Grille_Titanium",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "inlets": {
+    "front_shell_clearance": true,
+    "side_shell_depth": true
+  },
+  "source": {
+    "hood_closed": true,
+    "two_exhaust_bores_open": true,
+    "editable_body_modifiers": 2
+  }
+}

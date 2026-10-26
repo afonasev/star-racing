@@ -1,0 +1,46 @@
+{
+  "canonical_fbx_sha256": "2c56365fd7e29b4997fd4bac8b4ed9e67e0876efc1e2db4523dce2c9a4b01c02",
+  "blender": "5.2.1 LTS",
+  "algorithm": "per-material-collapse-v1",
+  "levels": [
+    {
+      "level": 1,
+      "ratio": 0.25,
+      "file": "CloudlineLOD1.fbx",
+      "sha256": "adc92716d4cb6e2c3e156acd0ad29ec876ff8ceca977644777f1dcf9b10f570b",
+      "exported_triangles": 30574,
+      "meshes": {
+        "Brake_Ceramic": 384,
+        "Cyan_Energy": 2218,
+        "Dark_Forged_Rim": 7060,
+        "Graphite_Aero": 5502,
+        "Liquid_Silver": 9418,
+        "Midnight_Glass": 1516,
+        "Satin_Titanium": 2894,
+        "Thin_Red_Taillight": 130,
+        "Tire_Rubber": 1024,
+        "Titanium_Caliper": 428
+      }
+    },
+    {
+      "level": 2,
+      "ratio": 0.065,
+      "file": "CloudlineLOD2.fbx",
+      "sha256": "612610e51dd1116196c78d9bb7433096380f73347fa2eec872cfa4a463555bab",
+      "exported_triangles": 8291,
+      "meshes": {
+        "Brake_Ceramic": 98,
+        "Cyan_Energy": 575,
+        "Dark_Forged_Rim": 1834,
+        "Graphite_Aero": 1430,
+        "Liquid_Silver": 2448,
+        "Midnight_Glass": 394,
+        "Satin_Titanium": 1104,
+        "Thin_Red_Taillight": 32,
+        "Tire_Rubber": 266,
+        "Titanium_Caliper": 110
+      }
+    }
+  ],
+  "unity_import_counts": "independently audited by affected Editor fixture"
+}

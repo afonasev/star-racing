@@ -4,17 +4,60 @@ using UnityEngine.Rendering;
 
 namespace StarRacingPrototype
 {
-    /// <summary>Cloudline C05 static art; magnetic driving and collision remain independent.</summary>
+    /// <summary>Vector V05 visual; certified collision geometry remains independent.</summary>
     public sealed class StaticVehicleVisual : MonoBehaviour
     {
         public const string SourceRevision = "c62eb88";
+        public Transform CanonicalRoot { get; private set; }
+        public LODGroup DetailGroup { get; private set; }
         public VehicleExhaust Exhaust { get; private set; }
         public bool Human { get; private set; }
         public float ModelScale { get; private set; }
         public Bounds LocalBounds { get; private set; }
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
+        public const string VisualRevision = "13b033136133f07326fa636e6a669ad20c98406c";
         public static StaticVehicleVisual Create(Transform parent, Color color, bool human)
+        {
+            var source = SharedRaceAssets.Load<GameObject>("Vehicle/Vector");
+            var material = SharedRaceAssets.Load<Material>("Vehicle/VectorPacked");
+            if (source == null || material == null) throw new InvalidOperationException("Missing optimized Vector V05 assets");
+            var root = new GameObject("Vector V05 vehicle");
+            root.transform.SetParent(parent, false);
+            var model = Instantiate(source, root.transform, false);
+            var anchors = model.GetComponentsInChildren<Transform>();
+            var left = Array.Find(anchors, t => t.name == "Exhaust_L");
+            var right = Array.Find(anchors, t => t.name == "Exhaust_R");
+            if (left == null || right == null) throw new InvalidOperationException("Missing Vector exhaust anchors");
+            if (root.transform.InverseTransformPoint(left.position).z > 0)
+                model.transform.localRotation = Quaternion.Euler(0, 180, 0) * model.transform.localRotation;
+            var visual = root.AddComponent<StaticVehicleVisual>();
+            visual.Human = human; visual.CanonicalRoot = model.transform;
+            var bounds = GeometryBounds(root.transform);
+            visual.ModelScale = Mathf.Min(VehicleGeometry.VisualFitWidth / bounds.size.x, VehicleGeometry.VisualFitLength / bounds.size.z);
+            root.transform.localScale = Vector3.one * visual.ModelScale;
+            root.transform.localPosition = new Vector3(-bounds.center.x * visual.ModelScale,
+                VehicleGeometry.ChassisMinY - bounds.min.y * visual.ModelScale, -bounds.center.z * visual.ModelScale);
+            visual.LocalBounds = new Bounds(root.transform.localPosition + bounds.center * visual.ModelScale, bounds.size * visual.ModelScale);
+            var paint = new MaterialPropertyBlock(); paint.SetColor(BaseColor, color);
+            var renderers = model.GetComponentsInChildren<MeshRenderer>();
+            if (renderers.Length != 1) throw new InvalidOperationException("Vector must have one baked renderer");
+            renderers[0].sharedMaterial = material; renderers[0].SetPropertyBlock(paint);
+            renderers[0].shadowCastingMode = ShadowCastingMode.On; renderers[0].receiveShadows = true;
+            // Full authored geometry at every distance; no quality-reducing decimation or crossfade.
+            visual.DetailGroup = root.AddComponent<LODGroup>();
+            visual.DetailGroup.fadeMode = LODFadeMode.None;
+            visual.DetailGroup.SetLODs(new[]{new LOD(0f, renderers)});
+            visual.DetailGroup.localReferencePoint = bounds.center;
+            visual.DetailGroup.size = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+            visual.Exhaust = root.AddComponent<VehicleExhaust>(); visual.Exhaust.Initialize(left, right);
+            return visual;
+        }
+
+#if UNITY_EDITOR
+        // Historical art is only instantiated by collision provenance/legacy asset checks.
+        // Gameplay consumes its unchanged baked collision profile without loading old geometry.
+        public static StaticVehicleVisual CreateContactReference(Transform parent, Color color, bool human)
         {
             var source = SharedRaceAssets.Load<GameObject>("Vehicle/Cloudline");
             if (source == null) throw new InvalidOperationException("Missing Cloudline C05 vehicle asset");
@@ -30,6 +73,7 @@ namespace StarRacingPrototype
                 model.transform.localRotation = Quaternion.Euler(0, 180, 0) * model.transform.localRotation;
             var visual = root.AddComponent<StaticVehicleVisual>();
             visual.Human = human;
+            visual.CanonicalRoot = model.transform;
             var bounds = GeometryBounds(root.transform);
             visual.ModelScale = Mathf.Min(VehicleGeometry.VisualFitWidth / bounds.size.x,
                 VehicleGeometry.VisualFitLength / bounds.size.z);
@@ -41,20 +85,41 @@ namespace StarRacingPrototype
                 bounds.size * visual.ModelScale);
             var paintBlock = new MaterialPropertyBlock();
             paintBlock.SetColor(BaseColor, color);
-            foreach (var renderer in root.GetComponentsInChildren<MeshRenderer>())
-            {
-                // Exported object names are the ten authored material names.
-                var material = SharedRaceAssets.Load<Material>("Vehicle/CloudlineMaterials/" + renderer.name);
-                if (material == null) throw new InvalidOperationException("Missing Cloudline C05 material: " + renderer.name);
-                renderer.sharedMaterial = material;
-                renderer.shadowCastingMode = ShadowCastingMode.On;
-                renderer.receiveShadows = true;
-                if (renderer.name == "Liquid_Silver") renderer.SetPropertyBlock(paintBlock);
+            void BindMaterials(Transform geometry) {
+                foreach (var renderer in geometry.GetComponentsInChildren<MeshRenderer>()) {
+                    var material = SharedRaceAssets.Load<Material>("Vehicle/CloudlineMaterials/" + renderer.name);
+                    if (material == null) throw new InvalidOperationException("Missing C05 material: " + renderer.name);
+                    renderer.sharedMaterial = material;
+                    renderer.shadowCastingMode = ShadowCastingMode.On;
+                    renderer.receiveShadows = true;
+                    if (renderer.name == "Liquid_Silver") renderer.SetPropertyBlock(paintBlock);
+                }
             }
+            BindMaterials(model.transform);
+            var levels = new LOD[3];
+            levels[0] = new LOD(.28f, model.GetComponentsInChildren<MeshRenderer>());
+            for (int level = 1; level < levels.Length; level++) {
+                var sourceLod = SharedRaceAssets.Load<GameObject>("Vehicle/CloudlineLOD" + level);
+                if (sourceLod == null) throw new InvalidOperationException("Missing C05 visual LOD " + level);
+                var geometry = Instantiate(sourceLod, root.transform, false);
+                geometry.transform.SetLocalPositionAndRotation(model.transform.localPosition, model.transform.localRotation);
+                geometry.transform.localScale = model.transform.localScale;
+                BindMaterials(geometry.transform);
+                levels[level] = new LOD(level == 1 ? .08f : 0f, geometry.GetComponentsInChildren<MeshRenderer>());
+            }
+            visual.DetailGroup = root.AddComponent<LODGroup>();
+            // Draw one body level per view: cross-fading duplicated work in a small nearby field.
+            visual.DetailGroup.fadeMode = LODFadeMode.None;
+            visual.DetailGroup.SetLODs(levels);
+            // Fit and contact source remain canonical. LOD bounds never change the physical envelope.
+            visual.DetailGroup.localReferencePoint = bounds.center;
+            visual.DetailGroup.size = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
             visual.Exhaust = root.AddComponent<VehicleExhaust>();
             visual.Exhaust.Initialize(left, right);
             return visual;
         }
+
+#endif
 
         static Bounds[] contactProfile;
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -99,7 +164,7 @@ namespace StarRacingPrototype
                 if(!ready[band]){bounds[band]=new Bounds(point,Vector3.zero);ready[band]=true;}
                 else bounds[band].Encapsulate(point);
             }
-            foreach(var filter in GetComponentsInChildren<MeshFilter>()) {
+            foreach(var filter in CanonicalRoot.GetComponentsInChildren<MeshFilter>()) {
                 if(filter.name.StartsWith("Exhaust plume"))continue;
                 var matrix=physicsRoot.worldToLocalMatrix*filter.transform.localToWorldMatrix;
                 var vertices=filter.sharedMesh.vertices;var triangles=filter.sharedMesh.triangles;

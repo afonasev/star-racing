@@ -7,17 +7,18 @@ namespace StarRacingPrototype
     {
         static void Check(bool valid, string message) { if (!valid) throw new Exception("CLOUDLINE: " + message); }
         public static void BuildCheckedMac() { Run(); PrototypeBuilder.BuildMac(); }
-        public static void Run()
+        public static void Run() { VectorRuntimeChecks.VisualContracts(); }
+        public static void RunLegacy()
         {
             var a = new GameObject("stride-check-red");
             var b = new GameObject("stride-check-blue");
             try
             {
                 b.transform.SetPositionAndRotation(new Vector3(12, 7, -9), Quaternion.Euler(15, 73, 4));
-                var red = StaticVehicleVisual.Create(a.transform, Color.red, true);
-                var blue = StaticVehicleVisual.Create(b.transform, Color.blue, false);
-                var ar = red.GetComponentsInChildren<MeshRenderer>().Where(r => !r.name.StartsWith("Exhaust plume")).ToArray();
-                var br = blue.GetComponentsInChildren<MeshRenderer>().Where(r => !r.name.StartsWith("Exhaust plume")).ToArray();
+                var red = StaticVehicleVisual.CreateContactReference(a.transform, Color.red, true);
+                var blue = StaticVehicleVisual.CreateContactReference(b.transform, Color.blue, false);
+                var ar = red.CanonicalRoot.GetComponentsInChildren<MeshRenderer>().Where(r => !r.name.StartsWith("Exhaust plume")).ToArray();
+                var br = blue.CanonicalRoot.GetComponentsInChildren<MeshRenderer>().Where(r => !r.name.StartsWith("Exhaust plume")).ToArray();
                 Check(ar.Length == 10 && br.Length == 10, "expected ten material renderers");
                 Check(red.GetComponentsInChildren<Collider>().Length == 0, "art imported collision");
                 Check(red.GetComponentsInChildren<Rigidbody>().Length == 0, "art imported physics body");

@@ -1,0 +1,98 @@
+{
+  "fbx": {
+    "passed": true,
+    "sha256": "53705ae891dc4bd6af54d27fbb4f3747f858734fd49f9796eac6977338d18403",
+    "bytes": 3236588,
+    "meshes": 811,
+    "triangles": 79318,
+    "bounds_min": [
+      -1.231857180595398,
+      -2.5093917846679688,
+      -0.002110218396410346
+    ],
+    "bounds_max": [
+      1.231857180595398,
+      2.5899999141693115,
+      1.2704819440841675
+    ],
+    "dimensions_xyz_m": [
+      2.463714361190796,
+      5.09939169883728,
+      1.2725921624805778
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Grille_Titanium",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "glb": {
+    "passed": true,
+    "sha256": "f0a9d7b8131f70fb4561736ef9b86471cf39444b80cec95913b0a2c049181c8a",
+    "bytes": 3370548,
+    "meshes": 811,
+    "triangles": 79318,
+    "bounds_min": [
+      -1.2318572998046875,
+      -2.5093917846679688,
+      -0.002109949942678213
+    ],
+    "bounds_max": [
+      1.2318572998046875,
+      2.5899999141693115,
+      1.270481824874878
+    ],
+    "dimensions_xyz_m": [
+      2.463714599609375,
+      5.09939169883728,
+      1.2725917748175561
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Grille_Titanium",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "surface_details": {
+    "roof_insert_visible": true,
+    "both_fender_extractors_visible": true
+  },
+  "rear_lights": {
+    "both_visible": true
+  },
+  "inlets": {
+    "front_shell_clearance": true,
+    "side_shell_depth": true
+  },
+  "source": {
+    "hood_closed": true,
+    "two_exhaust_bores_open": true,
+    "editable_body_modifiers": 2
+  }
+}

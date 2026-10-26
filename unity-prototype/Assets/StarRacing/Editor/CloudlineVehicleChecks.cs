@@ -96,6 +96,8 @@ namespace StarRacingPrototype
                 var router=new LocalInputRouter();Check(router.TryBind(new LocalRaceConfig{humans=1,devices=new[]{0,-1,0,1}},null,new[]{pad},out _),"fixture bind");router.PrepareStart();
                 var session=new RaceSession(track.Route.StartDistance,track.Route.FinishDistance,1);session.Begin();
                 Set(director,"Track",track);Set(director,"Input",router);Set(director,"Session",session);Set(director,"Cars",new[]{car});Set(director,"HumanCount",1);Set(director,"Started",true);Set(director,"Paused",false);
+                // This inactive fixture bypasses startup; satisfy the current Update readiness gate.
+                Set(director,"Ready",true);
                 var update=typeof(RaceDirector).GetMethod("Update",BindingFlags.Instance|BindingFlags.NonPublic);
                 var tick=typeof(MagneticVehicle).GetMethod("UpdateExhaust",BindingFlags.Instance|BindingFlags.NonPublic);
                 var physics=typeof(MagneticVehicle).GetMethod("FixedUpdate",BindingFlags.Instance|BindingFlags.NonPublic);

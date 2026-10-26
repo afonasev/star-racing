@@ -1,0 +1,85 @@
+{
+  "fbx": {
+    "passed": true,
+    "sha256": "1028ecdc614101ef0dbe496bbc6424a73c0430e5d95da603e5ae376e5ff3a79e",
+    "bytes": 3079148,
+    "meshes": 793,
+    "triangles": 71384,
+    "bounds_min": [
+      -1.1640000343322754,
+      -2.4769999980926514,
+      -0.002000238513574004
+    ],
+    "bounds_max": [
+      1.1640000343322754,
+      2.5299999713897705,
+      1.3696104288101196
+    ],
+    "dimensions_xyz_m": [
+      2.328000068664551,
+      5.006999969482422,
+      1.3716106673236936
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "glb": {
+    "passed": true,
+    "sha256": "4b2c63205fcdad46db8ab6bd127560fae69d362cf157ca1ba426162ed68dc29b",
+    "bytes": 3155764,
+    "meshes": 793,
+    "triangles": 71384,
+    "bounds_min": [
+      -1.1640000343322754,
+      -2.4769999980926514,
+      -0.0020000000949949026
+    ],
+    "bounds_max": [
+      1.1640000343322754,
+      2.5299999713897705,
+      1.3696104288101196
+    ],
+    "dimensions_xyz_m": [
+      2.328000068664551,
+      5.006999969482422,
+      1.3716104289051145
+    ],
+    "materials": [
+      "Caliper_Copper",
+      "Ceramic_Rotor",
+      "Forged_Titanium",
+      "Graphite_Aero",
+      "Interior_Alcantara",
+      "Lettering",
+      "Performance_Rubber",
+      "PlayerPaint",
+      "Recess_Black",
+      "Red_LED",
+      "Smoked_Glass",
+      "Wheel_Graphite",
+      "White_LED"
+    ],
+    "wheel_pivots": 4,
+    "exhaust_sockets": 2
+  },
+  "source": {
+    "hood_closed": true,
+    "two_exhaust_bores_open": true,
+    "editable_body_modifiers": 2
+  }
+}

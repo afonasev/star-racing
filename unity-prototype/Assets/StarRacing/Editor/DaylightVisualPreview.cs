@@ -19,6 +19,7 @@ namespace StarRacingPrototype {
         public static void VerifyPresentation(){Begin(true,false);}
         public static void VerifySurfaces(){EnvironmentTextureChecks.Run();Begin(true,false);}
         public static void CompareVehicleContactShadows(){BeginContactComparison();}
+        public static void CompareContactShadowSampling(){VehicleContactShadowsChecks.Run();SessionState.SetBool(Key+"SamplingComparison",true);Begin(false,false);}
         public static void CaptureVehicleContactShadowDiagnostics(){BeginContactDiagnostics();}
         public static void CompareAtmosphericDepth(){SkyboxChecks.Run();SessionState.SetBool(Key+"AtmosphereComparison",true);Begin(true,false);}
         public static void CompareEmissiveAccents(){CloudlineVehicleChecks.Run();SessionState.SetBool(Key+"EmissiveComparison",true);Begin(true,false);}
@@ -74,7 +75,11 @@ namespace StarRacingPrototype {
             if(++ticks<15)return;EditorApplication.update-=Draw;
             try {
                 AudioListener.volume=0;
-                if(SessionState.GetBool(Key+"EmissiveComparison",false)) {
+                if(SessionState.GetBool(Key+"SamplingComparison",false)) {
+                    RenderSamplingComparison();SessionState.SetBool(Key+"SamplingComparison",false);
+                    File.WriteAllText(Path.Combine(Output,"result.txt"),"SSAO_SAMPLING_PREVIEW_OK actualPlayMode=true themes=city,space layouts=1,4 entrants=64 variants=full,half timing=false playerBuild=false\n");
+                    Debug.Log("SSAO_SAMPLING_PREVIEW_OK");
+                } else if(SessionState.GetBool(Key+"EmissiveComparison",false)) {
                     RenderEmissiveComparison();SessionState.SetBool(Key+"EmissiveComparison",false);
                     File.WriteAllText(Path.Combine(Output,"result.txt"),"EMISSIVE_ACCENTS_PREVIEW_OK editorPlayMode=true themes=city-space-city layouts=1,4 entrants=64 commonTarget=true states=idle,gas,nitro details=front,rear,motion playerBuild=false\n");
                     Debug.Log("EMISSIVE_ACCENTS_PREVIEW_OK editorPlayMode=true layouts=1,4 entrants=64 commonTarget=true states=idle,gas,nitro");
@@ -111,6 +116,26 @@ namespace StarRacingPrototype {
                 }
             } catch(Exception e){SessionState.SetBool(Key+"Failed",true);Debug.LogException(e);}
             finally{EditorApplication.isPlaying=false;}
+        }
+        static void RenderSamplingComparison() {
+            const string path="Assets/StarRacing/Generated/PrototypeRenderer.asset";
+            var renderer=AssetDatabase.LoadAssetAtPath<UniversalRendererData>(path);
+            var ssao=renderer.rendererFeatures.OfType<ScreenSpaceAmbientOcclusion>().Single();
+            var assetBytes=File.ReadAllBytes(path);
+            bool dirty=EditorUtility.IsDirty(ssao);
+            try {
+                foreach(bool half in new[]{false,true}) {
+                    var serialized=new SerializedObject(ssao);serialized.FindProperty("m_Settings.Downsample").boolValue=half;serialized.ApplyModifiedPropertiesWithoutUndo();renderer.SetDirty();
+                    foreach(string theme in new[]{"cloud-city","space-station"})RenderTheme(theme,half?"ssao-half":"ssao-full");
+                }
+                foreach(string theme in new[]{"cloud-city","space-station"})
+                    if(File.ReadAllText(Path.Combine(Output,"ssao-full-"+theme+"-inventory.txt"))!=File.ReadAllText(Path.Combine(Output,"ssao-half-"+theme+"-inventory.txt")))throw new Exception("SSAO sampling changed scene inventory "+theme);
+            } finally {
+                var serialized=new SerializedObject(ssao);serialized.FindProperty("m_Settings.Downsample").boolValue=true;serialized.ApplyModifiedPropertiesWithoutUndo();renderer.SetDirty();
+                if(!dirty)EditorUtility.ClearDirty(ssao);
+                if(!assetBytes.SequenceEqual(File.ReadAllBytes(path)))throw new Exception("SSAO preview persisted a temporary renderer change");
+            }
+            VehicleContactShadowsChecks.Run();
         }
         static void RenderEmissiveComparison() {
             var head=Resources.Load<Material>("Vehicle/CloudlineMaterials/Cyan_Energy");
@@ -173,6 +198,7 @@ namespace StarRacingPrototype {
                 if(phase!=null&&phase.StartsWith("depth-"))Debug.Log($"ATMOSPHERIC_DEPTH_PROFILE phase={phase} theme={theme} fogDensity={RenderSettings.fogDensity:F5} fogColor={RenderSettings.fogColor}");
                 if(phase!=null&&phase.StartsWith("accent-"))CaptureEmissiveStates(cars,cameras,theme,phase);
                 else foreach(int seats in new[]{1,4})Capture(cameras,seats,theme,phase);
+                if(phase=="ssao-full"||phase=="ssao-half")CaptureGlassRubberDetails(cars[0],cameras[0],theme,phase);
                 if(phase=="glass-rubber-comparison")CaptureGlassRubberCandidates(cars,cameras,theme);
                 int objects=root.GetComponentsInChildren<Transform>().Length;
                 int meshes=root.GetComponentsInChildren<MeshFilter>().Length;
