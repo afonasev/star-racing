@@ -12,6 +12,20 @@ namespace StarRacingPrototype {
         static int assertions;
         static void Check(bool ok, string why) { assertions++; if (!ok) throw new Exception("SPACE_SCENERY: " + why); }
         public static void Run() {
+            Placement();
+            Additional();
+            SkyboxChecks.Run(); DaylightVisualChecks.Run();
+            File.WriteAllText(Path.Combine(Output, "contracts.json"), "{\"success\":true,\"assertions\":" + assertions + ",\"coreBaselineExact\":true,\"legacyAndNative12\":true,\"playerBuild\":false}");
+            Debug.Log("SPACE_SCENERY_CHECKS_OK assertions=" + assertions);
+        }
+        // Station-only gate retains every placement/build assertion without invoking unrelated road-texture fixtures.
+        public static void Monumental() {
+            Placement(); Cancel(false); Cancel(true);
+            SkyboxChecks.Run(); DaylightVisualChecks.Run();
+            File.WriteAllText(Path.Combine(Output, "monumental-contracts.json"), "{\"success\":true,\"assertions\":" + assertions + ",\"stations\":4,\"scale\":5,\"stationEnvelopesDisjoint\":true,\"asteroidBaselineExact\":true,\"legacyAndNative12\":true,\"playerBuild\":false}");
+            Debug.Log("SPACE_SCENERY_MONUMENTAL_OK assertions=" + assertions);
+        }
+        static void Placement() {
             if (string.IsNullOrEmpty(Output)) throw new Exception("STAR_RACING_SPACE_QA_DIR required");
             Directory.CreateDirectory(Output); assertions = 0;
             var shader = Resources.Load<Shader>("Environment/SpaceRock");
@@ -22,12 +36,14 @@ namespace StarRacingPrototype {
                 var plan = EnvironmentPlan.Create(route); var baseline = CloudCityBaseline.EnvironmentPlan.Create(route);
                 Check(plan.hash == baseline.hash && plan.station == baseline.station && plan.skyPlanetDirection == baseline.skyPlanetDirection && plan.skyPlanetVariant == baseline.skyPlanetVariant, "exact original space identity and planet");
                 Plan(plan, EnvironmentPlan.Create(route), SpaceSceneryPlan.LegacyClearance(route));
+                Compare(plan.space, new SpaceSceneryBaselineV1(plan.seed, route.Samples, plan.station, SpaceSceneryPlan.LegacyClearance(route)));
             }
             foreach (bool transformed in new[] { false, true }) foreach (string mode in new[] { "normal", "full", "none" }) {
                 var graph = GraphCommonCatalogChecks.Geometry(mode, true, transformed); var geometry = new GraphEnvironmentGeometry(graph);
                 var plan = EnvironmentPlan.Create(geometry, 77, "space-station");
                 Check(plan.hash == CloudCityBaseline.EnvironmentPlan.Create(geometry, 77, "space-station").hash, "exact graph core identity");
                 Plan(plan, EnvironmentPlan.Create(geometry, 77, "space-station"), geometry.Clear);
+                Compare(plan.space, new SpaceSceneryBaselineV1(77, geometry.Samples, plan.station, geometry.Clear));
                 Check(graph.Validate().Length == 0, "graph topology unchanged");
             }
             var cityRoute = new TrackRoute(Procedural.Generator.Generate(77, "normal", "cloud-city", false, true));
@@ -41,10 +57,6 @@ namespace StarRacingPrototype {
                 foreach (var paved in legacy.PavedAt(f.distance)) Check(!clear(f.position - f.right * (float)paved.offset, Vector3.one, EnvironmentPlan.CorridorMargin), "every branch excluded");
             }
             Build(false); Build(true);
-            Additional();
-            SkyboxChecks.Run(); DaylightVisualChecks.Run();
-            File.WriteAllText(Path.Combine(Output, "contracts.json"), "{\"success\":true,\"assertions\":" + assertions + ",\"coreBaselineExact\":true,\"legacyAndNative12\":true,\"playerBuild\":false}");
-            Debug.Log("SPACE_SCENERY_CHECKS_OK assertions=" + assertions);
         }
         // Focused detail regression: placement baseline, actual UV/tangents/imports, rebuild and cleanup.
         public static void Detail() {
@@ -77,7 +89,7 @@ namespace StarRacingPrototype {
                 Check(plan.hash == CloudCityBaseline.EnvironmentPlan.Create(geometry,77,"space-station").hash, "graph core unchanged");
             }
             Build(false); Build(true);
-            File.WriteAllText(Path.Combine(Output,"detail-contracts.json"), "{\"success\":true,\"assertions\":"+assertions+",\"placementBaseline\":\"5b54604a\",\"legacyAndNative12\":true,\"uvTangents\":true,\"textureImport\":true,\"playerBuild\":false}");
+            File.WriteAllText(Path.Combine(Output,"detail-contracts.json"), "{\"success\":true,\"assertions\":"+assertions+",\"asteroidPlacementBaseline\":\"5b54604a\",\"legacyAndNative12\":true,\"uvTangents\":true,\"textureImport\":true,\"playerBuild\":false}");
             Debug.Log("SPACE_SCENERY_DETAIL_OK assertions="+assertions);
         }
         static void DetailSurface(Mesh mesh, SpaceSceneryPlan.Kind kind) {
@@ -92,19 +104,22 @@ namespace StarRacingPrototype {
             }
         }
         static void Compare(SpaceSceneryPlan plan, SpaceSceneryBaselineV1 baseline) {
-            Check(plan.items.Count == baseline.items.Count && plan.bounds == baseline.bounds, "placement count and bounds exact");
-            Check(plan.hash != baseline.hash, "detail version changes presentation identity");
-            for (int i=0;i<plan.items.Count;i++) {
-                var a=plan.items[i];var b=baseline.items[i];
-                Check((int)a.kind==(int)b.kind && a.position.Equals(b.position) && a.rotation.Equals(b.rotation) && a.size==b.size && a.variant==b.variant, "every item transform and variant exact");
+            var rocks = plan.items.Where(x => x.kind == SpaceSceneryPlan.Kind.Asteroid).ToArray();
+            var oldRocks = baseline.items.Where(x => x.kind == SpaceSceneryBaselineV1.Kind.Asteroid).ToArray();
+            Check(rocks.Length == oldRocks.Length, "asteroid count exact");
+            Check(plan.hash != baseline.hash, "station version changes presentation identity");
+            for (int i=0;i<rocks.Length;i++) {
+                var a=rocks[i];var b=oldRocks[i];
+                Check((int)a.kind==(int)b.kind && a.position.Equals(b.position) && a.rotation.Equals(b.rotation) && a.size==b.size && a.variant==b.variant, "every asteroid transform and variant exact");
             }
         }
+
         public static void Additional() {
             Directory.CreateDirectory(Output);
             foreach (uint seed in new uint[] { 77, 78, 79, 139, 300, 997 }) {
                 var route = new TrackRoute(Procedural.Generator.Generate(seed, "full", "space-station", true, true));
                 var plan = EnvironmentPlan.Create(route);
-                Check(plan.space.items.Any(x => x.kind != SpaceSceneryPlan.Kind.Asteroid && Vector3.Distance(x.position, plan.station) < .01f), "approved nearby station actually instantiated");
+                Check(plan.space.items.Count(x => x.kind == SpaceSceneryPlan.Kind.Modular && x.size == 725) == 1, "enlarged modular landmark actually instantiated");
             }
             Cancel(false); Cancel(true);
             // Existing graph fixture retains its complete assertions; old space hashes are protected above
@@ -114,8 +129,8 @@ namespace StarRacingPrototype {
             GraphEnvironmentChecks.CaptureLegacy();
             Environment.SetEnvironmentVariable("STAR_RACING_GRAPH_ENV_BASELINE", Path.Combine(graphOutput, "legacy-environment.txt"));
             GraphEnvironmentChecks.Run();
-            File.WriteAllText(Path.Combine(Output, "additional.json"), "{\"success\":true,\"nearStations\":true,\"cancelLegacyAndGraph\":true,\"existingGraphFixture\":true}");
-            Debug.Log("SPACE_SCENERY_ADDITIONAL_OK nearStations=true cancellation=true graphFixture=true");
+            File.WriteAllText(Path.Combine(Output, "additional.json"), "{\"success\":true,\"monumentalStations\":true,\"cancelLegacyAndGraph\":true,\"existingGraphFixture\":true}");
+            Debug.Log("SPACE_SCENERY_ADDITIONAL_OK monumentalStations=true cancellation=true graphFixture=true");
         }
         static void Cancel(bool graphMode) {
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -150,10 +165,20 @@ namespace StarRacingPrototype {
             Check(space != null && space.hash == repeat.space.hash && plan.presentationHash == repeat.presentationHash, "complete deterministic identity");
             Check(plan.presentationHash != plan.hash, "new presentation has versioned identity");
             Check(space.items.Count(x => x.kind == SpaceSceneryPlan.Kind.Asteroid) >= 60, "substantial asteroid belt");
-            Check(space.items.Count(x => x.kind != SpaceSceneryPlan.Kind.Asteroid) >= 7, "stations distributed along route");
+            Check(space.items.Count(x => x.kind != SpaceSceneryPlan.Kind.Asteroid) == 4, "exactly four unique monumental stations");
             Check(space.items.Count <= SpaceSceneryPlan.MaximumAsteroids + SpaceSceneryPlan.MaximumStations, "bounded object count");
             foreach (var kind in new[] { SpaceSceneryPlan.Kind.Ring, SpaceSceneryPlan.Kind.Shipyard, SpaceSceneryPlan.Kind.Modular, SpaceSceneryPlan.Kind.Research })
                 Check(space.items.Any(x => x.kind == kind), "recognizable station family " + kind);
+            var stations = space.items.Where(x => x.kind != SpaceSceneryPlan.Kind.Asteroid).ToArray();
+            foreach (var station in stations) {
+                float expected = station.kind == SpaceSceneryPlan.Kind.Modular ? 725 : station.kind == SpaceSceneryPlan.Kind.Ring ? 2400 : station.kind == SpaceSceneryPlan.Kind.Shipyard ? 1450 : 375;
+                Check(station.size == expected, "five-times-scale station " + station.kind);
+                Check(stations.Count(x => x.kind == station.kind) == 1, "no repeated station family");
+                foreach (var other in stations)
+                    if (station.kind != other.kind) Check(!station.Envelope.Intersects(other.Envelope), "complete station envelopes never intersect");
+                foreach (var other in space.items)
+                    if (other.kind == SpaceSceneryPlan.Kind.Asteroid) Check(Vector3.Distance(station.position, other.position) >= station.size + other.size + 12, "station clear of asteroid envelope");
+            }
             Check(space.items.Any(x => x.kind == SpaceSceneryPlan.Kind.Ring && x.size >= 480), "giant wheel seed=" + plan.seed);
             var sizes = space.items.Where(x => x.kind == SpaceSceneryPlan.Kind.Asteroid).Select(x => x.size).ToArray();
             Check(sizes.Min() < 20 && sizes.Max() > 95, "small and enormous rocks");

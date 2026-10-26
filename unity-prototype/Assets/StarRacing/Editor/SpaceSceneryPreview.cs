@@ -16,6 +16,7 @@ namespace StarRacingPrototype {
         static SpaceSceneryPreview() { EditorApplication.playModeStateChanged += Changed; }
         public static void Detail() { SpaceSceneryChecks.Detail(); Run(); }
         public static void Review() { SpaceSceneryChecks.Additional(); Run(); }
+        public static void Monumental() { SpaceSceneryChecks.Monumental(); Run(); }
         public static void Verify() { SpaceSceneryChecks.Run(); Run(); }
         public static void Run() {
             if (string.IsNullOrEmpty(Output)) throw new Exception("STAR_RACING_SPACE_QA_DIR required");

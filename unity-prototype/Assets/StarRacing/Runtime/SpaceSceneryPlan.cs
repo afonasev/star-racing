@@ -5,8 +5,9 @@ using UnityEngine;
 namespace StarRacingPrototype {
     // Pure presentation data. All variants, rotations and complete envelopes are part of the identity.
     public sealed class SpaceSceneryPlan {
-        public const int Version = 2;
-        public const int MaximumAsteroids = 210, MaximumStations = 18;
+        public const int Version = 3;
+        public const int MaximumAsteroids = 210, MaximumStations = 4;
+        const int PreviousStationBudget = 18;
         public enum Kind { Research, Modular, Shipyard, Ring, Asteroid }
         public struct Item {
             public Kind kind;
@@ -23,7 +24,8 @@ namespace StarRacingPrototype {
 
         public SpaceSceneryPlan(uint seed, TrackFrame[] frames, Vector3 station, Func<Vector3, Vector3, float, bool> clear) {
             var random = new Procedural.SeedRandom(seed ^ 0xa57e201bu);
-            // Keep the approved near-station anchor; the new complete module model fits inside 150m.
+            // Preserve the old placement pass solely as the deterministic asteroid-field exclusion mask.
+            // These small station items are replaced below before any models are instantiated.
             Add(Kind.Modular, station, Quaternion.Euler(12, 25, -8), 145, 0);
             var start = frames[0];
             Vector3 forward = start.tangent.normalized, right = start.right.normalized;
@@ -37,8 +39,8 @@ namespace StarRacingPrototype {
             // Shuffle spreads the budget over the entire course rather than filling only the beginning.
             for (int i = anchors.Count - 1; i > 0; i--) { int j = random.Int(0, i); var temp = anchors[i]; anchors[i] = anchors[j]; anchors[j] = temp; }
             int stations = items.Count;
-            for (int pass = 0; pass < 4 && stations < MaximumStations; pass++) foreach (var frame in anchors) {
-                if (stations >= MaximumStations) break;
+            for (int pass = 0; pass < 4 && stations < PreviousStationBudget; pass++) foreach (var frame in anchors) {
+                if (stations >= PreviousStationBudget) break;
                 float size = (float)random.Range(35, 115), side = random.Next() < .5 ? -1 : 1;
                 var p = frame.position + frame.right * side * (size + (float)random.Range(100, 380)) + frame.normal * (float)random.Range(-65, 150);
                 var kind = stations % 5 == 0 ? Kind.Ring : stations % 3 == 0 ? Kind.Modular : Kind.Research;
@@ -54,6 +56,13 @@ namespace StarRacingPrototype {
                 var position = frame.position + frame.right * (side * lateral) + frame.normal * (float)random.Range(-170, 300) + frame.tangent * (float)random.Range(-80, 80);
                 if (Add(Kind.Asteroid, position, Quaternion.Euler((float)random.Range(-180, 180), (float)random.Range(-180, 180), (float)random.Range(-180, 180)), size, random.Int(0, 11))) rocks++;
             }
+            // Consume the original placement stream above to retain the exact asteroid field.
+            // Replace repeated small stations with four unique, five-times-scale landmarks.
+            items.RemoveAll(item => item.kind != Kind.Asteroid);
+            PlaceStation(Kind.Modular, 145 * 5, 0, 1);
+            PlaceStation(Kind.Ring, 480 * 5, 1120, 1);
+            PlaceStation(Kind.Shipyard, 290 * 5, 920, -1);
+            PlaceStation(Kind.Research, 75 * 5, 1600, -1);
             var total = new Bounds(frames[0].position, Vector3.zero);
             foreach (var item in items) total.Encapsulate(item.Envelope);
             // Leave a metre for Bounds min/max floating-point reconstruction at distant coordinates.
@@ -73,6 +82,31 @@ namespace StarRacingPrototype {
                 if (!clear(p, Vector3.one * size, EnvironmentPlan.CorridorMargin)) return false;
                 foreach (var other in items) if (Vector3.Distance(p, other.position) < size + other.size + 12) return false;
                 items.Add(new Item { kind = kind, position = p, rotation = q, size = size, variant = variant }); return true;
+            }
+            void PlaceStation(Kind kind, float size, float ahead, float side) {
+                // Full model envelopes (including trusses and panels) must be disjoint.
+                bool Try(Vector3 position) {
+                    var envelope = new Bounds(position, Vector3.one * (size * 2 + 24));
+                    foreach (var other in items)
+                        if (other.kind != Kind.Asteroid && envelope.Intersects(other.Envelope)) return false;
+                    var rotation = Quaternion.LookRotation((start.position - position).normalized, start.normal) * Quaternion.Euler(12, 0, -15);
+                    return Add(kind, position, rotation, size, 0);
+                }
+                for (int attempt = 0; attempt < 64; attempt++) {
+                    var position = start.position + forward * (ahead + size * 1.5f + attempt / 8 * size)
+                        + right * side * (size + 170 + attempt * size * .3f)
+                        + start.normal * (kind == Kind.Ring ? 155 : 75);
+                    if (Try(position)) return;
+                }
+                // Bounded fallback search beyond both the course and already placed objects.
+                var occupied = new Bounds(start.position, Vector3.zero);
+                foreach (var frame in frames) occupied.Encapsulate(frame.position);
+                foreach (var other in items) occupied.Encapsulate(other.Envelope);
+                var direction = (right * side + forward * .5f).normalized;
+                float distance = occupied.extents.magnitude + size * 1.74f + EnvironmentPlan.CorridorMargin + 1024;
+                for (int attempt = 0; attempt < 32; attempt++)
+                    if (Try(occupied.center + direction * (distance + attempt * (size * 2 + 1024)))) return;
+                throw new InvalidOperationException("No clear placement for monumental station " + kind);
             }
             void Landmark(Kind kind, float size, float ahead, float side) {
                 for (int attempt = 0; attempt < 32; attempt++) {
