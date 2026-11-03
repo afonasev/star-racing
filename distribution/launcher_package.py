@@ -5,6 +5,7 @@ from pathlib import Path
 import plistlib
 import subprocess
 import zipfile
+import xml.etree.ElementTree as ET
 
 
 def install(dotnet, distribution, payload, channel, version, track, env):
@@ -40,6 +41,13 @@ def windows_shortcut_entry(portable):
     with zipfile.ZipFile(portable) as archive:
         if 'current/launcher.json' not in archive.namelist():
             return # Historical Player-only layout remains supported.
+        if 'StarRacingLauncher.exe' not in archive.namelist():
+            # Velopack 1.2.158 names the root stub after packTitle while embedding mainExe.
+            metadata=ET.fromstring(archive.read('current/sq.version'))
+            main=next((node.text for node in metadata.iter() if node.tag.rsplit('}',1)[-1]=='mainExe'),None)
+            if main!='StarRacingLauncher.exe' or 'current/StarRacingLauncher.exe' not in archive.namelist() or 'StarRacingLauncher.exe'.encode('utf-16-le') not in archive.read('Star Racing.exe'):
+                raise ValueError('Windows root stub does not dispatch to the independent launcher')
+            return
         launcher = archive.read('StarRacingLauncher.exe')
         if 'Star Racing.exe' in archive.namelist() and archive.read('Star Racing.exe') == launcher:
             return

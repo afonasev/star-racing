@@ -32,6 +32,20 @@ class LauncherPackaging(unittest.TestCase):
             launcher_package.windows_shortcut_entry(portable)
             self.assertEqual(before, portable.read_bytes())
 
+    def test_pinned_sdk_packtitle_stub_dispatches_to_main_exe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            portable=Path(temp)/'Portable.zip'
+            with zipfile.ZipFile(portable,'w') as archive:
+                for name in REQUIRED-{'Star Racing.exe','current/sq.version'}:archive.writestr(name,b'payload')
+                archive.writestr('Star Racing.exe',b'MZ'+"StarRacingLauncher.exe".encode('utf-16-le'))
+                archive.writestr('current/sq.version','<package xmlns="sdk"><metadata><mainExe>StarRacingLauncher.exe</mainExe></metadata></package>')
+                archive.writestr('current/launcher.json','{}')
+                archive.writestr('current/StarRacingLauncher.exe',b'MZ launcher')
+            original=portable.read_bytes()
+            launcher_package.windows_shortcut_entry(portable)
+            self.assertEqual(portable.read_bytes(),original)
+            with zipfile.ZipFile(portable) as archive:validate_portable(archive)
+
     def test_historical_layout_is_not_rewritten(self):
         with tempfile.TemporaryDirectory() as temp:
             portable = Path(temp)/'Portable.zip'
