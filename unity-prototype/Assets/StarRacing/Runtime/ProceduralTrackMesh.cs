@@ -22,20 +22,21 @@ public static class ProceduralTrackMesh
             float uvSideStart = 0, float uvSideEnd = -1)
         {
             int i = vertices.Count;
-            vertices.AddRange(new[] { a, b, c, d });
-            smoothNormals.AddRange(endUp.sqrMagnitude > 0
-                ? new[] { up, endUp, rightUp.sqrMagnitude > 0 ? rightUp : up,
-                    rightEndUp.sqrMagnitude > 0 ? rightEndUp : endUp } : new Vector3[4]);
+            vertices.Add(a);vertices.Add(b);vertices.Add(c);vertices.Add(d);
+            if(endUp.sqrMagnitude>0) {
+                smoothNormals.Add(up);smoothNormals.Add(endUp);
+                smoothNormals.Add(rightUp.sqrMagnitude>0?rightUp:up);smoothNormals.Add(rightEndUp.sqrMagnitude>0?rightEndUp:endUp);
+            } else {smoothNormals.Add(Vector3.zero);smoothNormals.Add(Vector3.zero);smoothNormals.Add(Vector3.zero);smoothNormals.Add(Vector3.zero);}
             float length = Vector3.Distance(a, b) / 4f, width = Vector3.Distance(a, c) / 4f;
             if (uvEnd < 0) uvEnd = uvStart + length;
             if (uvSideEnd < 0) uvSideEnd = uvSideStart;
             float endWidth = Vector3.Distance(b,d)/4f;
-            uv.AddRange(new[] { new Vector2(uvStart, uvSideStart), new Vector2(uvEnd, uvSideEnd),
-                new Vector2(uvStart, uvSideStart+width), new Vector2(uvEnd, uvSideEnd+endWidth) });
+            uv.Add(new Vector2(uvStart,uvSideStart));uv.Add(new Vector2(uvEnd,uvSideEnd));
+            uv.Add(new Vector2(uvStart,uvSideStart+width));uv.Add(new Vector2(uvEnd,uvSideEnd+endWidth));
             if (Vector3.Dot(Vector3.Cross(b - a, c - a), up) > 0)
-                triangles.AddRange(new[] { i, i + 1, i + 2, i + 2, i + 1, i + 3 });
+                {triangles.Add(i);triangles.Add(i+1);triangles.Add(i+2);triangles.Add(i+2);triangles.Add(i+1);triangles.Add(i+3);}
             else
-                triangles.AddRange(new[] { i, i + 2, i + 1, i + 2, i + 3, i + 1 });
+                {triangles.Add(i);triangles.Add(i+2);triangles.Add(i+1);triangles.Add(i+2);triangles.Add(i+3);triangles.Add(i+1);}
             samples.Add(sample);
             samples.Add(sample);
             faces.Add(face);
@@ -43,17 +44,26 @@ public static class ProceduralTrackMesh
         }
         public void Create(Transform parent, string name, Material material, bool road,bool renderOnly=false)
         {
+#if UNITY_EDITOR
+            long createTimer=IndependentTrackMesh.ProfileBegin();string profile=road?"road.create.":"rail.create.";
+#endif
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
             mesh.SetVertices(vertices);
             mesh.SetUVs(0, uv);
             mesh.SetTriangles(triangles, 0);
+#if UNITY_EDITOR
+            IndependentTrackMesh.ProfileEnd(profile+"upload",createTimer);createTimer=IndependentTrackMesh.ProfileBegin();
+#endif
             mesh.RecalculateNormals();
             var normals = mesh.normals;
             for (int i = 0; i < normals.Length; i++)
                 if (smoothNormals[i].sqrMagnitude > 0) normals[i] = smoothNormals[i].normalized;
             mesh.normals = normals;
+#if UNITY_EDITOR
+            IndependentTrackMesh.ProfileEnd(profile+"normals",createTimer);createTimer=IndependentTrackMesh.ProfileBegin();
+#endif
             mesh.RecalculateBounds();
             // Empty collider first: attaching it to an existing MeshFilter makes
             // Unity cook once with default options before our intended assignment.
@@ -67,7 +77,13 @@ public static class ProceduralTrackMesh
             // Legacy midphase preserves this exact top while avoiding opposing
             // internal-edge normals observed on the generated Space loop.
             if(road)collider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+#if UNITY_EDITOR
+            IndependentTrackMesh.ProfileEnd(profile+"components-bounds",createTimer);createTimer=IndependentTrackMesh.ProfileBegin();
+#endif
             collider.sharedMesh = mesh;
+#if UNITY_EDITOR
+            IndependentTrackMesh.ProfileEnd(profile+"cooking",createTimer);createTimer=IndependentTrackMesh.ProfileBegin();
+#endif
             if (road)
             {
                 var surface=go.AddComponent<TrackSurface>();
@@ -77,6 +93,9 @@ public static class ProceduralTrackMesh
                 surface.sourceNormals=mesh.normals;
                 surface.sourceTriangles=triangles.ToArray();
             }
+#if UNITY_EDITOR
+            IndependentTrackMesh.ProfileEnd(profile+"metadata",createTimer);
+#endif
         }
     }
     static Vector3 Point(TrackFrame f, double lateral,

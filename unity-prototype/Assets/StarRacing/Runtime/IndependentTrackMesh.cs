@@ -8,6 +8,29 @@ using StarRacingPrototype.Procedural;
 namespace StarRacingPrototype {
     // Compiles six unique physical surfaces. The four junction guides never emit ribbons.
     public static class IndependentTrackMesh {
+#if UNITY_EDITOR
+        public static Action<GraphRoad,double,double,DVec> NormalObserved;
+        public static Action<Vector3,Vector3> PointObserved;
+        public static Action<string,Vector3,IReadOnlyList<Vector3>,IReadOnlyList<Vector3>,IReadOnlyList<Vector2>,IReadOnlyList<int>,IReadOnlyList<int>,IReadOnlyList<RoadFace>> GeometryObserved;
+        static void Observe(string kind,ProceduralTrackMesh.Geometry data,Vector3 offset)=>GeometryObserved?.Invoke(kind,offset,data.vertices,data.smoothNormals,data.uv,data.triangles,data.samples,data.faces);
+        internal static long ProfileBegin()=>RoadVolumeMesh.WorkMeasured==null?0:System.Diagnostics.Stopwatch.GetTimestamp();
+        internal static void ProfileEnd(string name,long began){if(began!=0)RoadVolumeMesh.WorkMeasured?.Invoke(name,(System.Diagnostics.Stopwatch.GetTimestamp()-began)/(double)System.Diagnostics.Stopwatch.Frequency);}
+#endif
+        // Loading-only basis for the unchanged lane-dependent SurfaceNormal formula.
+        // GraphRoad samples are immutable; each cache belongs to one compilation.
+        readonly struct FrameVectors {
+            public readonly bool flat;public readonly Vector3 normalDirection,up;
+            public FrameVectors(bool flat,Vector3 normalDirection,Vector3 up){this.flat=flat;this.normalDirection=normalDirection;this.up=up;}
+        }
+        readonly struct NormalBasis {
+            readonly DVec right,normal,positionDelta,rightDelta;readonly double inverseSpan;
+            public NormalBasis(GraphRoad road,double distance) {
+                distance=Math.Max(0,Math.Min(road.Length,distance));
+                var frame=road.Evaluate(distance);var a=road.Evaluate(Math.Max(0,distance-.25));var b=road.Evaluate(Math.Min(road.Length,distance+.25));
+                right=frame.right;normal=frame.normal;positionDelta=b.position-a.position;rightDelta=b.right-a.right;inverseSpan=1/(b.distance-a.distance);
+            }
+            public DVec At(double lateral)=>DVec.Cross(right,(positionDelta+rightDelta*lateral)*inverseSpan).Unit(normal);
+        }
         static TrackFrame Frame(GraphFrame f) => new TrackFrame { distance=(float)f.distance,position=f.position.Float,
             tangent=f.tangent.Float,normal=f.normal.Float,right=-f.right.Float,halfWidth=(float)f.halfWidth };
         public static TrackFrame Evaluate(IndependentGraph graph,RoadFace face,float distance) {
@@ -72,6 +95,7 @@ namespace StarRacingPrototype {
             Vector3 Local(DVec point,bool planar=false) {var delta=point-carrier.origin;return new Vector3((float)-DVec.Dot(delta,carrier.right),commonVertical&&!planar?(float)DVec.Dot(delta,carrier.normal):0,(float)DVec.Dot(delta,carrier.tangent));}
             Vector3 Direction(DVec value,bool planar=false)=>new Vector3((float)-DVec.Dot(value,carrier.right),commonVertical&&!planar?(float)DVec.Dot(value,carrier.normal):0,(float)DVec.Dot(value,carrier.tangent));
             Vector3 Up(GraphFrame f)=>!commonVertical||Flat(f)?Vector3.up:Direction(f.normal);
+            FrameVectors PrepareVectors(GraphFrame f){bool flat=Flat(f);var direction=Direction(f.normal);return new FrameVectors(flat,direction,!commonVertical||flat?Vector3.up:direction);}
             var geometryRoot=new GameObject("Independent geometry frame");geometryRoot.transform.SetParent(parent,false);
             geometryRoot.transform.localPosition=carrier.origin.Float;
             geometryRoot.transform.localRotation=Quaternion.LookRotation(carrier.tangent.Float,carrier.normal.Float);
@@ -103,6 +127,25 @@ namespace StarRacingPrototype {
                 var f=graph.Road(face.geometryId).Evaluate(distance);
                 return new TrackFrame{distance=distance,position=Local(f.position,Flat(f)),tangent=Direction(f.tangent,Flat(f)),normal=Up(f),right=-Direction(f.right,!commonCatalog||Flat(f)),halfWidth=(float)f.halfWidth};
             }
+            var normalBases=new Dictionary<(int geometry,long distanceBits),NormalBasis>();
+            DVec SurfaceNormal(int geometry,double distance,double lane) {
+                var key=(geometry,BitConverter.DoubleToInt64Bits(distance));var source=graph.Road(geometry);
+                if(!normalBases.TryGetValue(key,out var basis)) {
+                    basis=new NormalBasis(source,distance);normalBases.Add(key,basis);
+#if UNITY_EDITOR
+                    RoadVolumeMesh.WorkMeasured?.Invoke("graph.normal-cache.miss",0);
+#endif
+                } else {
+#if UNITY_EDITOR
+                    RoadVolumeMesh.WorkMeasured?.Invoke("graph.normal-cache.hit",0);
+#endif
+                }
+                var value=basis.At(lane);
+#if UNITY_EDITOR
+                NormalObserved?.Invoke(source,distance,lane,value);
+#endif
+                return value;
+            }
             var road=new ProceduralTrackMesh.Geometry();var rails=new ProceduralTrackMesh.Geometry();
             var portVertices=new Dictionary<int,Vector3[]>();
             foreach(var port in graph.ports) {
@@ -115,16 +158,37 @@ namespace StarRacingPrototype {
                 if(cut<0 || cut>=35 || Math.Abs(q-(-8.5+cut*.5))>1e-8)throw new InvalidOperationException("Unregistered port cut");
                 return portVertices[port][cut];
             }
-            void Quad(int geometry,int arm,int sample,GraphFrame a,GraphFrame b,double left0,double right0,double left1,double right1,
+            void Quad(int geometry,int arm,int sample,GraphFrame a,GraphFrame b,FrameVectors av,FrameVectors bv,double left0,double right0,double left1,double right1,
                 int startPort,int endPort,double startOffset,double endOffset,int leftTag=0,int rightTag=0,GraphJump ramp=null) {
+#if UNITY_EDITOR
+                long quadTimer=ProfileBegin();
+#endif
                 var face=new RoadFace(sample,road.quadCount++,(float)a.distance,(float)b.distance,(float)left0,(float)right0,(float)left1,(float)right1,ramp!=null) {
                     geometryId=geometry,arm=arm,startPort=startPort,endPort=endPort,startSeamOffset=(float)startOffset,endSeamOffset=(float)endOffset,
                     leftBoundaryTag=leftTag,rightBoundaryTag=rightTag,canonicalFlatPorts=true };
-                Vector3 Point(GraphFrame f,double lateral,int port,double offset)=>port!=0?PortPoint(port,lateral+offset):Local(f.position+f.right*lateral,Flat(f))+Direction(f.normal)*(float)(ramp?.Height(f.distance,graph.guardrailMode)??0);
-                Vector3 RampUp(GraphFrame f,double lane)=>ramp==null?(commonCatalog && (geometry==0||geometry==5) && !Flat(f)?Direction(graph.Road(geometry).SurfaceNormal(f.distance,lane)):Up(f)):Direction(DVec.Cross(f.right,(f.tangent+f.normal*ramp.Slope(f.distance,graph.guardrailMode)).Unit()).Unit());
-                road.Quad(Point(a,left0,startPort,startOffset),Point(b,left1,endPort,endOffset),Point(a,right0,startPort,startOffset),Point(b,right1,endPort,endOffset),
-                    sample,RampUp(a,left0),face,uvStart:(float)a.distance/4,uvEnd:(float)b.distance/4,endUp:RampUp(b,left1),
-                    rightUp:RampUp(a,right0),rightEndUp:RampUp(b,right1),uvSideStart:(float)left0/4,uvSideEnd:(float)left1/4);
+                Vector3 Point(GraphFrame f,FrameVectors vectors,double lateral,int port,double offset){
+                    var value=port!=0?PortPoint(port,lateral+offset):Local(f.position+f.right*lateral,vectors.flat)+vectors.normalDirection*(float)(ramp?.Height(f.distance,graph.guardrailMode)??0);
+#if UNITY_EDITOR
+                    if(PointObserved!=null){var original=port!=0?PortPoint(port,lateral+offset):Local(f.position+f.right*lateral,Flat(f))+Direction(f.normal)*(float)(ramp?.Height(f.distance,graph.guardrailMode)??0);PointObserved(original,value);}
+#endif
+                    return value;
+                }
+                Vector3 RampUp(GraphFrame f,FrameVectors vectors,double lane){
+#if UNITY_EDITOR
+                    long timer=ProfileBegin();
+#endif
+                    var value=ramp==null?(commonCatalog && (geometry==0||geometry==5) && !vectors.flat?Direction(SurfaceNormal(geometry,f.distance,lane)):vectors.up):Direction(DVec.Cross(f.right,(f.tangent+f.normal*ramp.Slope(f.distance,graph.guardrailMode)).Unit()).Unit());
+#if UNITY_EDITOR
+                    ProfileEnd("graph.up",timer);
+#endif
+                    return value;
+                }
+                road.Quad(Point(a,av,left0,startPort,startOffset),Point(b,bv,left1,endPort,endOffset),Point(a,av,right0,startPort,startOffset),Point(b,bv,right1,endPort,endOffset),
+                    sample,RampUp(a,av,left0),face,uvStart:(float)a.distance/4,uvEnd:(float)b.distance/4,endUp:RampUp(b,bv,left1),
+                    rightUp:RampUp(a,av,right0),rightEndUp:RampUp(b,bv,right1),uvSideStart:(float)left0/4,uvSideEnd:(float)left1/4);
+#if UNITY_EDITOR
+                ProfileEnd("graph.quad",quadTimer);
+#endif
             }
             void Rail(Vector3 a,Vector3 b,Vector3 side0,Vector3 side1,Vector3 up,bool joinedCenter=false,Vector3 endUp=default) {
                 if(endUp.sqrMagnitude==0)endUp=up;
@@ -151,13 +215,20 @@ namespace StarRacingPrototype {
                 int steps=stations.Count-1;
                 for(int i=0;i<steps;i++) {
                     if(budget.Due){yield return null;budget.Restart();}
+#if UNITY_EDITOR
+                    long stationTimer=ProfileBegin();
+#endif
                     var a=edge.Evaluate(stations[i]);var b=edge.Evaluate(stations[i+1]);
+                    var av=PrepareVectors(a);var bv=PrepareVectors(b);
                     int start=i==0?edge.fromPort:0,end=i==steps-1?edge.toPort:0;
                     // Uniform .5m cross-port cuts include q=0 and match both node halves.
                     var jump=graph.jumps.FirstOrDefault(j=>j.roadId==id && a.distance>=j.rampStart && a.distance<j.gapEnd);
                     var cuts=new List<double>();for(int lane=0;lane<=34;lane++)cuts.Add(-IndependentGraph.HalfWidth+lane*.5);
                     if(jump!=null){cuts.Add(jump.lateralCenter-jump.lateralHalfWidth);cuts.Add(jump.lateralCenter+jump.lateralHalfWidth);}
                     cuts=cuts.Distinct().OrderBy(q=>q).ToList();
+#if UNITY_EDITOR
+                    ProfileEnd("graph.stations",stationTimer);
+#endif
                     for(int lane=0;lane+1<cuts.Count;lane++) {
                         double left=cuts[lane],right=cuts[lane+1],middle=(left+right)*.5;
                         if(jump!=null && jump.Gap(a.distance,middle,graph.guardrailMode))continue;
@@ -165,11 +236,11 @@ namespace StarRacingPrototype {
                         // station, as in the legacy physical compiler. Tiling it into
                         // .5m squares introduces unnecessary internal CCD edges.
                         if(jump!=null&&jump.ContainsLane(middle)&&jump.Ramp(a.distance,b.distance,graph.guardrailMode))continue;
-                        Quad(id,edge.branch,i,a,b,left,right,left,right,start,end,0,0);
+                        Quad(id,edge.branch,i,a,b,av,bv,left,right,left,right,start,end,0,0);
                     }
                     if(jump!=null&&jump.Ramp(a.distance,b.distance,graph.guardrailMode)) {
                         double left=jump.lateralCenter-jump.lateralHalfWidth,right=jump.lateralCenter+jump.lateralHalfWidth;
-                        Quad(id,edge.branch,i,a,b,left,right,left,right,start,end,0,0,ramp:jump);
+                        Quad(id,edge.branch,i,a,b,av,bv,left,right,left,right,start,end,0,0,ramp:jump);
                     }
                     if(graph.guardrailMode!="none")foreach(int side in new[]{-1,1}) {
                         Vector3 pa=start!=0?PortPoint(start,side*IndependentGraph.HalfWidth):Local(a.position+a.right*(side*IndependentGraph.HalfWidth),Flat(a));
@@ -186,6 +257,7 @@ namespace StarRacingPrototype {
                     var s=node.stations[i];var t=node.stations[i+1];
                     GraphFrame Carrier(JunctionStation row)=>new GraphFrame(row.z,node.Point(0,row.z),node.tangent,node.normal,node.right,IndependentGraph.HalfWidth);
                     var a=Carrier(s);var b=Carrier(t);
+                    var av=PrepareVectors(a);var bv=PrepareVectors(b);
                     foreach(int arm in new[]{IndependentGraph.Technical,IndependentGraph.Speed}) {
                         bool left=arm==IndependentGraph.Technical;
                         double l0=left?-s.outer:s.gapHalf,r0=left?-s.gapHalf:s.outer;
@@ -202,7 +274,7 @@ namespace StarRacingPrototype {
                         for(int lane=0;lane<lanes;lane++) {
                             double lA=l0+(r0-l0)*lane/lanes,rA=l0+(r0-l0)*(lane+1)/lanes;
                             double lB=l1+(r1-l1)*lane/lanes,rB=l1+(r1-l1)*(lane+1)/lanes;
-                            Quad(node.id,arm,i,a,b,lA,rA,lB,rB,start,end,startOffset,endOffset,
+                            Quad(node.id,arm,i,a,b,av,bv,lA,rA,lB,rB,start,end,startOffset,endOffset,
                                 !left&&lane==0?tag:0,left&&lane==lanes-1?tag:0);
                         }
                         if(graph.guardrailMode=="none")continue;
@@ -216,10 +288,17 @@ namespace StarRacingPrototype {
                     }
                 }
             }
+#if UNITY_EDITOR
+            long cleanTimer=ProfileBegin();
+#endif
             for(int i=rails.triangles.Count-3;i>=0;i-=3) {
                 var a=rails.vertices[rails.triangles[i]];var b=rails.vertices[rails.triangles[i+1]];var c=rails.vertices[rails.triangles[i+2]];
                 if(Vector3.Cross(b-a,c-a).sqrMagnitude<=1e-12f)rails.triangles.RemoveRange(i,3);
             }
+#if UNITY_EDITOR
+            ProfileEnd("graph.rail-clean",cleanTimer);
+            Observe("source-road",road,Vector3.zero);Observe("source-rails",rails,Vector3.zero);
+#endif
             if(!commonVertical)road.Create(geometryRoot.transform,"Independent road",roadMaterial,true);
             else {
                 // Keep the certified planar junction domain out of nonplanar
@@ -229,6 +308,9 @@ namespace StarRacingPrototype {
                 int previousGeometry=-1;bool previousPlanar=false;ProceduralTrackMesh.Geometry piece=null;
                 for(int q=0;q<road.vertices.Count/4;q++) {
                     if(budget.Due){yield return null;budget.Restart();}
+#if UNITY_EDITOR
+                    long splitTimer=ProfileBegin();
+#endif
                     int at=q*4;var face=road.faces[q*2];
                     bool planar=road.vertices[at].y==0 && road.vertices[at+1].y==0 && road.vertices[at+2].y==0 && road.vertices[at+3].y==0;
                     if(piece==null || face.geometryId!=previousGeometry || planar!=previousPlanar) {
@@ -246,17 +328,37 @@ namespace StarRacingPrototype {
                     piece.Quad(road.vertices[at]-chunkOffset,road.vertices[at+1]-chunkOffset,road.vertices[at+2]-chunkOffset,road.vertices[at+3]-chunkOffset,face.sample,road.smoothNormals[at],face,
                         uvStart:road.uv[at].x,uvEnd:road.uv[at+1].x,endUp:road.smoothNormals[at+1],rightUp:road.smoothNormals[at+2],rightEndUp:road.smoothNormals[at+3],
                         uvSideStart:road.uv[at].y,uvSideEnd:road.uv[at+1].y);
+#if UNITY_EDITOR
+                    ProfileEnd("graph.split",splitTimer);
+#endif
                 }
+                int publishedChunks=0;
                 foreach(var chunk in pieces) {
                     var context=geometryRoot.transform;
                     if(chunk.offset!=Vector3.zero){var pivot=new GameObject("Common strip local origin");pivot.transform.SetParent(context,false);pivot.transform.localPosition=chunk.offset;context=pivot.transform;}
+#if UNITY_EDITOR
+                    Observe("chunk",chunk.geometry,chunk.offset);
+#endif
                     chunk.geometry.Create(context,"Independent road",roadMaterial,true);
-                    yield return null;budget.Restart();
+                    // Keep initial partial-world cancellation checkpoints, then
+                    // share the existing budget instead of a full frame per chunk.
+                    if(++publishedChunks<=2||budget.Due){
+#if UNITY_EDITOR
+                        RoadVolumeMesh.WorkMeasured?.Invoke("graph.chunk-yield",0);
+#endif
+                        yield return null;budget.Restart();
+                    }
                 }
             }
             yield return RoadVolumeMesh.BuildGraphSteps(geometryRoot.transform,LocalFrame,road.vertices,road.faces,road.triangles,roadMaterial,observer==null?null:tri=>observer(geometryRoot.transform,tri),port=>Up(graph.ports.Single(p=>p.id==port).frame));
             if(rails.triangles.Count>0)rails.Create(geometryRoot.transform,"Independent guard rails",railMaterial,false);
+#if UNITY_EDITOR
+            long surfaceTimer=ProfileBegin();
+#endif
             var surface=parent.gameObject.AddComponent<GraphRoadSurface>();surface.Initialize(graph,buildRevision);
+#if UNITY_EDITOR
+            ProfileEnd("graph.surface",surfaceTimer);
+#endif
             completed(surface);complete=true;
             } finally {
                 if(!complete){
