@@ -76,11 +76,41 @@ class LauncherPackaging(unittest.TestCase):
                     config=json.loads((content/'launcher.json').read_text())
                     self.assertEqual(config['Track'],'test')
                     self.assertEqual(config['Player'],player.name)
+                    if channel == 'win-x64':
+                        publish=commands[0]
+                        self.assertIn('-p:PublishSingleFile=true',publish)
+                        self.assertIn('-p:IncludeNativeLibrariesForSelfExtract=true',publish)
+                        self.assertNotEqual(Path(publish[publish.index('-o')+1]),content)
+                        self.assertEqual((content/entry).read_bytes(),b'')
                     if channel == 'osx-universal':
                         info=plistlib.loads((payload/'Contents/Info.plist').read_bytes())
                         self.assertEqual(info['CFBundleIdentifier'],'local.starracing.prototype')
                         self.assertEqual(info['CFBundleExecutable'],entry)
                         self.assertIn('x86_64',commands[-1]);self.assertIn('arm64',commands[-1])
+
+    def test_windows_loose_runtime_publish_is_rejected_without_touching_player(self):
+        for dependency in ['mscorlib.dll','System.Private.CoreLib.dll','coreclr.dll','StarRacingLauncher.deps.json']:
+            with self.subTest(dependency=dependency), tempfile.TemporaryDirectory() as temp:
+                payload=Path(temp);player=payload/'Star Racing.exe';player.write_bytes(b'Unity Player')
+                def run(command, **kwargs):
+                    out=Path(command[command.index('-o')+1])
+                    (out/'StarRacingLauncher.exe').write_bytes(b'launcher')
+                    (out/dependency).write_bytes(b'loose runtime')
+                with patch.object(launcher_package.subprocess,'run',side_effect=run), self.assertRaisesRegex(ValueError,'external dependencies'):
+                    launcher_package.install('/dotnet','/distribution',payload,'win-x64','1.2.3','production',{})
+                self.assertEqual(list(payload.iterdir()),[player])
+                self.assertEqual(player.read_bytes(),b'Unity Player')
+
+    def test_windows_contaminated_player_input_is_rejected_without_deleting_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            payload=Path(temp);(payload/'Star Racing.exe').write_bytes(b'Unity Player')
+            runtime=payload/'MsCorLib.dll';runtime.write_bytes(b'old runtime')
+            def run(command, **kwargs):
+                out=Path(command[command.index('-o')+1]);(out/'StarRacingLauncher.exe').touch()
+            with patch.object(launcher_package.subprocess,'run',side_effect=run), self.assertRaisesRegex(ValueError,'clean Player input'):
+                launcher_package.install('/dotnet','/distribution',payload,'win-x64','1.2.3','production',{})
+            self.assertEqual(runtime.read_bytes(),b'old runtime')
+            self.assertFalse((payload/'StarRacingLauncher.exe').exists())
 
     def test_missing_self_contained_launcher_fails_packaging(self):
         with tempfile.TemporaryDirectory() as temp:
