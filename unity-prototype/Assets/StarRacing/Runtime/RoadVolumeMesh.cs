@@ -98,6 +98,9 @@ namespace StarRacingPrototype
                 Vector3 apex=new Vector3((float)(diagonal.x-nx*inset),(float)(diagonal.y-ny*inset),(float)(diagonal.z-nz*inset));
                 var origin=new ExactPoint(a);var normal=ExactPoint.Cross(new ExactPoint(b)-origin,new ExactPoint(c)-origin);
                 fallback=!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0;
+                // This exact candidate is already certified. Rechecking it at
+                // the bottom repeats the same containment/orientation proof.
+                if(!fallback)return apex;
                 if(fallback) {
                     double x=0,y=0,z=0;foreach(var p in owner.corners){x+=p.x*.125;y+=p.y*.125;z+=p.z*.125;}
                     var centroid=new Vector3((float)x,(float)y,(float)z);
@@ -107,6 +110,7 @@ namespace StarRacingPrototype
                     double fraction=System.Math.Min(1,.02/System.Math.Sqrt(dx*dx+dy*dy+dz*dz));
                     apex=new Vector3((float)(diagonal.x+dx*fraction),(float)(diagonal.y+dy*fraction),(float)(diagonal.z+dz*fraction));
                     if(!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0)apex=centroid;
+                    else return apex;
                 }
                 if(!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0)
                     throw new System.InvalidOperationException("No inward kernel apex for road owner "+owner.id+" side "+side);
@@ -298,6 +302,7 @@ namespace StarRacingPrototype
         }
 #if UNITY_EDITOR
         public static System.Action<string,double> WorkMeasured;
+        public static System.Action<SupportTriangle,Vector3,bool> SupportSelected;
         static long BeginMeasurement()=>WorkMeasured==null?0:System.Diagnostics.Stopwatch.GetTimestamp();
         static void Measured(string name,long began){if(began!=0)WorkMeasured?.Invoke(name,(System.Diagnostics.Stopwatch.GetTimestamp()-began)/(double)System.Diagnostics.Stopwatch.Frequency);}
 #endif
@@ -306,9 +311,14 @@ namespace StarRacingPrototype
 #if UNITY_EDITOR
             long total=BeginMeasurement(),timer=total;
 #endif
-            Vector3 apex=triangle.SelectApex(out _),origin=triangle.a;
 #if UNITY_EDITOR
-            Measured("support.apex",timer);timer=BeginMeasurement();
+            Vector3 apex=triangle.SelectApex(out var selectedFallback),origin=triangle.a;
+#else
+            Vector3 apex=triangle.SelectApex(out _),origin=triangle.a;
+#endif
+#if UNITY_EDITOR
+            Measured("support.apex",timer);
+            SupportSelected?.Invoke(triangle,apex,selectedFallback);timer=BeginMeasurement();
 #endif
             var world=new[]{triangle.a,triangle.b,triangle.c,apex};
             // Sterbenz subtraction is exact when same-sign coordinates differ

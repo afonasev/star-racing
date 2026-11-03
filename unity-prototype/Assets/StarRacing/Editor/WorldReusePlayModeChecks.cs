@@ -91,6 +91,7 @@ namespace StarRacingPrototype {
    Config("cloud-city",3650307150).Save();float start=Time.realtimeSinceStartup;host=new GameObject("Light runtime startup");host.AddComponent<RaceStartup>();
    while((director=host.GetComponent<RaceDirector>())==null||!director.Ready)yield return null;
    menu=host.GetComponent<RaceMenu>();Check(director.Track==null&&director.Course==null&&director.Cars.Length==0&&director.Session==null,"Runtime menu allocates no world or participants");Check(Enumerable.Range(0,4).All(i=>!director.CameraFor(i).GetComponent<Camera>().enabled),"Menu cameras cannot overwrite IMGUI");Check(director.RaceGeneration==1&&!director.Started,"Initial generation preserved");Check(RetainedCount==0&&!LoadingWork.SimulationFrozen,"Light menu ready and freeze released");Check(SilentStartup.Enabled&&AudioListener.pause&&host.GetComponent<RaceAudioCoordinator>()==null,"Silent startup preserved");Trace("menu seconds="+(Time.realtimeSinceStartup-start).ToString("F3"));
+   if(MapLoadingChecks.SupportsOnly){yield return SupportSlice();yield break;}
    if(MapLoadingChecks.DecorOnly){yield return GraphSlice();yield break;}
    // A partial selected-world build transfers to Start rather than being rebuilt.
    menu.Open(RaceMenuScreen.LocalSetup);Select(Config("cloud-city",3650307150));
@@ -143,6 +144,21 @@ namespace StarRacingPrototype {
    Select(Config("cloud-city",1003));while(!Prewarming)yield return null;typeof(RaceMenu).GetField("seedText",Private).SetValue(menu,"invalid");yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Invalid selection releases speculative world and freeze");
    menu.Open(RaceMenuScreen.Main);yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Leaving setup releases speculative freeze");
    var mesh=graphTrack.GetComponentInChildren<MeshFilter>().sharedMesh;Destroy(host);host=null;yield return Frames();Check(mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0,"Owner destroys all retained worlds and meshes");Check(!LoadingWork.SimulationFrozen,"Teardown releases all freezes");
+  }
+  IEnumerator SupportSlice(){
+   menu.Open(RaceMenuScreen.Main);
+   using(var assets=new LoadingWork(SharedRaceAssets.EnsureSteps(true))){while(assets.MoveNext())yield return null;Check(assets.Succeeded&&assets.Error==null,"Shared asset precondition");}
+   var config=Config("space-station",5,12,64);
+   SupportLoadingProfile.Begin();
+   try{yield return Prepare(config);SupportLoadingProfile.End(director,Output);}
+   finally{SupportLoadingProfile.Abort();}
+   Check(director.Cars.Length==64&&director.HumanCount==1&&director.Track.GraphSurface!=null,"Actual cold graph64 conditions");
+   yield return ExerciseContacts();
+   director.ExitToMenu();menu.Open(RaceMenuScreen.Main);
+   var track=director.Track;var mesh=track.GetComponentInChildren<MeshFilter>().sharedMesh;int generation=director.RaceGeneration,staged=0;
+   using(var pending=director.PrepareForLoading(config.Copy())){while(pending.MoveNext()){if(pending.Status=="Готовим участников"&&++staged==3)break;yield return null;}Check(staged==3,"Actual partial participant allocation");}
+   yield return Frames();Check(ReferenceEquals(track,director.Track)&&generation==director.RaceGeneration&&!director.Started&&!LoadingWork.SimulationFrozen,"Cancellation retains published world and authority");
+   Destroy(host);host=null;yield return Frames();Check(mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0&&!LoadingWork.SimulationFrozen,"Support world teardown releases meshes and freeze");
   }
   IEnumerator GraphSlice(){
    // Fix the generation for focused baseline/candidate equivalence.

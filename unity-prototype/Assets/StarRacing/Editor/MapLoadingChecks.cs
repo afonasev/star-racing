@@ -22,9 +22,11 @@ namespace StarRacingPrototype {
    SessionState.SetBool(Key,true);
   }
   public static bool DecorOnly=>SessionState.GetBool(Key+"Graph",false);
-  public static void Run(){SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
-  public static void RunDecor(){SessionState.SetBool(Key+"Graph",true);Prepare();WorldReusePlayModeChecks.Run();}
-  public static void RunTeardown(){Prepare();LoadingPlayModeChecks.RunTeardown();}
+  public static bool SupportsOnly=>SessionState.GetBool(Key+"Supports",false);
+  public static void RunSupports(){SessionState.SetBool(Key+"Supports",true);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void Run(){SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void RunDecor(){SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",true);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void RunTeardown(){SessionState.SetBool(Key+"Supports",false);Prepare();LoadingPlayModeChecks.RunTeardown();}
   public static IEnumerator MeasureRepeats(RaceDirector director){
    var generation=typeof(RaceDirector).GetProperty("RaceGeneration");
    var signature=typeof(LoadingPlayDriver).GetMethod("Signature",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
@@ -54,6 +56,7 @@ namespace StarRacingPrototype {
     new GameObject("Map loading observer").AddComponent<MapLoadingObserver>();
    }
    if(state==PlayModeStateChange.ExitingPlayMode){
+    SupportLoadingProfile.Abort();
     LoadingWork.StepMeasured=null;
     using(var writer=new StreamWriter(Path.Combine(WorldReusePlayModeChecks.Output,"steps.tsv"))){writer.WriteLine("iterator\tcount\tinclusiveSeconds\tmaxSeconds");foreach(var pair in measured)writer.WriteLine($"{pair.Key}\t{pair.Value.count}\t{pair.Value.seconds:R}\t{pair.Value.maximum:R}");}
     if(keyboard!=null&&keyboard.added)InputSystem.RemoveDevice(keyboard);keyboard=null;
