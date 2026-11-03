@@ -11,7 +11,7 @@ namespace StarRacingPrototype {
  // Authored coordinates, not a generator preset. Runtime geometry format remains Native12.
  public static class AuthoredCloudCityCourse {
   public const string Id="cloud-city-eye", Title="Око облачного города", Family="authored-cloud-city-eye";
-  public const int Revision=1, PresentationRevision=1;
+  public const int Revision=1, PresentationRevision=2;
   public const uint ScenerySeed=261026;
   public static readonly string[] Sections={"Панорамный старт","Городской слалом","Сквозной атриум","Око города","Нырок","Нижняя терраса","Двойная спираль","Верхний мост"};
   public static bool Is(Definition d)=>d!=null&&d.family==Family;

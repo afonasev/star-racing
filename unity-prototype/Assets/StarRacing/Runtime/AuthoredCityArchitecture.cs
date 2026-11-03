@@ -7,17 +7,19 @@ namespace StarRacingPrototype {
   public static List<Part> Create(){
    var p=new List<Part>();
    void Box(string name,float x,float y,float z,float w,float h,float d,int finish=0,float tile=36)=>p.Add(new Part(name,new Vector3(x,y,z),new Vector3(w,h,d),finish,tile));
-   // Oko: silver frame, dark recessed window wall, warm inner reveals. Aperture 190 x 180m.
+   // Oko: structural aperture 190 x 180m; reveals leave a clear 188 x 178m opening.
+   // Reveals project 1m past the inner wall and facade bands. Their corners meet
+   // edge-to-edge, so neither the wall nor adjacent trim shares a visible face.
    foreach(int side in new[]{-1,1}){
     Box("Око / опора",side*160,390,2050,130,1020,130,0);
     Box("Око / наружное ребро",side*224,390,2050,8,1028,142,1,5);
-    Box("Око / золотой откос",side*98,580,2050,6,180,134,3,4);
+    Box("Око / золотой откос",side*97.5f,580,2050,7,178,136,3,4);
     for(int floor=0;floor<10;floor++)Box("Око / пояс фасада",side*160,-80+floor*105,2050,134,3,134,1,4);
    }
    Box("Око / нижний корпус",0,182.5f,2050,190,615,130,0);
    Box("Око / верхний корпус",0,785,2050,190,230,130,0);
-   Box("Око / нижний откос",0,487,2050,192,6,136,3,4);
-   Box("Око / верхний откос",0,673,2050,192,6,136,3,4);
+   Box("Око / нижний откос",0,488,2050,202,6,136,3,4);
+   Box("Око / верхний откос",0,672,2050,202,6,136,3,4);
    Box("Око / корона",0,905,2050,460,10,150,1,4);
    for(int i=0;i<8;i++)Box("Око / солнечные панели",-196+i*56,920,2050,38,8,105,4,4);
    // Atrium: warm ceramic decks, dark columns and overhead transverse beams.
