@@ -1,9 +1,9 @@
 {
   "dotnet": {
-    "version": "8.0.414",
+    "version": "8.0.425",
     "rid": "osx-arm64",
-    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.414/dotnet-sdk-8.0.414-osx-arm64.tar.gz",
-    "sha512": "8e8a452eaa2e28195eb1bb33e0d9bff31e223e47d0fa4761ba339a47a6736f001013dc121695b580883845921e3c1151d5fd4693ebcaefc07f0d6500a0c01e36"
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.425/dotnet-sdk-8.0.425-osx-arm64.tar.gz",
+    "sha512": "d42156be70b489236479a415536013a89a9fd6eaca57d5716a7017612fcc65bdb459068973d7cffd6fe710f2799af8bee95b2046ba032762d47df176f5c4a7d6"
   },
   "velopack": "1.2.158",
   "unity": "6000.3.23f1",
