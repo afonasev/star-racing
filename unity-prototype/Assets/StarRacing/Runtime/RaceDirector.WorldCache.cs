@@ -12,6 +12,9 @@ namespace StarRacingPrototype {
   }
   sealed class WorldRequest:IDisposable {
    public string Key;public LoadingWork Work;public TrackWorld Result;
+   // Only explicit preparation owns the outer simulation freeze. Speculative
+   // requests must still finish inactive when that freeze is absent.
+   public bool Admitted;
    public void Dispose(){Work?.Dispose();Work=null;Result?.Dispose();Result=null;}
   }
   // Only the published level and the currently selected candidate are retained.
@@ -55,7 +58,10 @@ namespace StarRacingPrototype {
     // only completed inactive worlds may be retained without one.
     yield return "Строим трассу";yield return staging.Track.BuildNativeSteps(course);
     yield return "Оформляем мир";yield return BuildDecorSteps(staging.Decor,staging.Track,course,config.Seed,theme,background);
-    staging.Decor.Root.SetParent(staging.Root.transform,true);staging.Root.SetActive(false);
+    staging.Decor.Root.SetParent(staging.Root.transform,true);
+    // Keep freshly built colliders registered for the preparation that already
+    // owns this request. A completed speculative prewarm remains inactive.
+    if(!request.Admitted)staging.Root.SetActive(false);
     request.Result=staging;staging=null;
    }finally{staging?.Dispose();}
   }
@@ -70,6 +76,7 @@ namespace StarRacingPrototype {
    if(found!=null){CancelWorldPrewarm();leasedWorld=found;receive(found);yield return "Используем готовую трассу";yield break;}
    // Transfer ownership: Update can no longer advance or cancel this request.
    var request=prewarm??NewWorldRequest(config,background);prewarm=null;
+   request.Admitted=true;
    TrackWorld built=null;
    using(request){
     while(request.Work.MoveNext())yield return request.Work.Status;

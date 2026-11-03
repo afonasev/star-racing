@@ -157,6 +157,10 @@ namespace StarRacingPrototype {
    if(work.Error!=null){StartError="Не удалось подготовить гонку. Измените параметры трассы.";Debug.LogException(work.Error);}
    return StartError;
   }
+#if UNITY_EDITOR
+  static long PrepBegin()=>RoadVolumeMesh.WorkMeasured==null?0:System.Diagnostics.Stopwatch.GetTimestamp();
+  static void PrepEnd(string phase,long began){if(began!=0)RoadVolumeMesh.WorkMeasured?.Invoke("prepare."+phase,(System.Diagnostics.Stopwatch.GetTimestamp()-began)/(double)System.Diagnostics.Stopwatch.Frequency);}
+#endif
   IEnumerator PrepareSteps(LocalRaceConfig config,bool background,bool reuseWorld){
    StartError="";if(Started){StartError="Гонка уже идёт";yield break;}
    LabSnapshot balanceSnapshot=null;ReleaseBalance nextBalance=null;
@@ -169,7 +173,17 @@ namespace StarRacingPrototype {
     string theme=snapshot.theme=="random"?(snapshot.Seed%2==0?"cloud-city":"space-station"):snapshot.theme;
     TrackWorld prepared=null;
     yield return AcquireWorldSteps(snapshot,background,reuseWorld,value=>prepared=value);
-    leasedWorld=borrowedWorld=prepared;prepared.Root.SetActive(true);Physics.SyncTransforms();
+#if UNITY_EDITOR
+    long prepTimer=PrepBegin();
+#endif
+    leasedWorld=borrowedWorld=prepared;prepared.Root.SetActive(true);
+#if UNITY_EDITOR
+    PrepEnd("activate",prepTimer);prepTimer=PrepBegin();
+#endif
+    Physics.SyncTransforms();
+#if UNITY_EDITOR
+    PrepEnd("activation-sync",prepTimer);prepTimer=PrepBegin();
+#endif
     var course=prepared.Course;var track=prepared.Track;var decor=prepared.Decor;
     var roster=new RaceRoster(count,humans,snapshot.Seed);roster.Shuffle(unchecked(snapshot.Seed+(uint)generation*7919));
     var route=course.IsIndependent?null:new TrackRoute(course.Single);
@@ -178,25 +192,50 @@ namespace StarRacingPrototype {
     // Staging colliders stay active for admission; the freeze lease prevents all simulation until publication.
     root=new GameObject("Prepared race");
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
+#if UNITY_EDITOR
+    PrepEnd("grid",prepTimer);
+#endif
     yield return "Готовим участников";
     var participantBudget=new LoadingWork.Budget();
     for(int i=0;i<count;i++){
      // Retain the early empty/partial staging checkpoints, then use the
      // existing loading budget instead of paying one rendered frame per car.
      if(i<2||participantBudget.Due){yield return null;participantBudget.Restart();}
+#if UNITY_EDITOR
+     prepTimer=PrepBegin();
+#endif
      var entrant=roster.Entrants[i];var go=new GameObject(entrant.Name);go.transform.SetParent(root.transform);
      cars[i]=go.AddComponent<MagneticVehicle>();InitializeCar(cars[i],course,track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),nextBalance,entrant.HumanSeat>=0,distances[i]);
      cars[i].Drive.ConfigureHandicap(entrant.Profile,snapshot.handicap);cars[i].SetDrivingGeneration(generation);ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);
      if(entrant.HumanSeat<0)drivers[i]=new AiDriver(i,entrant.Profile,entrant.Seed,nextBalance);
      int index=i;cars[i].ContactObserved+=collision=>ObserveContact(index,collision);seen[i]=ObserveVehicle(cars[i]);
+#if UNITY_EDITOR
+     PrepEnd("participants",prepTimer);
+#endif
     }
+#if UNITY_EDITOR
+    prepTimer=PrepBegin();
+#endif
     var session=CreateSessionForTrack(track,course.Start,course.Finish,count,humans);session.Reset(seen);
     var timers=new float[count];var revisions=new int[count];for(int i=0;i<count;i++){timers[i]=i<humans?0:AiDecisionInterval*(i-humans)/Mathf.Max(1,count-humans);revisions[i]=cars[i].PositionRevision;}
     var world=new AiWorldSnapshot(count);var contacts=new DrivingContactObservation[count];var policy=new DrivingContactPolicy();
     var times=new double[count];var commands=new DrivingInput[count];
+#if UNITY_EDITOR
+    PrepEnd("session",prepTimer);prepTimer=PrepBegin();
+#endif
     if(snapshot.IsAuthored&&snapshot.replay!=null&&!snapshot.replay.Matches(snapshot,theme))throw new ArgumentException("Saved authored course revision does not match selection");
-    if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);snapshot.replay=NativeCourseReplay.Capture(course,track);
+    if(snapshot.replay!=null&&snapshot.replay.Matches(snapshot,theme))snapshot.replay.Verify(course,track);
+#if UNITY_EDITOR
+    PrepEnd("replay-verify",prepTimer);prepTimer=PrepBegin();
+#endif
+    snapshot.replay=NativeCourseReplay.Capture(course,track);
+#if UNITY_EDITOR
+    PrepEnd("replay-capture",prepTimer);
+#endif
     yield return "Проверяем старт";
+#if UNITY_EDITOR
+    prepTimer=PrepBegin();
+#endif
     if(!input.TryBind(snapshot,out bindingError))throw new InvalidOperationException(bindingError);
     var oldCars=Cars;var oldRoot=activeRaceRoot;var oldWorld=activeWorld;
     // Publish only after generation, bindings, placement and resource construction succeeded.
@@ -206,14 +245,27 @@ namespace StarRacingPrototype {
     if(activeWorld!=null&&activeWorld!=prepared)activeWorld.Root.SetActive(false);
     activeWorld=prepared;prepared.Root.SetActive(true);track.TireMarks?.Clear();
     foreach(var car in oldCars)car.gameObject.SetActive(false);
-    activeRaceRoot.SetActive(true);Physics.SyncTransforms();
+    activeRaceRoot.SetActive(true);
+#if UNITY_EDITOR
+    PrepEnd("publish",prepTimer);prepTimer=PrepBegin();
+#endif
+    Physics.SyncTransforms();
+#if UNITY_EDITOR
+    PrepEnd("publication-sync",prepTimer);prepTimer=PrepBegin();
+#endif
     for(int i=0;i<count;i++){ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);observations[i]=Observation(i);decisionRevisions[i]=cars[i].PositionRevision;}
+#if UNITY_EDITOR
+    PrepEnd("reset-cars",prepTimer);prepTimer=PrepBegin();
+#endif
     Session.Reset(observations);Session.Begin();Input.PrepareStart();Started=true;Paused=pauseDuringPreparation;Session.Paused=Paused;Time.timeScale=0;
     pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
     ApplyLighting();TrackSummary=course.IsAuthored?$"{AuthoredCourses.Title(course.CourseId)} · {course.Finish-course.Start:0} м":$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
     if(oldRoot!=null)Destroy(oldRoot);else foreach(var car in oldCars)Destroy(car.gameObject);
     if(oldWorld!=prepared)oldWorld?.Dispose();
+#if UNITY_EDITOR
+    PrepEnd("finish",prepTimer);
+#endif
     StartError="";freeze.Keep(Paused?0:1);
    }finally{if(root!=null)root.SetActive(false);if(root!=null)Destroy(root);if(borrowedWorld!=null&&borrowedWorld!=activeWorld)borrowedWorld.Dispose();leasedWorld=null;}
   }

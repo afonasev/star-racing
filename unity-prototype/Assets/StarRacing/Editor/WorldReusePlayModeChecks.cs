@@ -92,6 +92,7 @@ namespace StarRacingPrototype {
    while((director=host.GetComponent<RaceDirector>())==null||!director.Ready)yield return null;
    menu=host.GetComponent<RaceMenu>();Check(director.Track==null&&director.Course==null&&director.Cars.Length==0&&director.Session==null,"Runtime menu allocates no world or participants");Check(Enumerable.Range(0,4).All(i=>!director.CameraFor(i).GetComponent<Camera>().enabled),"Menu cameras cannot overwrite IMGUI");Check(director.RaceGeneration==1&&!director.Started,"Initial generation preserved");Check(RetainedCount==0&&!LoadingWork.SimulationFrozen,"Light menu ready and freeze released");Check(SilentStartup.Enabled&&AudioListener.pause&&host.GetComponent<RaceAudioCoordinator>()==null,"Silent startup preserved");Trace("menu seconds="+(Time.realtimeSinceStartup-start).ToString("F3"));
    if(MapLoadingChecks.SupportsOnly){yield return SupportSlice();yield break;}
+   if(MapLoadingChecks.CompletedOnly){yield return CompletedSlice();yield break;}
    if(MapLoadingChecks.DecorOnly){yield return GraphSlice();yield break;}
    // A partial selected-world build transfers to Start rather than being rebuilt.
    menu.Open(RaceMenuScreen.LocalSetup);Select(Config("cloud-city",3650307150));
@@ -144,6 +145,28 @@ namespace StarRacingPrototype {
    Select(Config("cloud-city",1003));while(!Prewarming)yield return null;typeof(RaceMenu).GetField("seedText",Private).SetValue(menu,"invalid");yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Invalid selection releases speculative world and freeze");
    menu.Open(RaceMenuScreen.Main);yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Leaving setup releases speculative freeze");
    var mesh=graphTrack.GetComponentInChildren<MeshFilter>().sharedMesh;Destroy(host);host=null;yield return Frames();Check(mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0,"Owner destroys all retained worlds and meshes");Check(!LoadingWork.SimulationFrozen,"Teardown releases all freezes");
+  }
+  IEnumerator CompletedSlice(){
+   menu.Open(RaceMenuScreen.LocalSetup);Select(Config("space-station",5,12,64));
+   while(!Prewarming)yield return null;
+   var request=typeof(RaceDirector).GetField("prewarm",Private).GetValue(director);
+   var pending=(LoadingWork)request.GetType().GetField("Work").GetValue(request);
+   long steps=RacePhysicsStepper.NativeSteps;
+   while(pending.IsPending){Check(LoadingWork.SimulationFrozen&&steps==RacePhysicsStepper.NativeSteps,"Completed prewarm has no staged physics");yield return null;}
+   Check(pending.Succeeded&&pending.Error==null,"Completed producer succeeds");
+   var world=request.GetType().GetField("Result").GetValue(request);
+   var root=(GameObject)world.GetType().GetField("Root").GetValue(world);
+   Check(root!=null&&!root.activeSelf&&!LoadingWork.SimulationFrozen,"Completed speculative world inactive after producer freeze releases");
+   int generation=director.RaceGeneration;menu.StartSelected();menu.StartSelected();
+   while(menu.Loading){Check(LoadingWork.SimulationFrozen&&steps==RacePhysicsStepper.NativeSteps,"Completed adoption remains frozen");yield return null;}
+   director.SetPaused(true);
+   Check(director.Started&&director.RaceGeneration==generation+1&&director.Cars.Length==64&&director.Track.GraphSurface!=null,"Completed world published once with graph64");
+   Check(director.Track.transform.IsChildOf(root.transform)&&root.activeInHierarchy&&RetainedCount==1,"Completed producer transferred without rebuilding");
+   yield return ExerciseContacts();
+   Check(director.ExitToMenu(),"Exit completed world");menu.Open(RaceMenuScreen.Main);
+   var mesh=director.Track.GetComponentInChildren<MeshFilter>().sharedMesh;Destroy(host);host=null;yield return Frames();
+   Check(root==null&&mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0&&!LoadingWork.SimulationFrozen,"Completed world teardown releases meshes world and freeze");
+   Trace("completed inactive prewarm adoption/contact/teardown passed");
   }
   IEnumerator SupportSlice(){
    menu.Open(RaceMenuScreen.Main);

@@ -12,7 +12,7 @@ namespace StarRacingPrototype {
  public static class SupportLoadingProfile {
   const BindingFlags Fields=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
   [Serializable] public sealed class Leaf {public string name;public int count;public double seconds,maximum;}
-  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals;public string inventory,apexIdentity,frameIdentity,config;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
+  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
   readonly struct Sample {public readonly RoadVolumeMesh.SupportTriangle triangle;public readonly Vector3 apex;public readonly bool fallback;public Sample(RoadVolumeMesh.SupportTriangle t,Vector3 a,bool f){triangle=t;apex=a;fallback=f;}}
   static readonly List<Sample> samples=new List<Sample>();static readonly Dictionary<string,Leaf> leaves=new Dictionary<string,Leaf>();
   static readonly List<(int geometry,int bits,TrackFrame frame)> frames=new List<(int,int,TrackFrame)>();
@@ -37,8 +37,13 @@ namespace StarRacingPrototype {
   static bool Bits(Vector3 a,Vector3 b)=>Enumerable.Range(0,3).All(i=>BitConverter.SingleToInt32Bits(a[i])==BitConverter.SingleToInt32Bits(b[i]));
   public static void End(RaceDirector director,string output){
    clock.Stop();long bytes=GC.GetAllocatedBytesForCurrentThread()-allocated;Abort();
+   string resultPreparationIdentity=Hash(w=>{
+    w.Write(director.RaceGeneration);w.Write(director.Cars.Length);w.Write(JsonUtility.ToJson(director.AppliedConfig));
+    foreach(var e in director.Roster.Entrants){w.Write(e.Name);w.Write(e.GridSlot);w.Write(e.HumanSeat);w.Write(e.Seed);w.Write((int)e.Profile);}
+    foreach(var car in director.Cars){V(w,car.Body.position);var q=car.Body.rotation;w.Write(q.x);w.Write(q.y);w.Write(q.z);w.Write(q.w);V(w,car.Body.linearVelocity);V(w,car.Body.angularVelocity);w.Write(car.PositionRevision);}
+   });
    var colliders=director.Track.GetComponentsInChildren<MeshCollider>(true);
-   var result=new Report{coldSeconds=clock.Elapsed.TotalSeconds,allocatedBytes=bytes,allocationCounterAvailable=bytes>0,supports=samples.Count,config=JsonUtility.ToJson(director.AppliedConfig),leaves=leaves.Values.OrderBy(x=>x.name).ToArray()};
+   var result=new Report{preparationIdentity=resultPreparationIdentity,coldSeconds=clock.Elapsed.TotalSeconds,allocatedBytes=bytes,allocationCounterAvailable=bytes>0,supports=samples.Count,config=JsonUtility.ToJson(director.AppliedConfig),leaves=leaves.Values.OrderBy(x=>x.name).ToArray()};
    var supportLeaves=leaves.Values.Where(l=>l.name.StartsWith("support.")).ToArray();
    if(samples.Count==0||colliders.Count(c=>c.name==RoadVolumeMesh.SupportName)!=samples.Count||supportLeaves.Length!=5||supportLeaves.Any(l=>l.count!=samples.Count))throw new Exception("Support stage counts/inventory disagree");
    result.frameQueries=frames.Count;result.uniqueFrames=frameKeys.Count;

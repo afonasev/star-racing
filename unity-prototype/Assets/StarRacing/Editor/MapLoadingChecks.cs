@@ -22,11 +22,13 @@ namespace StarRacingPrototype {
    SessionState.SetBool(Key,true);
   }
   public static bool DecorOnly=>SessionState.GetBool(Key+"Graph",false);
+  public static bool CompletedOnly=>SessionState.GetBool(Key+"Completed",false);
   public static bool SupportsOnly=>SessionState.GetBool(Key+"Supports",false);
-  public static void RunSupports(){SessionState.SetBool(Key+"Supports",true);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
-  public static void Run(){SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
-  public static void RunDecor(){SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",true);Prepare();WorldReusePlayModeChecks.Run();}
-  public static void RunTeardown(){SessionState.SetBool(Key+"Supports",false);Prepare();LoadingPlayModeChecks.RunTeardown();}
+  public static void RunCompleted(){SessionState.SetBool(Key+"Completed",true);SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void RunSupports(){SessionState.SetBool(Key+"Completed",false);SessionState.SetBool(Key+"Supports",true);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void Run(){SessionState.SetBool(Key+"Completed",false);SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",false);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void RunDecor(){SessionState.SetBool(Key+"Completed",false);SessionState.SetBool(Key+"Supports",false);SessionState.SetBool(Key+"Graph",true);Prepare();WorldReusePlayModeChecks.Run();}
+  public static void RunTeardown(){SessionState.SetBool(Key+"Completed",false);SessionState.SetBool(Key+"Supports",false);Prepare();LoadingPlayModeChecks.RunTeardown();}
   public static IEnumerator MeasureRepeats(RaceDirector director){
    var generation=typeof(RaceDirector).GetProperty("RaceGeneration");
    var signature=typeof(LoadingPlayDriver).GetMethod("Signature",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
