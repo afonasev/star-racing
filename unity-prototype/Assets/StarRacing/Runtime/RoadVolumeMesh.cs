@@ -304,8 +304,45 @@ namespace StarRacingPrototype
 #endif
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
-                mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
-                mesh.RecalculateNormals(); mesh.RecalculateBounds();
+#if UNITY_EDITOR
+                long createTimer;
+#endif
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                mesh.SetVertices(vertices);
+#if UNITY_EDITOR
+                Measured("create.visual.vertices",createTimer);
+#endif
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                mesh.SetUVs(0, uv);
+#if UNITY_EDITOR
+                Measured("create.visual.uv",createTimer);
+#endif
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                mesh.SetTriangles(triangles, 0);
+#if UNITY_EDITOR
+                Measured("create.visual.indices",createTimer);
+#endif
+
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                mesh.RecalculateNormals();
+#if UNITY_EDITOR
+                Measured("create.visual.normals",createTimer);
+#endif
+
+                // SetTriangles already computed bounds, including unused vertices.
+
                 // Add both empty colliders before the visual MeshFilter exists.
                 // Otherwise Unity cooks the entire visual shell on AddComponent,
                 // only to discard it when sharedMesh receives the real inventory.
@@ -318,20 +355,80 @@ namespace StarRacingPrototype
                 go.AddComponent<MeshRenderer>().sharedMaterial = material;
                 yield return null;
                 var bottom=new Mesh {name=BottomName,indexFormat=IndexFormat.UInt32};
-                bottom.SetVertices(vertices);bottom.SetTriangles(triangles.GetRange(0,bottomIndices),0);bottom.RecalculateBounds();
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                bottom.SetVertices(vertices);
+#if UNITY_EDITOR
+                Measured("create.bottom.vertices",createTimer);
+#endif
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                bottom.SetTriangles(triangles,0,bottomIndices,0);
+#if UNITY_EDITOR
+                Measured("create.bottom.indices",createTimer);
+#endif
+
+                // SetTriangles already computed bounds, including unused vertices.
+
                 // Unity 6000.3 warns on this source at 2,481,210 indices (827,070
                 // triangles). Bound the index buffer conservatively, preserving
                 // all geometry while using the supported legacy acceleration structure.
                 if(graph||(authored&&bottomIndices>2097152))bottomCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
                 bottomCollider.sharedMesh = bottom;
+#if UNITY_EDITOR
+                Measured("create.bottom.cook",createTimer);
+#endif
+
                 yield return null;
                 // Preserve the exact exterior triangle boundary at hull seams/tips.
                 // Contained convex supports supply the small-motion CCD contacts.
                 var exterior=new Mesh {name=ExteriorName,indexFormat=IndexFormat.UInt32};
-                exterior.SetVertices(vertices);exterior.SetTriangles(triangles.GetRange(bottomIndices,triangles.Count-bottomIndices),0);exterior.RecalculateBounds();
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                exterior.SetVertices(vertices);
+#if UNITY_EDITOR
+                Measured("create.exterior.vertices",createTimer);
+#endif
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
+                exterior.SetTriangles(triangles,bottomIndices,triangles.Count-bottomIndices,0);
+#if UNITY_EDITOR
+                Measured("create.exterior.indices",createTimer);
+#endif
+
+                // SetTriangles already computed bounds, including unused vertices.
+
                 if(graph||(authored&&triangles.Count-bottomIndices>2097152))exteriorCollider.cookingOptions&=~MeshColliderCookingOptions.UseFastMidphase;
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
                 exteriorCollider.sharedMesh=exterior;
+#if UNITY_EDITOR
+                Measured("create.exterior.cook",createTimer);
+#endif
+
+
+#if UNITY_EDITOR
+                createTimer=BeginMeasurement();
+#endif
                 collisionObject.AddComponent<RoadSupportContact>().InitializeMesh(exteriorCollider,repairable.GetRange(bottomIndices/3,(triangles.Count-bottomIndices)/3).ToArray());
+#if UNITY_EDITOR
+                Measured("create.exterior.contact",createTimer);
+#endif
+
             }
         }
         static int Key(float value) => Mathf.RoundToInt(value / Tolerance);

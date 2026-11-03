@@ -12,7 +12,7 @@ namespace StarRacingPrototype {
  public static class SupportLoadingProfile {
   const BindingFlags Fields=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
   [Serializable] public sealed class Leaf {public string name;public int count;public double seconds,maximum;}
-  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int shellVertices,shellVertexCapacity,shellIndices,shellIndexCapacity,shellUvCapacity,shellRepairCapacity;public int predicateSigns,certifiedSigns,predicateFallbacks;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
+  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int shellVertices,shellVertexCapacity,shellIndices,shellIndexCapacity,shellUvCapacity,shellRepairCapacity;public int predicateSigns,certifiedSigns,predicateFallbacks;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity,submeshIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
   readonly struct Sample {public readonly RoadVolumeMesh.SupportTriangle triangle;public readonly Vector3 apex;public readonly bool fallback;public Sample(RoadVolumeMesh.SupportTriangle t,Vector3 a,bool f){triangle=t;apex=a;fallback=f;}}
   static readonly List<Sample> samples=new List<Sample>();static readonly Dictionary<string,Leaf> leaves=new Dictionary<string,Leaf>();
   static readonly List<(int geometry,int bits,TrackFrame frame)> frames=new List<(int,int,TrackFrame)>();
@@ -87,7 +87,11 @@ namespace StarRacingPrototype {
      var faces=(Array)registry[c.GetInstanceID()];w.Write(faces!=null);if(faces!=null){w.Write(faces.Length);foreach(var face in faces){var type=face.GetType();foreach(string name in new[]{"a","u","v","Normal"})V(w,(Vector3)type.GetField(name,Fields).GetValue(face));w.Write((bool)type.GetField("repairable",Fields).GetValue(face));}}
     }
    });
-   File.WriteAllText(Path.Combine(output,"support-profile.json"),JsonUtility.ToJson(result,true));samples.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();pairs.Clear();groups.Clear();intervals.Clear();
+   result.submeshIdentity=Hash(w=>{
+    var meshes=director.Track.GetComponentsInChildren<MeshFilter>(true).Select(f=>f.sharedMesh).Concat(colliders.Select(c=>c.sharedMesh));
+    foreach(var mesh in meshes){w.Write(mesh!=null);if(mesh==null)continue;w.Write(mesh.name);w.Write(mesh.subMeshCount);for(int i=0;i<mesh.subMeshCount;i++){var s=mesh.GetSubMesh(i);w.Write(s.indexStart);w.Write(s.indexCount);w.Write((int)s.topology);w.Write(s.baseVertex);w.Write(s.firstVertex);w.Write(s.vertexCount);V(w,s.bounds.center);V(w,s.bounds.size);}}
+   });
+   File.WriteAllText(Path.Combine(output,"support-profile.json"),JsonUtility.ToJson(result,true));ShellCreateChecks.CompareWorld(director.Track,output);samples.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();pairs.Clear();groups.Clear();intervals.Clear();
   }
   readonly struct ScalarLevel {
    readonly RoadVolumeMesh.BoundaryScalar edge;readonly float offset;
