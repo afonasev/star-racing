@@ -4,6 +4,15 @@ using StarRacingPrototype.Distribution;
 using Velopack;
 using Velopack.Locators;
 
+var errorLog = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StarRacing", "launcher", "startup.log");
+void Log(Exception error) {
+    try { Directory.CreateDirectory(Path.GetDirectoryName(errorLog)!); File.AppendAllText(errorLog, DateTime.UtcNow.ToString("O") + " " + error + Environment.NewLine); } catch { }
+}
+async Task Notify(string message) {
+    Log(new IOException(message));
+    try { await BootstrapPrompt.Failure(message + "\n\nПодробности для поддержки: " + errorLog); }
+    catch (Exception error) { Log(error); }
+}
 try {
     var content = AppContext.BaseDirectory;
     // macOS self-contained runtimes live below the universal native entry.
@@ -27,6 +36,7 @@ try {
     }
     var state = LauncherState.DirectoryFor(content, config.Track);
     Directory.CreateDirectory(state);
+    errorLog = Path.Combine(state, "launcher.log");
     if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(state, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     // Separate installations never share working confirmations or sequence floors.
     var working = LauncherState.ReadWorking(Path.Combine(state, "working.json"), config.Version);
@@ -54,13 +64,14 @@ try {
             if (source.Release.version != version) throw new InvalidDataException("Выбранная версия изменилась");
             await LauncherRecovery.PrepareAndStart(content, player, args, config, locator, working.DataPath, source);
         },
-        async () => await LauncherState.RunPlayer(player, args, config.Version, state),
-        error => File.AppendAllText(Path.Combine(state, "launcher.log"), DateTime.UtcNow.ToString("O") + " " + error + Environment.NewLine),
+        async () => await LauncherState.RunPlayer(player, args, config.Version, state, Notify),
+        Log,
         error => error is OperationCanceledException ? Task.CompletedTask : BootstrapPrompt.Failure("Обновление не установлено. Будет запущена текущая игра. Проверьте подключение, свободное место и права доступа."));
     return coordinator.ExitCode;
 } catch (Exception error) {
+    Log(error);
     Console.Error.WriteLine(error);
-    try { await BootstrapPrompt.Failure("Не удалось запустить Star Racing. Восстановите приложение с помощью установщика. Пользовательские данные сохранятся."); } catch { }
+    try { await Notify(LauncherErrors.Describe(error)); } catch { }
     return 1;
 }
 

@@ -4,6 +4,13 @@
 #include "Velopack.h"
 extern "C" __declspec(dllexport) DWORD NvOptimusEnablement = 1;
 extern "C" __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+static int StartupFailure(const wchar_t* reason, DWORD code) {
+    wchar_t systemMessage[1024] = {};
+    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, code, 0, systemMessage, 1024, nullptr);
+    std::wstring message = std::wstring(reason) + L"\n\nПопробуйте запустить игру снова. При повторном сбое выполните восстановление через установщик. Пользовательские данные сохранятся.\n\nКод: SR-NATIVE (" + std::to_wstring(code) + L")\n" + systemMessage;
+    MessageBoxW(nullptr, message.c_str(), L"Star Racing — ошибка запуска", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+    return 1;
+}
 using UnityEntry = int (WINAPI *)(HINSTANCE, HINSTANCE, LPWSTR, int);
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR args, int show) {
     // Velopack lifecycle hooks exit here without loading Unity (also during apply).
@@ -12,15 +19,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR args, int sho
     // Readers retain a handle without owning the mutex. An installer creates
     // and owns it only when no game reader exists; game launch waits if installing.
     HANDLE installGate = CreateMutexW(nullptr, FALSE, L"Global\\StarRacingDesktop-Running");
-    if (!installGate) return 1;
+    if (!installGate) return StartupFailure(L"Не удалось проверить, завершена ли установка игры.", GetLastError());
     DWORD admission = WaitForSingleObject(installGate, 1000);
-    if (admission != WAIT_OBJECT_0 && admission != WAIT_ABANDONED) { CloseHandle(installGate); return 1; }
+    if (admission != WAIT_OBJECT_0 && admission != WAIT_ABANDONED) { DWORD code = admission == WAIT_TIMEOUT ? ERROR_BUSY : GetLastError(); CloseHandle(installGate); return StartupFailure(L"Не удалось получить доступ к игре. Дождитесь завершения установки или восстановления.", code); }
     ReleaseMutex(installGate);
     wchar_t path[32768];
     DWORD length = GetModuleFileNameW(nullptr, path, 32768);
-    if (!length || length >= 32768) return 1;
+    if (!length || length >= 32768) return StartupFailure(L"Не удалось определить папку игры.", length ? ERROR_INSUFFICIENT_BUFFER : GetLastError());
     wchar_t* slash = wcsrchr(path, L'\\');
-    if (!slash) return 1;
+    if (!slash) return StartupFailure(L"Некорректный путь к игре.", ERROR_BAD_PATHNAME);
     wcscpy_s(slash + 1, 32768 - (slash + 1 - path), L"UnityPlayer.dll");
     // Historical root stubs still target this Player after an in-app update.
     // Route ordinary starts through the new launcher; its explicitly marked child
@@ -36,7 +43,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR args, int sho
         STARTUPINFOW startup = {}; startup.cb = sizeof(startup);
         PROCESS_INFORMATION process = {};
         if (!CreateProcessW(launcher.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, folder.c_str(), &startup, &process)) {
-            CloseHandle(installGate); return 1;
+            DWORD code = GetLastError(); CloseHandle(installGate); return StartupFailure(L"Не удалось запустить лаунчер Star Racing.", code);
         }
         WaitForSingleObject(process.hProcess, INFINITE);
         DWORD result = 1; GetExitCodeProcess(process.hProcess, &result);
@@ -44,9 +51,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR args, int sho
         return static_cast<int>(result);
     }
     HMODULE unity = LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!unity) { MessageBoxW(nullptr,L"UnityPlayer.dll is missing or cannot be loaded.",L"Star Racing",MB_ICONERROR); return 1; }
+    if (!unity) return StartupFailure(L"Не удалось загрузить игровой движок UnityPlayer.dll. Проверьте целостность установки и карантин антивируса.", GetLastError());
     auto main = reinterpret_cast<UnityEntry>(GetProcAddress(unity,"UnityMain"));
-    int result = main ? main(instance,previous,args,show) : 1;
+    if (!main) return StartupFailure(L"Файл игрового движка несовместим с этой версией игры.", GetLastError());
+    int result = main(instance,previous,args,show);
     CloseHandle(installGate);
     return result;
 }

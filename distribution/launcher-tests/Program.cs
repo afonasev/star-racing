@@ -2,6 +2,8 @@ using Newtonsoft.Json;
 using StarRacingPrototype.Distribution;
 
 int assertions = 0;
+var notices = new List<string>();
+Task Notice(string text) { notices.Add(text); return Task.CompletedTask; }
 void Check(bool value, string message) { assertions++; if (!value) throw new Exception(message); }
 async Task Scenario(bool healthy, string version, bool consent, string failure, string expected) {
     var events = new List<string>(); var runner = new LauncherStartup();
@@ -24,6 +26,10 @@ await Scenario(true,"2.0.0",true,"activate","check,consent:2.0.0,activate:2.0.0,
 var root = Path.Combine(Path.GetTempPath(), "star-racing-launcher-checks-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try {
+    Check(LauncherErrors.Describe(new System.ComponentModel.Win32Exception(5)).Contains("Windows запретила"), "access denied explains Windows refusal");
+    Check(LauncherErrors.Describe(new System.ComponentModel.Win32Exception(193)).Contains("64-разрядная"), "invalid executable explains platform mismatch");
+    Check(LauncherErrors.Describe(new FileNotFoundException()).Contains("восстановление"), "missing file explains repair");
+    Check(LauncherErrors.Describe(new InvalidDataException()).Contains("Конфигурация"), "invalid installation explains configuration");
     var ready = new LauncherReady { Version="1.0.0", Token="token", DataPath=root, Pid=123, Started=456 };
     Check(LauncherState.Matches(ready,"1.0.0","token",123,456),"exact readiness accepted");
     Check(!LauncherState.Matches(ready,"2.0.0","token",123,456),"wrong version rejected");
@@ -44,11 +50,28 @@ try {
         File.WriteAllText(player,"#!/usr/bin/env python3\nimport os,sys,json,time\npid=os.getpid()\n# macOS process start wall time is bounded by the parent identity tolerance.\npayload=dict(Version=os.environ['STAR_RACING_LAUNCHER_VERSION'],Token=os.environ['STAR_RACING_LAUNCHER_TOKEN'],Pid=pid,Started=621355968000000000+int(time.time()*10000000),DataPath=os.path.dirname(__file__))\nwith open(os.environ['STAR_RACING_LAUNCHER_READY'],'w') as f: json.dump(payload,f)\nwith open(os.path.join(os.path.dirname(__file__),'argv.json'),'w') as f:json.dump(sys.argv[1:],f)\ntime.sleep(0.4)\nsys.exit(23)\n");
         File.SetUnixFileMode(player,UnixFileMode.UserRead|UnixFileMode.UserWrite|UnixFileMode.UserExecute);
         File.Delete(working);
-        Check(await LauncherState.RunPlayer(player,new[]{"-noaudio","-muted","argument with spaces","quote\"value"},"1.0.0",root)==23,"real child exit status");
+        Check(await LauncherState.RunPlayer(player,new[]{"-noaudio","-muted","argument with spaces","quote\"value"},"1.0.0",root,Notice)==23,"real child exit status");
         Check(File.ReadAllText(Path.Combine(root,"argv.json")).Contains("argument with spaces"),"argv passed without shell splitting");
         Check(File.ReadAllText(Path.Combine(root,"argv.json")).Contains("-muted"),"mute argument retained");
         Check(LauncherState.ReadWorking(working,"1.0.0")!=null,"real child readiness stored");
         Check(!Directory.EnumerateFiles(root,"ready-*.json").Any(),"one-time health files cleaned");
+        Check(notices.Count==1 && notices[0].Contains("SR-PLAYER-EXIT (0x00000017)"), "abnormal exit after readiness is visible with exact code");
+        notices.Clear();
+        var originalPlayer = File.ReadAllText(player);
+        File.WriteAllText(player,"#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n");
+        Check(await LauncherState.RunPlayer(player,Array.Empty<string>(),"1.0.0",root,Notice)==0,"clean early exit preserves status");
+        Check(notices.Count==1 && notices[0].Contains("до готовности меню"),"early exit zero cannot silently pass");
+        notices.Clear();
+        File.WriteAllText(player,"#!/usr/bin/env python3\nimport time\ntime.sleep(0.6)\n");
+        Check(await LauncherState.RunPlayer(player,Array.Empty<string>(),"1.0.0",root,Notice,TimeSpan.Zero)==0,"timeout does not kill or replace live child");
+        Check(notices.Count(x=>x.Contains("SR-START-TIMEOUT"))==1,"missing readiness reported once while child lives");
+        Check(notices.Count(x=>x.Contains("SR-PLAYER-EXIT"))==1,"unconfirmed exit still reported after timeout");
+        notices.Clear();
+        File.WriteAllText(player,"#!/usr/bin/env python3\nimport os,json,time\npid=os.getpid()\npayload=dict(Version=os.environ['STAR_RACING_LAUNCHER_VERSION'],Token=os.environ['STAR_RACING_LAUNCHER_TOKEN'],Pid=pid,Started=621355968000000000+int(time.time()*10000000),DataPath=os.path.dirname(__file__))\nwith open(os.environ['STAR_RACING_LAUNCHER_READY'],'w') as f: json.dump(payload,f)\ntime.sleep(0.4)\n");
+        Check(await LauncherState.RunPlayer(player,Array.Empty<string>(),"1.0.0",root,Notice)==0,"healthy child exits normally");
+        Check(notices.Count==0,"healthy startup and exit show no error");
+        // Restore the original readiness/exit fixture for the existing recovery checks.
+        File.WriteAllText(player,originalPlayer);
         using var supervisor=System.Diagnostics.Process.GetCurrentProcess();
         var record=new RecoveryRecord {
             state="pending-health",appId="tech.afonasev.star-racing.osx-universal",channel="osx-universal",track="production",
@@ -61,7 +84,7 @@ try {
         try {
             Environment.SetEnvironmentVariable("STAR_RACING_RECOVERY_LAUNCHER",journal);
             Environment.SetEnvironmentVariable("STAR_RACING_RECOVERY_TOKEN",record.token);
-            Check(await LauncherState.RunPlayer(player,new[]{"-noaudio","-muted"},"1.0.0",root)==23,"recovery launches actual child through launcher");
+            Check(await LauncherState.RunPlayer(player,new[]{"-noaudio","-muted"},"1.0.0",root,Notice)==23,"recovery launches actual child through launcher");
             var child=RecoveryTransaction.Child(journal,record);
             Check(child.pid>0&&child.pid!=record.launcherPid,"recovery receives the distinct Player PID");
             Check(child.token==record.token&&child.version==record.targetVersion,"child handshake binds token and target");

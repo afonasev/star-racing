@@ -45,7 +45,9 @@ public static class LauncherState {
         ready != null && ready.Version == version && ready.Token == token && ready.Pid == pid
         && Math.Abs(ready.Started - started) <= TimeSpan.TicksPerSecond && Path.IsPathRooted(ready.DataPath) && Directory.Exists(ready.DataPath);
 
-    public static async Task<int> RunPlayer(string player, string[] arguments, string version, string state) {
+    public static async Task<int> RunPlayer(string player, string[] arguments, string version, string state,
+        Func<string, Task> notify = null, TimeSpan? startupTimeout = null) {
+        notify ??= BootstrapPrompt.Failure;
         var readyPath = Path.Combine(state, "ready-" + Guid.NewGuid().ToString("N") + ".json");
         var token = Guid.NewGuid().ToString("N");
         var start = new ProcessStartInfo(player) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(player) };
@@ -75,22 +77,33 @@ public static class LauncherState {
                 pid=game.Id,started=started,launcherPid=launcher.Id,launcherStarted=launcher.StartTime.ToUniversalTime().Ticks,version=version,token=recovery.token
             }));
         }
-        var deadline = DateTime.UtcNow.AddMinutes(2);
+        var deadline = Stopwatch.StartNew();
+        var timeout = startupTimeout ?? TimeSpan.FromMinutes(2);
+        bool confirmed = false, warned = false;
         try {
-            while (!game.HasExited && DateTime.UtcNow < deadline) {
+            while (!game.HasExited) {
                 if (File.Exists(readyPath)) {
                     try {
                         var ready = JsonConvert.DeserializeObject<LauncherReady>(File.ReadAllText(readyPath));
                         if (Matches(ready, version, token, game.Id, started)) {
                             RecoveryTransaction.Atomic(Path.Combine(state, "working.json"), JsonConvert.SerializeObject(new LauncherWorking { Version = version, DataPath = ready.DataPath }));
+                            confirmed = true;
                             break;
                         }
                     } catch (Exception error) when (error is IOException || error is JsonException) { Console.Error.WriteLine(error.Message); }
+                }
+                if (!warned && deadline.Elapsed >= timeout) {
+                    warned = true;
+                    await notify("Игра запущена, но за две минуты не подтвердила готовность меню. Возможно, загрузка зависла.\n\nЕсли окно игры появилось, дождитесь загрузки. Если окна нет, закройте Star Racing через диспетчер задач и попробуйте снова. При повторном сбое передайте это сообщение в поддержку.\n\nКод: SR-START-TIMEOUT");
                 }
                 await Task.Delay(100);
             }
             // Timeout is an observation, never permission to kill or replace a live game.
             await game.WaitForExitAsync();
+            if (!confirmed || game.ExitCode != 0)
+                await notify((confirmed ? "Игра завершилась с ошибкой." : "Игра завершилась до готовности меню.") +
+                    "\n\nПопробуйте запустить игру снова. Если сбой повторяется, выполните восстановление через установщик. Пользовательские данные сохранятся." +
+                    $"\n\nКод: SR-PLAYER-EXIT (0x{game.ExitCode:X8})");
             return game.ExitCode;
         } finally { if (File.Exists(readyPath)) File.Delete(readyPath); }
     }

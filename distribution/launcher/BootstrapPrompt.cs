@@ -6,7 +6,7 @@ public static class BootstrapPrompt
 {
     public static async Task Failure(string message)
     {
-        if (OperatingSystem.IsWindows()) { ShowError(IntPtr.Zero,message,"Star Racing",0x10);return; }
+        if (OperatingSystem.IsWindows()) { ShowError(IntPtr.Zero,message,"Star Racing — ошибка запуска",0x10 | 0x10000);return; }
         if (!OperatingSystem.IsMacOS()) return;
         var start=new ProcessStartInfo("/usr/bin/osascript") { UseShellExecute=false,RedirectStandardOutput=true,RedirectStandardError=true };
         start.ArgumentList.Add("-e");
