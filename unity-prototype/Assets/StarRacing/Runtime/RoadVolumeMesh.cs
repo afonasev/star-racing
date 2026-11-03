@@ -48,20 +48,80 @@ namespace StarRacingPrototype
             public static int DotSign(ExactPoint a,ExactPoint b)=>(a.x*b.x+a.y*b.y+a.z*b.z).Sign;
         }
 
+        // Certified sign filter for finite binary32 coordinates. Each expanded
+        // triple product sees at most 8 binary64 roundings; 64u*permanent bounds
+        // the total error (u=2^-53). Uncertain signs always use the exact path.
+        readonly struct ApexSignFilter
+        {
+            readonly double nx,ny,nz,sx,sy,sz;
+            public ApexSignFilter(Vector3 a,Vector3 b,Vector3 c) {
+                double bx=(double)b.x-a.x,by=(double)b.y-a.y,bz=(double)b.z-a.z;
+                double cx=(double)c.x-a.x,cy=(double)c.y-a.y,cz=(double)c.z-a.z;
+                double p0=by*cz,p1=bz*cy,p2=bz*cx,p3=bx*cz,p4=bx*cy,p5=by*cx;
+                nx=p0-p1;ny=p2-p3;nz=p4-p5;
+                sx=System.Math.Abs(p0)+System.Math.Abs(p1);sy=System.Math.Abs(p2)+System.Math.Abs(p3);sz=System.Math.Abs(p4)+System.Math.Abs(p5);
+            }
+            public bool TrySign(Vector3 point,Vector3 origin,out int sign) {
+                double dx=(double)point.x-origin.x,dy=(double)point.y-origin.y,dz=(double)point.z-origin.z;
+                double det=(dx*nx+dy*ny)+dz*nz;
+                double permanent=(System.Math.Abs(dx)*sx+System.Math.Abs(dy)*sy)+System.Math.Abs(dz)*sz;
+                const double roundoff=1.0/140737488355328.0; // 64u = 2^-47, not a geometric tolerance.
+                double bound=roundoff*permanent;
+                if(!double.IsNaN(det)&&!double.IsInfinity(det)&&!double.IsNaN(bound)&&!double.IsInfinity(bound)) {
+                    if(det>bound){sign=1;return true;}
+                    if(det< -bound){sign=-1;return true;}
+                }
+                sign=0;return false;
+            }
+        }
+#if UNITY_EDITOR
+        public static System.Action<SupportCell,int,Vector3,int,bool> ExactSignObserved;
+        public static bool EditorApexSign(Vector3 a,Vector3 b,Vector3 c,Vector3 origin,Vector3 point,out int sign)=>new ApexSignFilter(a,b,c).TrySign(point,origin,out sign);
+#endif
         public sealed class SupportCell
         {
             public readonly int id;public readonly RoadFace face;public readonly Vector3[] corners;public readonly int[] triangles;public readonly int[][] sides;public readonly bool[] sections;
             ExactPoint[] exactCorners,exactNormals;
+            Vector3[] filterCorners;ApexSignFilter[] signFilters;
             public bool ContainsApex(Vector3 apex)
             {
+#if UNITY_EDITOR
+                long containsTimer=BeginMeasurement();try {
+#endif
                 if(exactCorners==null) {
-                    exactCorners=new ExactPoint[8];for(int i=0;i<8;i++)exactCorners[i]=new ExactPoint(corners[i]);
+#if UNITY_EDITOR
+                    long initTimer=BeginMeasurement();
+#endif
+                    exactCorners=new ExactPoint[8];var coordinates=new Vector3[8];
+                    for(int i=0;i<8;i++){var value=corners[i];exactCorners[i]=new ExactPoint(value);coordinates[i]=value;}
                     exactNormals=new ExactPoint[triangles.Length/3];
                     for(int i=0;i<exactNormals.Length;i++)exactNormals[i]=ExactPoint.Cross(exactCorners[triangles[i*3+1]]-exactCorners[triangles[i*3]],exactCorners[triangles[i*3+2]]-exactCorners[triangles[i*3]]);
+#if UNITY_EDITOR
+                    long filterTimer=BeginMeasurement();
+#endif
+                    var filters=new ApexSignFilter[exactNormals.Length];
+                    for(int i=0;i<filters.Length;i++)filters[i]=new ApexSignFilter(coordinates[triangles[i*3]],coordinates[triangles[i*3+1]],coordinates[triangles[i*3+2]]);
+                    // Enable only after successful original exact initialization.
+                    // A failed call retains the original partial exact-cache state.
+                    filterCorners=coordinates;signFilters=filters;
+#if UNITY_EDITOR
+                    Measured("exact.filter-init",filterTimer);
+                    Measured("exact.owner-init",initTimer);
+#endif
                 }
                 var point=new ExactPoint(apex);
-                for(int i=0;i<exactNormals.Length;i++)if(ExactPoint.DotSign(point-exactCorners[triangles[i*3]],exactNormals[i])>0)return false;
+                for(int i=0;i<exactNormals.Length;i++) {
+                    int sign=0;bool certified=signFilters!=null&&signFilters[i].TrySign(apex,filterCorners[triangles[i*3]],out sign);
+                    if(!certified)sign=ExactPoint.DotSign(point-exactCorners[triangles[i*3]],exactNormals[i]);
+#if UNITY_EDITOR
+                    ExactSignObserved?.Invoke(this,i,apex,sign,certified);
+#endif
+                    if(sign>0)return false;
+                }
                 return true;
+#if UNITY_EDITOR
+                }finally{Measured("exact.contains-total",containsTimer);}
+#endif
             }
             public SupportCell(int id,RoadFace face,Vector3[] top,Vector3[] normals,int[] perimeter,IList<int> topTriangles,int topOffset)
             {
@@ -128,7 +188,13 @@ namespace StarRacingPrototype
                 double nx=by*cz-bz*cy,ny=bz*cx-bx*cz,nz=bx*cy-by*cx;
                 double inset=(side>=0?.02:.5)/System.Math.Sqrt(nx*nx+ny*ny+nz*nz);
                 Vector3 apex=new Vector3((float)(diagonal.x-nx*inset),(float)(diagonal.y-ny*inset),(float)(diagonal.z-nz*inset));
+#if UNITY_EDITOR
+                long triangleTimer=BeginMeasurement();
+#endif
                 var origin=new ExactPoint(a);var normal=ExactPoint.Cross(new ExactPoint(b)-origin,new ExactPoint(c)-origin);
+#if UNITY_EDITOR
+                Measured("exact.triangle",triangleTimer);
+#endif
                 fallback=!owner.ContainsApex(apex) || ExactPoint.DotSign(new ExactPoint(apex)-origin,normal)>=0;
                 // This exact candidate is already certified. Rechecking it at
                 // the bottom repeats the same containment/orientation proof.

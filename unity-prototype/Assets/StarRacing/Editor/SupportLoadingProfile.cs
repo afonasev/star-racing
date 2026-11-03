@@ -12,7 +12,7 @@ namespace StarRacingPrototype {
  public static class SupportLoadingProfile {
   const BindingFlags Fields=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
   [Serializable] public sealed class Leaf {public string name;public int count;public double seconds,maximum;}
-  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
+  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int predicateSigns,certifiedSigns,predicateFallbacks;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
   readonly struct Sample {public readonly RoadVolumeMesh.SupportTriangle triangle;public readonly Vector3 apex;public readonly bool fallback;public Sample(RoadVolumeMesh.SupportTriangle t,Vector3 a,bool f){triangle=t;apex=a;fallback=f;}}
   static readonly List<Sample> samples=new List<Sample>();static readonly Dictionary<string,Leaf> leaves=new Dictionary<string,Leaf>();
   static readonly List<(int geometry,int bits,TrackFrame frame)> frames=new List<(int,int,TrackFrame)>();
@@ -24,6 +24,7 @@ namespace StarRacingPrototype {
   static readonly List<BufferSample> buffers=new List<BufferSample>();
   static Stopwatch clock;static long allocated;
   public static void Begin(){
+   RoadVolumeMesh.ExactSignObserved=null;
    samples.Clear();leaves.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();
    groups.Clear();pairs.Clear();intervals.Clear();
    RoadVolumeMesh.WorkMeasured=(name,time)=>{if(!leaves.TryGetValue(name,out var leaf))leaves[name]=leaf=new Leaf{name=name};leaf.count++;leaf.seconds+=time;leaf.maximum=Math.Max(leaf.maximum,time);};
@@ -35,7 +36,7 @@ namespace StarRacingPrototype {
    if(Environment.GetEnvironmentVariable("STAR_RACING_RAW_BUFFERS")!="0")IndependentTrackMesh.GeometryObserved=(kind,offset,v,n,uv,t,s,f)=>buffers.Add(new BufferSample{kind=kind,offset=offset,vertices=v,normals=n,uv=uv,triangles=t,samples=s,faces=f});
    allocated=GC.GetAllocatedBytesForCurrentThread();clock=Stopwatch.StartNew();
   }
-  public static void Abort(){RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;RoadVolumeMesh.FrameObserved=null;RoadVolumeMesh.GroupObserved=null;RoadVolumeMesh.IntervalObserved=null;IndependentTrackMesh.GeometryObserved=null;}
+  public static void Abort(){RoadVolumeMesh.ExactSignObserved=null;RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;RoadVolumeMesh.FrameObserved=null;RoadVolumeMesh.GroupObserved=null;RoadVolumeMesh.IntervalObserved=null;IndependentTrackMesh.GeometryObserved=null;}
   static string Hash(Action<BinaryWriter> write){using(var sha=SHA256.Create())using(var stream=new CryptoStream(Stream.Null,sha,CryptoStreamMode.Write))using(var buffer=new BufferedStream(stream,65536))using(var writer=new BinaryWriter(buffer)){write(writer);writer.Flush();buffer.Flush();stream.FlushFinalBlock();return BitConverter.ToString(sha.Hash).Replace("-","");}}
   static void V(BinaryWriter w,Vector3 v){w.Write(v.x);w.Write(v.y);w.Write(v.z);}
   static bool Bits(Vector3 a,Vector3 b)=>Enumerable.Range(0,3).All(i=>BitConverter.SingleToInt32Bits(a[i])==BitConverter.SingleToInt32Bits(b[i]));
@@ -57,7 +58,15 @@ namespace StarRacingPrototype {
    foreach(var pair in pairs)if(ReferenceQuads(new[]{pair.a,pair.b})!=0)throw new Exception("Exact pair would emit baseline geometry");
    result.cancelledIntervals=intervals.Count;
    foreach(var pair in intervals)if(ReferenceQuads(new[]{pair.a,pair.b},pair.from,pair.to)!=0)throw new Exception("Exact interval would emit baseline geometry");
-   foreach(var sample in samples){var expected=Reference(sample.triangle,out var fallback,out int phase);if(!Bits(expected,sample.apex)||fallback!=sample.fallback)throw new Exception("Independent old apex/fallback oracle mismatch");if(phase==0)result.initial++;else if(phase==1)result.inward++;else result.centroid++;}
+   RoadVolumeMesh.ExactSignObserved=(owner,i,p,sign,certified)=>{
+    var cache=oracle[owner];int expected=Point.Dot(new Point(p)-cache.corners[owner.triangles[i*3]],cache.normals[i]);
+    if(sign!=expected)throw new Exception("Certified native owner face differs from independent integer sign");
+    result.predicateSigns++;if(certified)result.certifiedSigns++;else result.predicateFallbacks++;
+   };
+   try{foreach(var sample in samples){var expected=Reference(sample.triangle,out var fallback,out int phase);if(!Bits(expected,sample.apex)||fallback!=sample.fallback)throw new Exception("Independent old apex/fallback oracle mismatch");if(phase==0)result.initial++;else if(phase==1)result.inward++;else result.centroid++;
+    if(!sample.triangle.owner.ContainsApex(sample.apex))throw new Exception("Selected apex lost owner containment");
+   }}finally{RoadVolumeMesh.ExactSignObserved=null;}
+
    result.ownerIdentity=Hash(w=>{var seen=new HashSet<RoadVolumeMesh.SupportCell>();foreach(var sample in samples){var owner=sample.triangle.owner;if(!seen.Add(owner))continue;w.Write(owner.id);foreach(var v in owner.corners)V(w,v);w.Write(owner.triangles.Length);foreach(int i in owner.triangles)w.Write(i);foreach(var side in owner.sides){w.Write(side.Length);foreach(int i in side)w.Write(i);}foreach(bool section in owner.sections)w.Write(section);}});
    result.apexIdentity=Hash(w=>{foreach(var s in samples){w.Write(s.triangle.owner.id);w.Write(s.triangle.side);V(w,s.triangle.a);V(w,s.triangle.b);V(w,s.triangle.c);V(w,s.triangle.diagonal);V(w,s.apex);w.Write(s.fallback);}});
    if(buffers.Count>0)result.bufferIdentity=Hash(w=>{foreach(var row in buffers){w.Write(row.kind);V(w,row.offset);w.Write(row.vertices.Count);foreach(var v in row.vertices)V(w,v);w.Write(row.normals.Count);foreach(var v in row.normals)V(w,v);w.Write(row.uv.Count);foreach(var v in row.uv){w.Write(v.x);w.Write(v.y);}w.Write(row.triangles.Count);foreach(int i in row.triangles)w.Write(i);w.Write(row.samples.Count);foreach(int i in row.samples)w.Write(i);w.Write(row.faces.Count);foreach(var f in row.faces){w.Write(f.sample);w.Write(f.geometryId);w.Write(f.arm);w.Write(f.startPort);w.Write(f.endPort);w.Write(f.leftBoundaryTag);w.Write(f.rightBoundaryTag);w.Write(f.startSeamOffset);w.Write(f.endSeamOffset);w.Write(f.canonicalFlatPorts);w.Write(f.quad);w.Write(f.startDistance);w.Write(f.endDistance);w.Write(f.leftStart);w.Write(f.rightStart);w.Write(f.leftEnd);w.Write(f.rightEnd);w.Write(f.ramp);}}});buffers.Clear();
