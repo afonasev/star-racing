@@ -9,7 +9,7 @@ namespace StarRacingPrototype {
  // Blockout revision: the normal is authored with the path, including the station underside.
  public static class AuthoredOrbitalRiftCourse {
   public const string Id="orbital-rift",Title="Орбитальный разлом",Family="authored-orbital-rift";
-  public const int Revision=1,PresentationRevision=1;
+  public const int Revision=1,PresentationRevision=2;
   public const uint ScenerySeed=271026;
   public static readonly Vector3 StationCenter=new Vector3(0,400,4400);
   public static readonly string[] Sections={"Край кратера","Горная выработка","Выход в пустоту","Каменный архипелаг","Посадка на корпус","Обход станции","Нижние доки","Корона"};

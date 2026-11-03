@@ -13,6 +13,7 @@ namespace StarRacingPrototype {
    AuthoredCourseChecks.Run();
    var config=Config();Check(config.Validate(out _),"selection valid");
    var course=CourseSource.Generate(config,"space-station");var d=course.Single;
+   Check(course.GeometryIdentity=="4d348f0ec79066bbdf353266dc080c8e2388c188983fdc00cdf5c57898c2d0af","blockout road bytes preserved");
    Check(d.composition.Length==8&&AuthoredCloudCityCourse.Validate(d).Length==0,"eight valid sections");
    Check(d.samples.Where(s=>s.segmentIndex==5).Min(s=>s.normal.y)<-.95,"real station underside");
    Check(d.samples.Where(s=>s.segmentIndex==5).Max(s=>s.normal.x)>.95,"real station side");
@@ -27,6 +28,12 @@ namespace StarRacingPrototype {
     replay.Verify(CourseSource.Generate(Config(),"space-station"),track);
     env.Build(track.Route,track.transform);Check(env.Plan.orbital&&!env.Plan.authored&&env.Root.GetComponentsInChildren<Collider>().Length==0,"dedicated render-only world");
     Check(EnvironmentPlan.Create(track.Route,77).presentationHash==EnvironmentPlan.Create(track.Route,54321).presentationHash,"presentation independent of race seed");
+    var lights=env.Root.GetComponentsInChildren<Light>();Check(lights.Length>=10&&lights.Length<=24,"bounded real local lights");
+    Check(lights.All(l=>l.type==LightType.Point&&l.shadows==LightShadows.None),"local lights do not add shadow maps");
+    var renderers=env.Root.GetComponentsInChildren<MeshRenderer>();var materials=renderers.Select(r=>r.sharedMaterial).Distinct().ToArray();
+    Check(materials.Any(m=>m.shader.name=="StarRacing/OrbitalStone"),"world scale stone material");
+    Check(materials.Count(m=>m.IsKeywordEnabled("_NORMALMAP"))>=3,"normal mapped material variety");
+    File.WriteAllText(Path.Combine(AuthoredCourseChecks.Output,"art-inventory.txt"),$"renderers={renderers.Length} materials={materials.Length} lights={lights.Length} triangles={env.Root.GetComponentsInChildren<MeshFilter>().Sum(f=>(long)f.sharedMesh.triangles.Length/3)}\n");
     // Actual rendered meshes must not cut the car/camera corridor. Temporary test collider only.
     merged=new Mesh{indexFormat=IndexFormat.UInt32};merged.CombineMeshes(env.Root.GetComponentsInChildren<MeshFilter>().Select(f=>new CombineInstance{mesh=f.sharedMesh,transform=f.transform.localToWorldMatrix}).ToArray(),true,true);
     probe=new GameObject("QA environment corridor probe");var collider=probe.AddComponent<MeshCollider>();collider.sharedMesh=merged;Physics.SyncTransforms();

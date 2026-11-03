@@ -213,9 +213,10 @@ namespace StarRacingPrototype {
 
         public static RaceLightingProfile OrbitalRift() {
             var p=Create(AuthoredOrbitalRiftCourse.ScenerySeed,"space-station");
-            p.sunRotation=Quaternion.Euler(32,-42,0);p.sunPosition=-(p.sunRotation*Vector3.forward)*900;
-            p.sunColor=new Color(1,.90f,.76f);p.ambientColor=new Color(.47f,.56f,.69f);
-            p.ambientEquatorColor=new Color(.35f,.42f,.54f);p.ambientGroundColor=new Color(.27f,.32f,.43f);p.fogDensity=0;return p;
+            p.sunRotation=Quaternion.Euler(34,-52,0);p.sunPosition=-(p.sunRotation*Vector3.forward)*900;
+            p.sunColor=new Color(1,.91f,.78f);p.sunIntensity=2.15f;
+            p.ambientColor=new Color(.30f,.38f,.51f);p.ambientEquatorColor=new Color(.19f,.26f,.38f);p.ambientGroundColor=new Color(.13f,.18f,.29f);
+            p.reflectionIntensity=.5f;p.fogDensity=0;return p;
         }
         public static RaceLightingProfile AuthoredCity() {
             var p=Create(AuthoredCloudCityCourse.ScenerySeed,"cloud-city");

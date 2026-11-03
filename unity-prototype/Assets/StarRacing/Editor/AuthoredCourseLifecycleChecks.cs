@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -32,6 +33,11 @@ namespace StarRacingPrototype {
     menu.StartSelected();while(menu.Loading)yield return null;
     if(!director.Started||director.Course.IsAuthored!=authored||(director.Course.CourseId??"")!=id||director.Course.Settings.theme!=(authored?AuthoredCourses.Theme(id):mode))throw new Exception("Wrong world after menu selection: "+mode+" "+menu.Error);
     director.SetPaused(true);director.AppliedConfig.replay.Verify(director.Course,director.Track);
+    // Local lamps belong to their world and must disappear when another course loads.
+    if(AuthoredCourseChecks.Orbital){
+     int localLights=UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None).Count(l=>l.gameObject.name.StartsWith("Orbital light "));
+     if(mode=="orbital"?localLights!=24:localLights!=0)throw new Exception("Stale or missing orbital lights after "+mode+": "+localLights);
+    }
     if(mode==(AuthoredCourseChecks.Orbital?"orbital":"authored")){
      if(identity!=null&&identity!=director.Course.GeometryIdentity)throw new Exception("Authored identity changed on return");identity=director.Course.GeometryIdentity;
      var chase=director.CameraFor(0);

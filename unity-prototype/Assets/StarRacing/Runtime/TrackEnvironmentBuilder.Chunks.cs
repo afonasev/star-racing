@@ -3,7 +3,7 @@ using UnityEngine;
 namespace StarRacingPrototype {
  public sealed partial class TrackEnvironmentBuilder {
   readonly List<(MeshRenderer renderer,bool enabled)> sectionSources=new List<(MeshRenderer,bool)>();
-  bool RoadSections=>PartitionRoadVisuals&&Plan.theme=="cloud-city";
+  bool RoadSections=>PartitionRoadVisuals&&(Plan.theme=="cloud-city"||Plan.orbital);
   void PublishRoadVisual(string name,Mesh visual,Material material){
    if(!RoadSections){meshes.Add(visual);AddRoadSection(name,visual,material,null);return;}
    try{foreach(var mesh in VisualMeshChunks.Create(visual)){meshes.Add(mesh);AddRoadSection(name,mesh,material,null);}}
