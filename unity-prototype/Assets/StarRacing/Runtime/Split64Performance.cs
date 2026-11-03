@@ -21,7 +21,7 @@ namespace StarRacingPrototype {
    public int gc0; public RaceCpuDiagnostics.Frame cpu;
   }
   [Serializable] public sealed class Report {
-   public string device,gpu,course,geometry,config,settings,failure;
+   public string device,gpu,course,geometry,config,settings,failure,liveStartUtc,liveEndUtc;
    public string limitation="Exclusive local Player, four stock Rookie virtual-pad drivers and 60 ordinary AI. Frozen windows are render-only. Missing GPU data is unavailable. No human acceptance. Native physical pixels, maximum menu effects, SMAA; uncapped timing.";
    public bool completed,usesBasis;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
    public long stopwatchFrequency;public List<Sample> samples=new List<Sample>(8192);
@@ -65,14 +65,14 @@ namespace StarRacingPrototype {
    revisions=director.Cars.Select(c=>c.PositionRevision).ToArray();
    batches=ProfilerRecorder.StartNew(ProfilerCategory.Render,"Batches Count",1);triangles=ProfilerRecorder.StartNew(ProfilerCategory.Render,"Triangles Count",1);
    while(director.Session.Phase==RacePhase.Countdown||director.Session.Elapsed<2)yield return null;
-   RaceCpuDiagnostics.Start();Begin("live");double sim=RacePhysicsStepper.SimulatedSeconds;long ticks=RacePhysicsStepper.NativeSteps;start=wall.Elapsed.TotalSeconds;
+   report.liveStartUtc=DateTime.UtcNow.ToString("O");UnityEngine.Debug.Log("SPLIT64_LIVE_BEGIN "+report.liveStartUtc);RaceCpuDiagnostics.Start();Begin("live");double sim=RacePhysicsStepper.SimulatedSeconds;long ticks=RacePhysicsStepper.NativeSteps;start=wall.Elapsed.TotalSeconds;
    while(director.Session.Elapsed<32){
     CheckConditions();if(director.Paused)throw new Exception("Unexpected pause in live window");
     if(wall.Elapsed.TotalSeconds-start>120)throw new Exception("Live simulation failed to advance 30 seconds within 120 wall seconds");
     for(int i=0;i<64;i++)if(director.Cars[i].PositionRevision!=revisions[i]){report.recoveries++;revisions[i]=director.Cars[i].PositionRevision;}
     yield return null;
    }
-   collect=false;RaceCpuDiagnostics.Stop();
+   collect=false;RaceCpuDiagnostics.Stop();report.liveEndUtc=DateTime.UtcNow.ToString("O");
    if(RacePhysicsStepper.SimulatedSeconds-sim<29||RacePhysicsStepper.NativeSteps<=ticks)throw new Exception("Simulation clock/ticks invalid");
    ScreenCapture.CaptureScreenshot(Path.Combine(output,"live-end.png"));yield return new WaitForSecondsRealtime(.3f);
    // Release virtual driving buttons before showing the pause menu: nitro uses
