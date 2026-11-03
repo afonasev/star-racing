@@ -141,6 +141,7 @@ namespace StarRacingPrototype
             public float Height(float at)=>Mathf.Lerp(heightA,heightB,Mathf.InverseLerp(from,to,at));
         }
         public static System.Action<int,BoundaryScalar,BoundaryScalar,bool> GroupObserved;
+        public static System.Action<BoundaryScalar,BoundaryScalar,float,float> IntervalObserved;
         static BoundaryScalar Scalar(Edge e)=>new BoundaryScalar(e.from,e.to,e.heightA,e.heightB,e.forward);
         public static bool EditorPairCancels(params BoundaryScalar[] values){var edges=new List<Edge>();foreach(var e in values)edges.Add(new Edge{from=e.from,to=e.to,heightA=e.heightA,heightB=e.heightB,forward=e.forward});return CancelsExactly(edges);}
 #endif
@@ -329,7 +330,7 @@ namespace StarRacingPrototype
 #if UNITY_EDITOR
                 long timer=BeginMeasurement();
 #endif
-                CloseGroup(shell,group);
+                CloseGroup(shell,group,true);
 #if UNITY_EDITOR
                 Measured("core.sections",timer);
 #endif
@@ -414,7 +415,7 @@ namespace StarRacingPrototype
                 throw;
             }
         }
-        static void CloseGroup(Geometry shell, List<Edge> edges)
+        static void CloseGroup(Geometry shell, List<Edge> edges,bool section=false)
         {
 #if UNITY_EDITOR
             if(GroupObserved!=null)GroupObserved(edges.Count,edges.Count>0?Scalar(edges[0]):default,edges.Count>1?Scalar(edges[1]):default,CancelsExactly(edges));
@@ -423,14 +424,37 @@ namespace StarRacingPrototype
             // exact finite case; partial overlaps and larger groups keep the
             // original ordered clipping path and its tolerance arithmetic.
             if(CancelsExactly(edges))return;
+#if UNITY_EDITOR
+            long phaseTimer=section?BeginMeasurement():0;
+#endif
             var cuts=new List<float>();
             foreach(var edge in edges) { cuts.Add(edge.from); cuts.Add(edge.to); }
             cuts.Sort();
+#if UNITY_EDITOR
+            Measured("section.cuts",phaseTimer);
+#endif
             for(int i=0;i<cuts.Count-1;i++)
             {
                 float from=cuts[i],to=cuts[i+1]; if(to-from<Tolerance)continue;
                 float mid=(from+to)*.5f;
+#if UNITY_EDITOR
+                phaseTimer=section?BeginMeasurement():0;
+#endif
                 var active=edges.FindAll(e=>e.from<mid && e.to>mid);
+#if UNITY_EDITOR
+                Measured("section.active",phaseTimer);
+                if(section&&IntervalObserved!=null&&CancelsExactly(active))IntervalObserved(Scalar(active[0]),Scalar(active[1]),from,to);
+                phaseTimer=section?BeginMeasurement():0;
+#endif
+                // A large group can reduce to the same exact opposing pair in
+                // one cut interval. Its identical bands emit nothing here too;
+                // preserve the original cut order and clipping for every other case.
+                if(CancelsExactly(active)) {
+#if UNITY_EDITOR
+                    Measured("section.clip",phaseTimer);
+#endif
+                    continue;
+                }
                 foreach(var edge in active)
                 {
                     var others=active.FindAll(e=>e.forward!=edge.forward);
@@ -447,6 +471,9 @@ namespace StarRacingPrototype
                     slices.Sort();
                     for(int s=0;s<slices.Count-1;s++) EmitBands(shell,edge,others,slices[s],slices[s+1]);
                 }
+#if UNITY_EDITOR
+                Measured("section.clip",phaseTimer);
+#endif
             }
         }
         static void EmitBands(Geometry shell, Edge edge, List<Edge> others, float from, float to)
