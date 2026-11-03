@@ -23,7 +23,7 @@ namespace StarRacingPrototype {
   [Serializable] public sealed class Report {
    public string device,gpu,course,geometry,config,settings,failure,liveStartUtc,liveEndUtc;
    public string limitation="Exclusive local Player, four stock Rookie virtual-pad drivers and 60 ordinary AI. Frozen windows are render-only. Missing GPU data is unavailable. No human acceptance. Native physical pixels, maximum menu effects, SMAA; uncapped timing.";
-   public bool completed,usesBasis,fullRoute;public int finishedHumans,finishedEntrants;public float raceLength;public float[] humanProgress;public bool[] routeSections;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
+   public bool completed,usesBasis,fullRoute,pairSnapshotOriginal;public int finishedHumans,finishedEntrants;public float raceLength;public float[] humanProgress;public bool[] routeSections;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
    public long stopwatchFrequency;public List<Sample> samples=new List<Sample>(8192);
   }
   readonly Stopwatch wall=Stopwatch.StartNew();readonly FrameTiming[] timings=new FrameTiming[1];
@@ -38,7 +38,7 @@ namespace StarRacingPrototype {
    if(!Path.IsPathRooted(path)||Directory.Exists(path))throw new IOException("Fresh absolute output required");
    if(!AuthoredCourses.Known(course,1))throw new ArgumentException("Known authored course required");
    Directory.CreateDirectory(path);var host=new GameObject("Opt-in split64 benchmark");DontDestroyOnLoad(host);
-   var p=host.AddComponent<Split64Performance>();p.output=path;p.report.course=course;p.report.fullRoute=Array.IndexOf(args,"--split64-full-route")>=0;
+   var p=host.AddComponent<Split64Performance>();p.output=path;p.report.course=course;p.report.pairSnapshotOriginal=RacePhysicsStepper.DiagnosticOriginalSnapshot;p.report.fullRoute=Array.IndexOf(args,"--split64-full-route")>=0;
    p.pads=Enumerable.Range(0,4).Select(_=>InputSystem.AddDevice<Gamepad>()).ToArray();
    UserSettingsStore.Replace(new UserSettings{frameLimit=0,antiAliasing=2,stickDeadzone=0,display=new DisplaySettings{fullscreen=true,width=3456,height=2234,vSync=false}});
    new LocalRaceConfig{humans=4,entrants=64,courseId=course,courseRevision=1,theme=AuthoredCourses.Theme(course),rails="full",seed="77",devices=p.pads.Select(SessionControllers.Slot).ToArray()}.Save();

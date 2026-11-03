@@ -42,13 +42,22 @@ namespace StarRacingPrototype
         static readonly List<MagneticVehicle> vehicles=new List<MagneticVehicle>(64);
         static RacePhysicsStepper owner;
         // Read-only while PhysX invokes callbacks on its worker threads.
-        readonly struct ContactVehicle {
+        public readonly struct ContactVehicle {
             public readonly Vector3 Velocity,Angular,Center,Normal;public readonly bool Eligible;public readonly float Radius;public readonly int Seat;
             public ContactVehicle(MagneticVehicle car){Seat=car.Seat;Velocity=car.Body.linearVelocity;Angular=car.Body.angularVelocity;Center=car.Body.worldCenterOfMass;Normal=car.Frame.normal;Radius=car.ContactRadius;Eligible=!car.IsGhosting&&!car.IsFalling&&!car.FinishedCoasting;}
+#if UNITY_EDITOR
+            public ContactVehicle(Vector3 velocity,Vector3 center,float radius,int seat,bool eligible=true){Velocity=velocity;Angular=Normal=Vector3.zero;Center=center;Radius=radius;Seat=seat;Eligible=eligible;}
+#endif
             public Vector3 At(Vector3 point)=>Velocity+Vector3.Cross(Angular,point-Center);
         }
         static readonly Dictionary<int,ContactVehicle> contactVehicles=new Dictionary<int,ContactVehicle>(64);
-        static readonly List<ContactVehicle> contactSnapshot=new List<ContactVehicle>(64);
+        static ContactVehicle[] contactSnapshot=new ContactVehicle[64];
+        static int contactSnapshotCount;
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+        // Diagnostic control only; normal shipping builds contain only the candidate path.
+        public static bool DiagnosticOriginalSnapshot=Array.IndexOf(Environment.GetCommandLineArgs(),"--pair-snapshot-original")>=0;
+        static readonly List<ContactVehicle> originalContactSnapshot=new List<ContactVehicle>(64);
+#endif
         static bool contactHooked;
         static readonly Dictionary<int,Vector3> roadProtected=new Dictionary<int,Vector3>(64);
         static readonly HashSet<int> barriers=new HashSet<int>();
@@ -111,7 +120,13 @@ namespace StarRacingPrototype
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetRegistry(){
             Physics.ContactModifyEvent-=ModifyRearContacts;Physics.ContactModifyEventCCD-=ModifyCcdContacts;
-            contactHooked=false;contactSnapshot.Clear();contactVehicles.Clear();roadProtected.Clear();barriers.Clear();barrierTracks.Clear();vehicles.Clear();owner=null;NativeSteps=0;SimulatedSeconds=0;
+#if UNITY_EDITOR
+            EditorPairInputs=null;
+#endif
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+            originalContactSnapshot.Clear();
+#endif
+            contactHooked=false;contactSnapshotCount=0;contactVehicles.Clear();roadProtected.Clear();barriers.Clear();barrierTracks.Clear();vehicles.Clear();owner=null;NativeSteps=0;SimulatedSeconds=0;
         }
         internal static void Register(MagneticVehicle vehicle){
             if(!contactHooked){Physics.ContactModifyEvent+=ModifyRearContacts;Physics.ContactModifyEventCCD+=ModifyCcdContacts;contactHooked=true;}
@@ -131,7 +146,32 @@ namespace StarRacingPrototype
             foreach(var vehicle in vehicles)if(vehicle!=null)vehicle.ClearPreparedForces();
             Physics.simulationMode=previousMode;owner=null;owns=false;
         }
-        static float PairStepLimit(IReadOnlyList<ContactVehicle> cars,float remaining,float limit,out int firstSeat,out int secondSeat) {
+        static float PairStepLimit(ContactVehicle[] cars,int count,float remaining,float limit,out int firstSeat,out int secondSeat) {
+            firstSeat=secondSeat=-1;
+            for(int i=0;i<count;i++) {
+                ref readonly var a=ref cars[i];if(!a.Eligible)continue;
+                for(int j=i+1;j<count;j++) {
+                    ref readonly var b=ref cars[j];if(!b.Eligible)continue;
+                    var velocity=b.Velocity-a.Velocity;float speedSquared=velocity.sqrMagnitude;
+                    if(speedSquared<=144f)continue;
+                    var delta=b.Center-a.Center;float distanceSquared=delta.sqrMagnitude;
+                    float speed=Mathf.Sqrt(speedSquared),reach=a.Radius+b.Radius+speed*remaining+.04f;
+                    if(distanceSquared>reach*reach)continue;
+                    if(distanceSquared>1e-10f&&-Vector3.Dot(delta,velocity)<=12f*Mathf.Sqrt(distanceSquared))continue;
+                    // Resolution only: a predicted contact never changes handling or emits an impact.
+                    float candidate=.02f/speed;
+                    if(candidate<limit){firstSeat=a.Seat;secondSeat=b.Seat;}
+                    limit=Mathf.Min(limit,candidate);
+                }
+            }return limit;
+        }
+#if UNITY_EDITOR
+        public static Action<ContactVehicle[],int,float,float> EditorPairInputs;
+        public static float EditorPairLimit(ContactVehicle[] cars,int count,float remaining,float limit,out int first,out int second)=>PairStepLimit(cars,count,remaining,limit,out first,out second);
+        public static float EditorOriginalPairLimit(IReadOnlyList<ContactVehicle> cars,float remaining,float limit,out int firstSeat,out int secondSeat)=>OriginalPairStepLimit(cars,remaining,limit,out firstSeat,out secondSeat);
+#endif
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+        static float OriginalPairStepLimit(IReadOnlyList<ContactVehicle> cars,float remaining,float limit,out int firstSeat,out int secondSeat) {
             firstSeat=secondSeat=-1;
             for(int i=0;i<cars.Count;i++) {
                 var a=cars[i];if(!a.Eligible)continue;
@@ -150,6 +190,7 @@ namespace StarRacingPrototype
                 }
             }return limit;
         }
+#endif
         static bool Live(MagneticVehicle car)=>car!=null&&car.gameObject.activeInHierarchy&&car.Body!=null&&!car.Body.isKinematic;
         public static void Simulate(float duration,Action afterSubstep=null)=>SimulatePrepared(vehicles,duration,Substeps,afterSubstep);
         public static void SimulatePrepared(IReadOnlyList<MagneticVehicle> cars,float duration,int count=Substeps,Action afterSubstep=null)
@@ -179,6 +220,12 @@ namespace StarRacingPrototype
                 }
             }
             }
+            if(contactSnapshot.Length<cars.Count)Array.Resize(ref contactSnapshot,cars.Count);
+            bool original=false;
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+            original=DiagnosticOriginalSnapshot;
+            if(original&&originalContactSnapshot.Capacity<cars.Count)originalContactSnapshot.Capacity=cars.Count;
+#endif
             float step=duration/count;
             try {
                 for(int part=0;part<count;part++) {
@@ -191,13 +238,33 @@ namespace StarRacingPrototype
                             if(candidate<limit)limitingSeat=cars[i].Seat;
                             limit=Mathf.Min(limit,candidate);
                         }
-                        contactVehicles.Clear();contactSnapshot.Clear();
+                        contactVehicles.Clear();contactSnapshotCount=0;
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+                        if(original)originalContactSnapshot.Clear();
+#endif
                         using(RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Snapshot))using(snapshotProfile.Auto())for(int i=0;i<cars.Count;i++)if(Live(cars[i])) {
                             var car=cars[i];var snapshot=new ContactVehicle(car);
-                            contactVehicles.Add(car.Body.GetInstanceID(),snapshot);contactSnapshot.Add(snapshot);
+                            contactVehicles.Add(car.Body.GetInstanceID(),snapshot);
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+                            if(original)originalContactSnapshot.Add(snapshot);
+#endif
+#if UNITY_EDITOR
+                            contactSnapshot[contactSnapshotCount++]=snapshot;
+#else
+                            if(!original)contactSnapshot[contactSnapshotCount++]=snapshot;
+#endif
                         }
+#if UNITY_EDITOR
+                        EditorPairInputs?.Invoke(contactSnapshot,contactSnapshotCount,remaining,limit);
+#endif
                         int pairSeat,otherSeat;
-                        using(RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Pairs))using(pairProfile.Auto())limit=PairStepLimit(contactSnapshot,remaining,limit,out pairSeat,out otherSeat);
+                        using(RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Pairs))using(pairProfile.Auto()) {
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+                            if(original)limit=OriginalPairStepLimit(originalContactSnapshot,remaining,limit,out pairSeat,out otherSeat);
+                            else
+#endif
+                            limit=PairStepLimit(contactSnapshot,contactSnapshotCount,remaining,limit,out pairSeat,out otherSeat);
+                        }
                         RaceCpuDiagnostics.AdaptiveSlice(remaining,limit,pairSeat>=0?pairSeat:limitingSeat,otherSeat,pairSeat>=0);
                         // Equal slices of the remainder avoid a tiny trailing interval.
                         float slice=remaining/Mathf.Max(1,Mathf.CeilToInt(remaining/limit));
@@ -210,7 +277,11 @@ namespace StarRacingPrototype
                 // Publish once per controller tick, never once per native substep.
                 using(RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Presentation))
                 for(int i=0;i<cars.Count;i++)if(cars[i]!=null && cars[i].gameObject.activeInHierarchy)cars[i].CapturePresentation(Time.fixedTimeAsDouble,duration);
-            }finally {using var cleanupScope=RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Cleanup);contactSnapshot.Clear();contactVehicles.Clear();roadProtected.Clear();barriers.Clear();barrierTracks.Clear();for(int i=0;i<cars.Count;i++)if(cars[i]!=null)cars[i].ClearPreparedForces();}
+            }finally {
+#if UNITY_EDITOR || STAR_RACING_TEST_CHANNEL
+                if(original)originalContactSnapshot.Clear();
+#endif
+                using var cleanupScope=RaceCpuDiagnostics.Measure(RaceCpuDiagnostics.Section.Cleanup);contactSnapshotCount=0;contactVehicles.Clear();roadProtected.Clear();barriers.Clear();barrierTracks.Clear();for(int i=0;i<cars.Count;i++)if(cars[i]!=null)cars[i].ClearPreparedForces();}
         }
     }
 }
