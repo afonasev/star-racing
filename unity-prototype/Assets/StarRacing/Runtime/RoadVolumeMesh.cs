@@ -258,19 +258,27 @@ namespace StarRacingPrototype
         sealed class Geometry
         {
             readonly System.Action<SupportTriangle> observer;PendingSupportCell emittingOwner;int emittingSide,emittingStart;Vector2[] emittingCoordinates;Vector3 emittingDiagonal;
-            public Geometry(System.Action<SupportTriangle> observer) {this.observer=observer;}
-            readonly List<Vector3> vertices = new List<Vector3>();
-            readonly List<Vector2> uv = new List<Vector2>();
-            readonly List<int> triangles = new List<int>();
-            readonly List<bool> repairable = new List<bool>();
+            public Geometry(System.Action<SupportTriangle> observer,int quads) {
+                this.observer=observer;
+                // A soft initial estimate, never an emission limit. Small inputs
+                // avoid a fixed large reserve; all lists retain ordinary growth.
+                long estimate=(long)quads+quads/8+System.Math.Min(quads,64);
+                int reserve=(int)System.Math.Min(estimate,int.MaxValue/6);
+                vertices=new List<Vector3>(reserve*4);uv=new List<Vector2>(reserve*4);
+                triangles=new List<int>(reserve*6);repairable=new List<bool>(reserve*2);
+            }
+            readonly List<Vector3> vertices;
+            readonly List<Vector2> uv;
+            readonly List<int> triangles;
+            readonly List<bool> repairable;
             public int IndexCount=>triangles.Count;
             public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward,PendingSupportCell owner=null,int side=-1,Vector2[] coordinates=null)
             {
                 emittingOwner=owner;emittingSide=side;emittingStart=vertices.Count;emittingCoordinates=coordinates;if(owner!=null)emittingDiagonal=(b+c)*.5f;
                 int i = vertices.Count;
-                vertices.AddRange(new[] { a, b, c, d });
+                vertices.Add(a);vertices.Add(b);vertices.Add(c);vertices.Add(d);
                 float length = Vector3.Distance(a, b) / 4f, width = Vector3.Distance(a, c) / 4f;
-                uv.AddRange(new[] { Vector2.zero, new Vector2(length, 0), new Vector2(0, width), new Vector2(length, width) });
+                uv.Add(Vector2.zero);uv.Add(new Vector2(length,0));uv.Add(new Vector2(0,width));uv.Add(new Vector2(length,width));
                 // A trimmed band can close at its first endpoint. Its first
                 // triangle then has zero area; use both triangle normals so
                 // the surviving triangle still determines the exterior winding.
@@ -283,7 +291,7 @@ namespace StarRacingPrototype
             {
                 if(Vector3.Cross(vertices[b]-vertices[a],vertices[c]-vertices[a]).sqrMagnitude>1e-12f)
                 {
-                    triangles.AddRange(new[]{a,b,c});
+                    triangles.Add(a);triangles.Add(b);triangles.Add(c);
                     var owner=emittingOwner?.Get();
                     repairable.Add(owner!=null&&emittingSide>=0&&!owner.sections[emittingSide]);
                     if(owner!=null)observer?.Invoke(new SupportTriangle(owner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
@@ -291,6 +299,9 @@ namespace StarRacingPrototype
             }
             public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false,bool renderOnly=false,bool authored=false)
             {
+#if UNITY_EDITOR
+                ShellBuffersObserved?.Invoke(vertices.Count,vertices.Capacity,triangles.Count,triangles.Capacity,uv.Capacity,repairable.Capacity);
+#endif
                 var go = new GameObject(MeshName); go.transform.SetParent(parent, false);
                 var mesh = new Mesh { name = MeshName, indexFormat = IndexFormat.UInt32 };
                 mesh.SetVertices(vertices); mesh.SetUVs(0, uv); mesh.SetTriangles(triangles, 0);
@@ -341,7 +352,13 @@ namespace StarRacingPrototype
         {
             var budget=new LoadingWork.Budget();
             var supports=!renderOnly&&observer==null?new List<SupportTriangle>():null;
-            var shell = new Geometry(renderOnly?null:observer??(triangle=>supports.Add(triangle)));
+#if UNITY_EDITOR
+            long reserveTimer=BeginMeasurement();
+#endif
+            var shell = new Geometry(renderOnly?null:observer??(triangle=>supports.Add(triangle)),top.Count/4);
+#if UNITY_EDITOR
+            Measured("core.reserve",reserveTimer);
+#endif
             // Section edges may have different subdivisions on their two sides.
             var sections = new Dictionary<(int,int), List<Edge>>();
             // Emission uses the same .5m longitudinal stations for ramps and lanes.
@@ -370,15 +387,14 @@ namespace StarRacingPrototype
 #endif
                 var points = new[] { top[at], top[at+1], top[at+2], top[at+3] };
                 var down = new[] { start.normal, end.normal, start.normal, end.normal };
-                var distances = new[] { face.startDistance, face.endDistance, face.startDistance, face.endDistance };
-                var laterals = new[] { face.leftStart, face.leftEnd, face.rightStart, face.rightEnd };
-                var heights = new float[4];
-                for (int i=0;i<4;i++)
-                {
-                    var frame = i%2==0 ? start : end;
-                    heights[i] = Vector3.Dot(points[i] - (frame.position-frame.right*laterals[i]), frame.normal);
-                    if(face.canonicalFlatPorts && (i%2==0?face.startPort:face.endPort)!=0)heights[i]=0;
-                }
+                float height0=Vector3.Dot(points[0] - (start.position-start.right*face.leftStart), start.normal);
+                if(face.canonicalFlatPorts && face.startPort!=0)height0=0;
+                float height1=Vector3.Dot(points[1] - (end.position-end.right*face.leftEnd), end.normal);
+                if(face.canonicalFlatPorts && face.endPort!=0)height1=0;
+                float height2=Vector3.Dot(points[2] - (start.position-start.right*face.rightStart), start.normal);
+                if(face.canonicalFlatPorts && face.startPort!=0)height2=0;
+                float height3=Vector3.Dot(points[3] - (end.position-end.right*face.rightEnd), end.normal);
+                if(face.canonicalFlatPorts && face.endPort!=0)height3=0;
                 shell.Quad(points[0]-down[0]*Thickness, points[1]-down[1]*Thickness,
                     points[2]-down[2]*Thickness, points[3]-down[3]*Thickness, -start.normal);
                 bool positive = Vector3.Dot(Vector3.Cross(points[1]-points[0],points[2]-points[0]), start.normal) > 0;
@@ -393,11 +409,14 @@ namespace StarRacingPrototype
                 for (int i=0;i<4;i++)
                 {
                     int a=perimeter[i], b=perimeter[i+1];
-                    bool section = distances[a] == distances[b];
-                    float x=section?laterals[a]:distances[a], y=section?laterals[b]:distances[b];
+                    float distanceA=(a&1)==0?face.startDistance:face.endDistance,distanceB=(b&1)==0?face.startDistance:face.endDistance;
+                    float lateralA=a<2?((a&1)==0?face.leftStart:face.leftEnd):((a&1)==0?face.rightStart:face.rightEnd);
+                    float lateralB=b<2?((b&1)==0?face.leftStart:face.leftEnd):((b&1)==0?face.rightStart:face.rightEnd);
+                    bool section=distanceA==distanceB;
+                    float x=section?lateralA:distanceA,y=section?lateralB:distanceB;
                     int port=0;float seamOffset=0;
                     if(section) {
-                        bool first=distances[a]==face.startDistance;
+                        bool first=distanceA==face.startDistance;
                         port=first?face.startPort:face.endPort;
                         seamOffset=first?face.startSeamOffset:face.endSeamOffset;
                         if(port!=0){x+=seamOffset;y+=seamOffset;}
@@ -405,18 +424,18 @@ namespace StarRacingPrototype
                     if (Mathf.Abs(y-x)<Tolerance) continue;
                     int low=x<y?a:b, high=x<y?b:a;
                     var edge = new Edge { a=points[low], b=points[high], downA=down[low], downB=down[high],
-                        from=Mathf.Min(x,y),to=Mathf.Max(x,y),heightA=heights[low],heightB=heights[high],forward=x<y,owner=owner,side=i };
+                        from=Mathf.Min(x,y),to=Mathf.Max(x,y),heightA=low==0?height0:low==1?height1:low==2?height2:height3,heightB=high==0?height0:high==1?height1:high==2?height2:height3,forward=x<y,owner=owner,side=i };
                     if (section)
                     {
-                        var key=port!=0?(-port-1,0):(face.geometryId,Key(distances[a]));
+                        var key=port!=0?(-port-1,0):(face.geometryId,Key(distanceA));
                         if (!sections.TryGetValue(key,out var group)) sections[key]=group=new List<Edge>();
                         group.Add(edge);
                     }
                     else
                     {
                         int boundaryTag=(low<2 && high<2)?face.leftBoundaryTag:face.rightBoundaryTag;
-                        var key=(face.geometryId,boundaryTag,Key(distances[low]),Key(laterals[low]),Key(distances[high]),Key(laterals[high]));
-                        if (!along.TryGetValue(key,out var group)) along[key]=group=new List<Edge>();
+                        var key=(face.geometryId,boundaryTag,Key(x<y?distanceA:distanceB),Key(x<y?lateralA:lateralB),Key(x<y?distanceB:distanceA),Key(x<y?lateralB:lateralA));
+                        if (!along.TryGetValue(key,out var group)) along[key]=group=new List<Edge>(2);
                         group.Add(edge);
                     }
                 }
@@ -453,6 +472,7 @@ namespace StarRacingPrototype
             if(supports!=null)foreach(var triangle in supports){CreateSupport(parent,triangle);if(budget.Due){yield return null;budget.Restart();}}
         }
 #if UNITY_EDITOR
+        public static System.Action<int,int,int,int,int,int> ShellBuffersObserved;
         public static System.Action<string,double> WorkMeasured;
         public static System.Action<SupportTriangle,Vector3,bool> SupportSelected;
         public static System.Action<RoadFace,float,TrackFrame> FrameObserved;

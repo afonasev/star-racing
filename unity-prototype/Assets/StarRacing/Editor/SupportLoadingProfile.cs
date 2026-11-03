@@ -12,7 +12,7 @@ namespace StarRacingPrototype {
  public static class SupportLoadingProfile {
   const BindingFlags Fields=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
   [Serializable] public sealed class Leaf {public string name;public int count;public double seconds,maximum;}
-  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int predicateSigns,certifiedSigns,predicateFallbacks;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
+  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int shellVertices,shellVertexCapacity,shellIndices,shellIndexCapacity,shellUvCapacity,shellRepairCapacity;public int predicateSigns,certifiedSigns,predicateFallbacks;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates,cancelledIntervals,geometryBuffers;public string inventory,apexIdentity,frameIdentity,config,preparationIdentity,visualIdentity,bufferIdentity,ownerIdentity;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
   readonly struct Sample {public readonly RoadVolumeMesh.SupportTriangle triangle;public readonly Vector3 apex;public readonly bool fallback;public Sample(RoadVolumeMesh.SupportTriangle t,Vector3 a,bool f){triangle=t;apex=a;fallback=f;}}
   static readonly List<Sample> samples=new List<Sample>();static readonly Dictionary<string,Leaf> leaves=new Dictionary<string,Leaf>();
   static readonly List<(int geometry,int bits,TrackFrame frame)> frames=new List<(int,int,TrackFrame)>();
@@ -22,8 +22,10 @@ namespace StarRacingPrototype {
   static readonly List<(RoadVolumeMesh.BoundaryScalar a,RoadVolumeMesh.BoundaryScalar b,float from,float to)> intervals=new List<(RoadVolumeMesh.BoundaryScalar,RoadVolumeMesh.BoundaryScalar,float,float)>();
   sealed class BufferSample {public string kind;public Vector3 offset;public System.Collections.Generic.IReadOnlyList<Vector3> vertices,normals;public System.Collections.Generic.IReadOnlyList<Vector2> uv;public System.Collections.Generic.IReadOnlyList<int> triangles,samples;public System.Collections.Generic.IReadOnlyList<RoadFace> faces;}
   static readonly List<BufferSample> buffers=new List<BufferSample>();
-  static Stopwatch clock;static long allocated;
+  static Stopwatch clock;static long allocated;static readonly int[] shellStats=new int[6];
   public static void Begin(){
+   Array.Clear(shellStats,0,shellStats.Length);
+   RoadVolumeMesh.ShellBuffersObserved=(v,vc,t,tc,uv,r)=>{shellStats[0]=v;shellStats[1]=vc;shellStats[2]=t;shellStats[3]=tc;shellStats[4]=uv;shellStats[5]=r;};
    RoadVolumeMesh.ExactSignObserved=null;
    samples.Clear();leaves.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();
    groups.Clear();pairs.Clear();intervals.Clear();
@@ -36,7 +38,7 @@ namespace StarRacingPrototype {
    if(Environment.GetEnvironmentVariable("STAR_RACING_RAW_BUFFERS")!="0")IndependentTrackMesh.GeometryObserved=(kind,offset,v,n,uv,t,s,f)=>buffers.Add(new BufferSample{kind=kind,offset=offset,vertices=v,normals=n,uv=uv,triangles=t,samples=s,faces=f});
    allocated=GC.GetAllocatedBytesForCurrentThread();clock=Stopwatch.StartNew();
   }
-  public static void Abort(){RoadVolumeMesh.ExactSignObserved=null;RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;RoadVolumeMesh.FrameObserved=null;RoadVolumeMesh.GroupObserved=null;RoadVolumeMesh.IntervalObserved=null;IndependentTrackMesh.GeometryObserved=null;}
+  public static void Abort(){RoadVolumeMesh.ShellBuffersObserved=null;RoadVolumeMesh.ExactSignObserved=null;RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;RoadVolumeMesh.FrameObserved=null;RoadVolumeMesh.GroupObserved=null;RoadVolumeMesh.IntervalObserved=null;IndependentTrackMesh.GeometryObserved=null;}
   static string Hash(Action<BinaryWriter> write){using(var sha=SHA256.Create())using(var stream=new CryptoStream(Stream.Null,sha,CryptoStreamMode.Write))using(var buffer=new BufferedStream(stream,65536))using(var writer=new BinaryWriter(buffer)){write(writer);writer.Flush();buffer.Flush();stream.FlushFinalBlock();return BitConverter.ToString(sha.Hash).Replace("-","");}}
   static void V(BinaryWriter w,Vector3 v){w.Write(v.x);w.Write(v.y);w.Write(v.z);}
   static bool Bits(Vector3 a,Vector3 b)=>Enumerable.Range(0,3).All(i=>BitConverter.SingleToInt32Bits(a[i])==BitConverter.SingleToInt32Bits(b[i]));
@@ -48,7 +50,7 @@ namespace StarRacingPrototype {
     foreach(var car in director.Cars){V(w,car.Body.position);var q=car.Body.rotation;w.Write(q.x);w.Write(q.y);w.Write(q.z);w.Write(q.w);V(w,car.Body.linearVelocity);V(w,car.Body.angularVelocity);w.Write(car.PositionRevision);}
    });
    var colliders=director.Track.GetComponentsInChildren<MeshCollider>(true);
-   var result=new Report{geometryBuffers=buffers.Count,preparationIdentity=resultPreparationIdentity,coldSeconds=clock.Elapsed.TotalSeconds,allocatedBytes=bytes,allocationCounterAvailable=bytes>0,supports=samples.Count,config=JsonUtility.ToJson(director.AppliedConfig),leaves=leaves.Values.OrderBy(x=>x.name).ToArray()};
+   var result=new Report{shellVertices=shellStats[0],shellVertexCapacity=shellStats[1],shellIndices=shellStats[2],shellIndexCapacity=shellStats[3],shellUvCapacity=shellStats[4],shellRepairCapacity=shellStats[5],geometryBuffers=buffers.Count,preparationIdentity=resultPreparationIdentity,coldSeconds=clock.Elapsed.TotalSeconds,allocatedBytes=bytes,allocationCounterAvailable=bytes>0,supports=samples.Count,config=JsonUtility.ToJson(director.AppliedConfig),leaves=leaves.Values.OrderBy(x=>x.name).ToArray()};
    var supportLeaves=leaves.Values.Where(l=>l.name.StartsWith("support.")).ToArray();
    if(samples.Count==0||colliders.Count(c=>c.name==RoadVolumeMesh.SupportName)!=samples.Count||supportLeaves.Length!=5||supportLeaves.Any(l=>l.count!=samples.Count))throw new Exception("Support stage counts/inventory disagree");
    result.frameQueries=frames.Count;result.uniqueFrames=frameKeys.Count;
