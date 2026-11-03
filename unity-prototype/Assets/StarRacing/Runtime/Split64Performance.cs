@@ -18,12 +18,12 @@ namespace StarRacingPrototype {
   [Serializable] public sealed class Sample {
    public string window; public double wall,ms,simulation,session,cpuMs,gpuMs;
    public bool focused,paused,timingAvailable,gpuAvailable; public float timeScale;public long steps,triangles,batches;
-   public int gc0; public RaceCpuDiagnostics.Frame cpu;
+   public float minHumanProgress,maxHumanProgress;public int gc0; public RaceCpuDiagnostics.Frame cpu;
   }
   [Serializable] public sealed class Report {
    public string device,gpu,course,geometry,config,settings,failure,liveStartUtc,liveEndUtc;
    public string limitation="Exclusive local Player, four stock Rookie virtual-pad drivers and 60 ordinary AI. Frozen windows are render-only. Missing GPU data is unavailable. No human acceptance. Native physical pixels, maximum menu effects, SMAA; uncapped timing.";
-   public bool completed,usesBasis;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
+   public bool completed,usesBasis,fullRoute;public int finishedHumans,finishedEntrants;public float raceLength;public float[] humanProgress;public bool[] routeSections;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
    public long stopwatchFrequency;public List<Sample> samples=new List<Sample>(8192);
   }
   readonly Stopwatch wall=Stopwatch.StartNew();readonly FrameTiming[] timings=new FrameTiming[1];
@@ -38,7 +38,7 @@ namespace StarRacingPrototype {
    if(!Path.IsPathRooted(path)||Directory.Exists(path))throw new IOException("Fresh absolute output required");
    if(!AuthoredCourses.Known(course,1))throw new ArgumentException("Known authored course required");
    Directory.CreateDirectory(path);var host=new GameObject("Opt-in split64 benchmark");DontDestroyOnLoad(host);
-   var p=host.AddComponent<Split64Performance>();p.output=path;p.report.course=course;
+   var p=host.AddComponent<Split64Performance>();p.output=path;p.report.course=course;p.report.fullRoute=Array.IndexOf(args,"--split64-full-route")>=0;
    p.pads=Enumerable.Range(0,4).Select(_=>InputSystem.AddDevice<Gamepad>()).ToArray();
    UserSettingsStore.Replace(new UserSettings{frameLimit=0,antiAliasing=2,stickDeadzone=0,display=new DisplaySettings{fullscreen=true,width=3456,height=2234,vSync=false}});
    new LocalRaceConfig{humans=4,entrants=64,courseId=course,courseRevision=1,theme=AuthoredCourses.Theme(course),rails="full",seed="77",devices=p.pads.Select(SessionControllers.Slot).ToArray()}.Save();
@@ -64,17 +64,35 @@ namespace StarRacingPrototype {
    pilots=Enumerable.Range(0,4).Select(i=>new AiDriver(i,DriverProfile.Rookie,(uint)(77+i*31),director.Balance)).ToArray();world=new AiWorldSnapshot(64);
    revisions=director.Cars.Select(c=>c.PositionRevision).ToArray();
    batches=ProfilerRecorder.StartNew(ProfilerCategory.Render,"Batches Count",1);triangles=ProfilerRecorder.StartNew(ProfilerCategory.Render,"Triangles Count",1);
-   while(director.Session.Phase==RacePhase.Countdown||director.Session.Elapsed<2)yield return null;
+   while(director.Session.Phase==RacePhase.Countdown||(!report.fullRoute&&director.Session.Elapsed<2))yield return null;
    report.liveStartUtc=DateTime.UtcNow.ToString("O");UnityEngine.Debug.Log("SPLIT64_LIVE_BEGIN "+report.liveStartUtc);RaceCpuDiagnostics.Start();Begin("live");double sim=RacePhysicsStepper.SimulatedSeconds;long ticks=RacePhysicsStepper.NativeSteps;start=wall.Elapsed.TotalSeconds;
+   if(report.fullRoute){
+    report.raceLength=director.Session.RaceLength;report.routeSections=new bool[director.Course.Single.composition.Length];
+    while(!director.Session.Racers.Take(4).All(r=>r.Finished)){
+     CheckConditions();if(director.Paused)throw new Exception("Unexpected pause in full route");
+     if(director.Session.Phase==RacePhase.Results)throw new Exception("Results before all four local racers finished");
+     if(wall.Elapsed.TotalSeconds-start>480)throw new Exception("Full route failed to finish four local racers within 480 wall seconds");
+     for(int i=0;i<64;i++)if(director.Cars[i].PositionRevision!=revisions[i]){report.recoveries++;revisions[i]=director.Cars[i].PositionRevision;}
+     int section=0;var parts=director.Course.Single.composition;
+     for(int i=1;i<parts.Length;i++)if(director.Cars[0].Distance>=30+parts[i].startIndex*5)section=i;
+     window="full-route-"+section;
+     if(!report.routeSections[section]){report.routeSections[section]=true;ScreenCapture.CaptureScreenshot(Path.Combine(output,"route-section-"+section+".png"));Save();}
+     yield return null;
+    }
+   }else{
    while(director.Session.Elapsed<32){
     CheckConditions();if(director.Paused)throw new Exception("Unexpected pause in live window");
     if(wall.Elapsed.TotalSeconds-start>120)throw new Exception("Live simulation failed to advance 30 seconds within 120 wall seconds");
     for(int i=0;i<64;i++)if(director.Cars[i].PositionRevision!=revisions[i]){report.recoveries++;revisions[i]=director.Cars[i].PositionRevision;}
     yield return null;
    }
+   }
    collect=false;RaceCpuDiagnostics.Stop();report.liveEndUtc=DateTime.UtcNow.ToString("O");
-   if(RacePhysicsStepper.SimulatedSeconds-sim<29||RacePhysicsStepper.NativeSteps<=ticks)throw new Exception("Simulation clock/ticks invalid");
+   if(report.fullRoute){
+    if(RacePhysicsStepper.SimulatedSeconds<=sim||RacePhysicsStepper.NativeSteps<=ticks||!director.Session.Racers.Take(4).All(r=>r.Finished))throw new Exception("Full route finish/clock/ticks invalid");
+   }else if(RacePhysicsStepper.SimulatedSeconds-sim<29||RacePhysicsStepper.NativeSteps<=ticks)throw new Exception("Simulation clock/ticks invalid");
    ScreenCapture.CaptureScreenshot(Path.Combine(output,"live-end.png"));yield return new WaitForSecondsRealtime(.3f);
+   if(report.fullRoute){report.completed=true;yield break;}
    // Release virtual driving buttons before showing the pause menu: nitro uses
    // the same East button that resumes that menu. Drain its edge outside timing.
    pilots=null;foreach(var pad in pads)InputSystem.QueueStateEvent(pad,new GamepadState());
@@ -112,9 +130,13 @@ namespace StarRacingPrototype {
    if(!collect||finished)return;double now=wall.Elapsed.TotalSeconds;
    var s=new Sample{window=window,wall=now,ms=(now-previous)*1000,simulation=RacePhysicsStepper.SimulatedSeconds,session=director.Session.Elapsed,steps=RacePhysicsStepper.NativeSteps,focused=Application.isFocused,paused=director.Paused,timeScale=Time.timeScale,gc0=GC.CollectionCount(0),cpu=RaceCpuDiagnostics.Enabled?RaceCpuDiagnostics.Drain():default,batches=batches.Valid?batches.LastValue:-1,triangles=triangles.Valid?triangles.LastValue:-1};previous=now;
    if(FrameTimingManager.IsFeatureEnabled()){FrameTimingManager.CaptureFrameTimings();if(FrameTimingManager.GetLatestTimings(1,timings)>0&&timings[0].frameStartTimestamp>lastTiming){lastTiming=timings[0].frameStartTimestamp;s.timingAvailable=true;s.cpuMs=timings[0].cpuFrameTime;s.gpuMs=timings[0].gpuFrameTime;s.gpuAvailable=s.gpuMs>0;}}
+   if(report.fullRoute){s.minHumanProgress=director.Session.Racers.Take(4).Min(r=>r.Progress);s.maxHumanProgress=director.Session.Racers.Take(4).Max(r=>r.Progress);}
    report.samples.Add(s);
   }
-  void Save()=>File.WriteAllText(Path.Combine(output,"performance.json"),JsonUtility.ToJson(report,true));
+  void Save(){
+   if(report.fullRoute&&director!=null&&director.Session!=null){report.humanProgress=director.Session.Racers.Take(4).Select(r=>r.Progress).ToArray();report.finishedHumans=director.Session.Racers.Take(4).Count(r=>r.Finished);report.finishedEntrants=director.Session.Racers.Count(r=>r.Finished);}
+   File.WriteAllText(Path.Combine(output,"performance.json"),JsonUtility.ToJson(report,true));
+  }
   void Finish(Exception error){if(finished)return;finished=true;collect=false;report.failure=error?.ToString();if(RaceCpuDiagnostics.Enabled)RaceCpuDiagnostics.Stop();batches.Dispose();triangles.Dispose();Save();if(error!=null)UnityEngine.Debug.LogException(error);Application.Quit(error==null?0:1);}
   void OnApplicationQuit(){if(!finished&&output!=null)Finish(new Exception("Interrupted benchmark"));}
  }
