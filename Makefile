@@ -1,8 +1,8 @@
 .DEFAULT_GOAL := help
-.PHONY: help check check-full check-local check-ui tooling unity-editor build check-player
+.PHONY: help check check-full check-local check-ui tooling tooling-runner unity-editor build check-player
 
 help:
-	@printf '%s\n' 'make unity-editor — open Editor; use Play for current changes' 'make check-local — HUD/UI contracts only; add affected UI checks' 'make check-full CONFIRM_FULL_TESTS=yes — human-authorized complete Editor checks; no Player build' 'make build — explicitly requested local Player build' 'make check-player — explicitly requested full checks and build'
+	@printf '%s\n' 'make unity-editor — open Editor; use Play for current changes' 'make check-local — HUD/UI contracts only; add affected UI checks' 'make check-full CONFIRM_FULL_TESTS=yes — human-authorized legacy Editor aggregate; no Player build' 'make tooling — Python tooling and runner contracts; no Unity' 'make build — explicitly requested local Player build' 'make check-player — explicitly requested full checks and build'
 
 check: check-local
 
@@ -17,6 +17,10 @@ check-ui:
 
 tooling:
 	python3 -m unittest discover -s tools -p 'test_*.py'
+	$(MAKE) tooling-runner
+
+tooling-runner:
+	python3 -m unittest discover -s .agents/tools/unity-run -p 'test_*.py'
 
 unity-editor:
 	./tools/unity.sh exclusive

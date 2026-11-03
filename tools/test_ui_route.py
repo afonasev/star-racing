@@ -9,6 +9,40 @@ from unittest.mock import patch
 import qa
 
 class UiRouteTests(unittest.TestCase):
+    def test_aggregate_receipt_names_entrypoints_without_claiming_every_editor_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            balance = root/'unity-prototype/Assets/StarRacing/Resources/balance-config.json'
+            balance.parent.mkdir(parents=True); balance.write_text('{}')
+            output = root/'proof'
+            selection = dict(scope='full', required=qa.GATES['full'], entrypoints=qa.AGGREGATE_ENTRYPOINTS)
+            def record(command, **kwargs):
+                self.assertEqual(command[command.index('-executeMethod')+1], qa.check_method('full'))
+                self.assertEqual(kwargs['env']['STAR_RACING_CONFIRM_FULL_TESTS'], 'yes')
+                token = kwargs['env']['STAR_RACING_QA_TOKEN']
+                end = dict(token=token, balanceHash=qa.hashlib.sha256(b'{}').hexdigest(),
+                           assertions=450, rosterCases=6, ghostAssertions=25)
+                Path(command[command.index('-logFile')+1]).write_text(
+                    'PROTOTYPE_QA_BEGIN '+json.dumps(dict(token=token))+'\n'+
+                    'PROTOTYPE_QA_END '+json.dumps(end)+'\n'+
+                    'ROSTER_FIXTURE_EQUIVALENCE_OK cases=6 token='+token+'\n')
+                return SimpleNamespace(returncode=0)
+            with patch.object(qa, 'REPO', root), patch.object(qa, 'plan', return_value=selection), \
+                 patch.object(qa, 'source_fingerprint', return_value='unchanged'), \
+                 patch.object(qa.subprocess, 'run', side_effect=record), \
+                 patch('sys.argv', ['qa.py', 'checks', '--base', 'HEAD', '--scope', 'full',
+                                   '--confirm-full', '--reason', 'Fake runner contract only',
+                                   '--output', str(output)]), contextlib.redirect_stdout(io.StringIO()):
+                qa.main()
+            receipt = json.loads((output/'receipt.json').read_text())
+            self.assertEqual(receipt['schema_version'], 2)
+            self.assertEqual(receipt['entrypoints'], qa.AGGREGATE_ENTRYPOINTS)
+            self.assertTrue(receipt['entrypoints_success'])
+            self.assertIn('review-affected-coverage', receipt['remaining'])
+            self.assertNotIn('unity-compile-and-legacy-aggregate', receipt['remaining'])
+            self.assertFalse(receipt['success'])
+            self.assertNotIn('StarRacingPrototype.OrbitalRiftChecks.Run', receipt['entrypoints'])
+
     def test_hud_route_never_executes_or_certifies_full_suite(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

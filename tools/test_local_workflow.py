@@ -31,6 +31,17 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertTrue(any(token in route for token in ('tools.sh build', '--suite build',
                         'project_checks.py build', 'PrototypeBuilder.BuildMac')), route)
 
+    def test_tooling_includes_runner_tests_without_unity(self):
+        route = self.route('tooling')
+        self.assertIn("-s tools -p 'test_*.py'", route)
+        self.assertIn("-s .agents/tools/unity-run -p 'test_*.py'", route)
+        for forbidden in ('tools/unity.sh', 'PrototypeBuilder', 'qa.py checks'):
+            self.assertNotIn(forbidden, route)
+        workflow = (ROOT/'.github/workflows/tooling.yml').read_text()
+        self.assertIn("'.agents/tools/unity-run/**'", workflow)
+        self.assertIn("'tools/**'", workflow)
+        self.assertIn('run: make tooling', workflow)
+
     def test_full_requires_confirmation_before_runner(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory)/'called'

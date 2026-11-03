@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reviewed UI or explicitly authorized complete Editor QA receipt. Native acceptance stays explicit."""
+"""Reviewed HUD, affected fixtures or authorized legacy aggregate receipts."""
 import argparse
 import hashlib
 import json
@@ -9,6 +9,7 @@ import re
 import subprocess
 import time
 import uuid
+from qa_fixtures import AGGREGATE_ENTRYPOINTS, selected_fixtures, read_owned, validate_affected
 
 REPO = Path(__file__).resolve().parent.parent
 EDITOR_CHECKS = {
@@ -16,7 +17,9 @@ EDITOR_CHECKS = {
     'unity-prototype/Assets/StarRacing/Editor/RecoveryGhostChecks.cs',
     'unity-prototype/Assets/StarRacing/Editor/RosterFixtureEquivalenceChecks.cs',
 }
-TOOLING = {'tools/test_qa.py', 'tools/test_local_workflow.py', 'tools/test_ui_route.py', 'tools/qa.py', '.agents/references/qa-scope.md'}
+TOOLING = {'tools/test_qa.py', 'tools/test_local_workflow.py', 'tools/test_ui_route.py',
+           'tools/test_affected_route.py', 'tools/qa.py', 'tools/qa_fixtures.py',
+           '.agents/references/qa-scope.md', '.github/workflows/tooling.yml', 'Makefile'}
 # A candidate UI route still requires review of behavior and dependencies.
 UI_FILES = {f'unity-prototype/Assets/StarRacing/Runtime/{name}.cs'
             for name in ('RaceHud', 'RaceHudLayout', 'RaceMenu', 'CloudlineSkin')}
@@ -26,7 +29,8 @@ GATES = {
     'tooling': ['tooling-regressions', 'review-changed-planning-if-any'],
     'local-ui': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-ui-checks', 'affected-editor-playmode'],
     'review-required': ['review-behavior-and-dependencies', 'select-affected-checks'],
-    'full': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-all-checks', 'fixture-equivalence'],
+    'full': ['tooling-regressions', 'openspec-strict', 'unity-compile-and-legacy-aggregate', 'fixture-equivalence', 'review-affected-coverage'],
+    'affected': ['tooling-regressions', 'review-affected-coverage', 'unity-compile-and-selected-fixtures', 'affected-integration-if-needed'],
 }
 BROAD = ['menu-countdown-natural-AI-finish-Results-menu', 'repeat-pause', 'both-themes', 'recovery']
 
@@ -36,7 +40,7 @@ def scope_for(paths, profile_safe=False):
     for path in paths:
         if path == 'workflow/project.json' and profile_safe:
             scopes.append('tooling')
-        elif path in TOOLING:
+        elif path in TOOLING or path.startswith('.agents/tools/unity-run/'):
             scopes.append('tooling')
         elif path.removesuffix('.meta') in UI_FILES:
             scopes.append('local-ui')
@@ -80,7 +84,10 @@ def local_profile_diff(before, after):
     return strip(before) == strip(after)
 
 
-def plan(base, requested_scope="auto", reason=None):
+def plan(base, requested_scope="auto", reason=None, fixtures=None):
+    selected = selected_fixtures(fixtures) if requested_scope == 'affected' else []
+    if fixtures and requested_scope != 'affected':
+        raise ValueError('--fixture requires --scope affected')
     baseline = git('rev-parse', '--verify', base + '^{commit}')
     # Rename detection disabled: old and new paths must BOTH satisfy the allowlist.
     paths = set(filter(None, git('diff', '--no-renames', '--name-only', baseline).splitlines()))
@@ -93,7 +100,12 @@ def plan(base, requested_scope="auto", reason=None):
     if requested_scope != 'auto':
         scope = requested_scope
     return {'base': baseline, 'commit': git('rev-parse', 'HEAD'), 'paths': sorted(paths),
-            'scope': scope, 'scope_reason': reason, 'required': GATES[scope], 'broad_integration_if_affected': BROAD if scope in {'full', 'review-required'} else [],
+            'scope': scope, 'scope_reason': reason, 'required': GATES[scope], 'selected_fixtures': selected,
+            'entrypoints': [f['method'] for f in selected] if selected else
+                AGGREGATE_ENTRYPOINTS if scope == 'full' else
+                [check_method(scope)] if scope == 'local-ui' else [],
+            'coverage_policy': 'Explicit entrypoints only; dependency and integration review remain required. Not every Editor fixture.',
+            'broad_integration_if_affected': BROAD if scope in {'full', 'review-required', 'affected'} else [],
             'full_test_policy': 'Separate explicit human confirmation, including production; never automatic',
             'human_acceptance': 'pending', 'deploy_authorized': profile.get('deploy_authorized'),
             'deferred_player_gates': ['native-build', 'affected-player-playtest'] if scope == 'full' else [],
@@ -104,7 +116,7 @@ def validate_receipt(log, token, profile):
     starts = re.findall(r'^PROTOTYPE_QA_BEGIN (\{.*\})$', log, re.M)
     ends = re.findall(r'^PROTOTYPE_QA_END (\{.*\})$', log, re.M)
     if len(starts) != 1 or len(ends) != 1:
-        raise ValueError('Missing, duplicated or foreign complete suite receipt')
+        raise ValueError('Missing, duplicated or foreign legacy aggregate receipt')
     begin, end = json.loads(starts[0]), json.loads(ends[0])
     if begin['token'] != token or end['token'] != token or end['balanceHash'] != profile:
         raise ValueError('Foreign token/profile')
@@ -138,10 +150,61 @@ def validate_equivalence(log, token):
         raise ValueError('Missing/foreign/skipped equivalence cases')
 
 
+def run_affected(selection, out, profile, token):
+    """Each existing fixture owns its startup/teardown; never merge lifecycle runs blindly."""
+    source = source_fingerprint()
+    receipt = {'schema_version': 2, 'plan': selection, 'token': token, 'profile': profile,
+               'source_fingerprint': source, 'success': False, 'checks_success': False,
+               'human_acceptance': False, 'fixtures': [], 'remaining': selection['required']}
+    for spec in selection['selected_fixtures']:
+        output = out/spec['id']; output.mkdir()
+        log = output/'editor.log'
+        command = [str(REPO/'tools/unity.sh'), spec['mode'], '-batchmode', '-noaudio', '-muted', '-nographics']
+        if spec['quit']:
+            command.append('-quit')
+        command += ['-executeMethod', spec['method'], '-logFile', str(log)]
+        # Do not let inherited experiment switches silently change the reviewed route.
+        env = {k: v for k, v in os.environ.items() if not k.startswith('STAR_RACING_')}
+        env['STAR_RACING_QA_TOKEN'] = token
+        if spec['output_env']:
+            env[spec['output_env']] = str(output)
+        row = {'id': spec['id'], 'method': spec['method'], 'command': command,
+               'log': str(log), 'status': 'NotRun', 'exit': None}
+        started = time.monotonic()
+        try:
+            result = subprocess.run(command, cwd=REPO, env=env)
+            row['exit'] = result.returncode
+            row['status'] = 'NotRun' if result.returncode == 75 else 'FAIL'
+            if result.returncode:
+                raise ValueError('Fixture wrapper failed (admission timeout is NotRun)')
+            if source_fingerprint() != source:
+                raise ValueError('Source changed during affected checks')
+            row['result'] = validate_affected(read_owned(log), spec, output)
+            row['status'] = 'PASS'
+        except (ValueError, KeyError, OSError) as error:
+            row['error'] = str(error)
+        row['wrapper_wall_seconds'] = time.monotonic() - started
+        receipt['fixtures'].append(row)
+        if row['status'] != 'PASS':
+            break
+    completed = {row['id'] for row in receipt['fixtures']}
+    receipt['fixtures'] += [dict(id=f['id'], method=f['method'], status='NotRun',
+                                reason='Earlier fixture failed; not launched')
+                            for f in selection['selected_fixtures'] if f['id'] not in completed]
+    receipt['checks_success'] = all(row['status'] == 'PASS' for row in receipt['fixtures'])
+    if receipt['checks_success']:
+        receipt['remaining'] = [g for g in receipt['remaining'] if g != 'unity-compile-and-selected-fixtures']
+    (out/'receipt.json').write_text(json.dumps(receipt, indent=2)+'\n')
+    print(json.dumps(receipt, indent=2))
+    if not receipt['checks_success']:
+        raise SystemExit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['plan', 'checks'])
-    parser.add_argument('--scope', choices=['auto', 'local-ui', 'full'], default='auto')
+    parser.add_argument('--scope', choices=['auto', 'local-ui', 'affected', 'full'], default='auto')
+    parser.add_argument('--fixture', action='append', help='Reviewed affected fixture ID; repeat for dependencies')
     parser.add_argument('--confirm-full', action='store_true',
                         help='Record separate explicit human authorization for this full run')
     parser.add_argument('--reason', help='Reviewed behavior/dependency reason for the chosen scope')
@@ -149,7 +212,7 @@ def main():
     parser.add_argument('--output', type=Path, help='New owned evidence directory (checks)')
     args = parser.parse_args()
     try:
-        selection = plan(args.base, args.scope, args.reason)
+        selection = plan(args.base, args.scope, args.reason, args.fixture)
     except ValueError as error:
         parser.error(str(error))
     if args.action == 'plan':
@@ -167,6 +230,9 @@ def main():
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     profile = hashlib.sha256((REPO/'unity-prototype/Assets/StarRacing/Resources/balance-config.json').read_bytes()).hexdigest()
     token = str(uuid.uuid4()); env = dict(os.environ, STAR_RACING_QA_TOKEN=token)
+    if selection['scope'] == 'affected':
+        run_affected(selection, out, profile, token)
+        return
     if selection['scope'] == 'full':
         env['STAR_RACING_CONFIRM_FULL_TESTS'] = 'yes'
     log = out/'editor.log'
@@ -187,9 +253,11 @@ def main():
         for path, content in original.items():
             if path.exists() and path.read_bytes() != content:
                 path.write_bytes(content)
-    receipt = {'plan': selection, 'command': command, 'exit': result.returncode,
+    receipt = {'schema_version': 2, 'plan': selection, 'command': command, 'exit': result.returncode,
                'wrapper_wall_seconds': time.time()-started, 'token': token, 'profile': profile,
-               'source_fingerprint': source, 'success': False, 'remaining': selection['required'], 'human_acceptance': False}
+               'source_fingerprint': source, 'success': False, 'remaining': selection['required'], 'human_acceptance': False,
+               'entrypoints': selection.get('entrypoints', []), 'entrypoints_success': False,
+               'coverage': 'Selected HUD or named legacy aggregate entrypoints; not all Editor checks'}
     try:
         if source_fingerprint() != source:
             raise ValueError('Source changed during checks')
@@ -203,14 +271,15 @@ def main():
             receipt['suite'] = validate_receipt(log.read_text(), token, profile)
             validate_equivalence(log.read_text(), token)
             receipt['editor_checks_success'] = True
-            completed = {'unity-compile-and-all-checks', 'fixture-equivalence'}
+            completed = {'unity-compile-and-legacy-aggregate', 'fixture-equivalence'}
         receipt['checks_success'] = True
+        receipt['entrypoints_success'] = True
         receipt['remaining'] = [g for g in selection['required'] if g not in completed]
     except (ValueError, KeyError, OSError) as error:
         receipt['error'] = str(error)
     (out/'receipt.json').write_text(json.dumps(receipt, indent=2)+'\n')
     print(json.dumps(receipt, indent=2))
-    # This command ONLY certifies the selected UI or complete Editor suite; plan's remaining gates still apply.
+    # Only the explicit entrypoints are certified; plan's remaining gates still apply.
     if not receipt.get('checks_success'):
         raise SystemExit(1)
 

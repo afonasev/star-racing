@@ -1,0 +1,21 @@
+name: Tooling contracts
+on:
+  pull_request:
+    paths:
+      - 'tools/**'
+      - '.agents/tools/unity-run/**'
+      - '.agents/references/qa-scope.md'
+      - 'Makefile'
+      - 'workflow/project.json'
+      - '.github/workflows/tooling.yml'
+      # These source contracts define the reviewed methods and output markers.
+      - 'unity-prototype/Assets/StarRacing/Editor/**'
+permissions:
+  contents: read
+jobs:
+  tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python tooling and Unity runner contracts (no Unity)
+        run: make tooling

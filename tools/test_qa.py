@@ -4,7 +4,9 @@ from qa import UI_FILES, check_method, validate_ui_receipt, GATES, scope_for, va
 
 class ScopeTests(unittest.TestCase):
     def test_full_test_gate_does_not_implicitly_build_or_deploy(self):
-        self.assertIn("unity-compile-and-all-checks", GATES["full"])
+        self.assertIn("unity-compile-and-legacy-aggregate", GATES["full"])
+        self.assertNotIn("unity-compile-and-all-checks", GATES["full"])
+        self.assertIn("review-affected-coverage", GATES["full"])
         self.assertIn("fixture-equivalence", GATES["full"])
         self.assertNotIn("native-build", GATES["full"])
         self.assertNotIn("affected-player-playtest", GATES["full"])
