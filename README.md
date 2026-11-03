@@ -1,24 +1,45 @@
 # Star Racing — Unity prototype
 
+<!-- desktop-downloads:start -->
+**Скачать / Download**
+
+| Windows | macOS |
+| --- | --- |
+| **[Download EXE](https://github.com/afonasev/star-racing/releases/download/v0.3.13/Star-Racing-0.3.13-Windows-Setup.exe)** | **[Download PKG](https://github.com/afonasev/star-racing/releases/download/v0.3.13/Star-Racing-0.3.13-macOS-Setup.pkg)** |
+
+[Только установщики / Installer releases](https://github.com/afonasev/star-racing/releases?q=tag%3Av0%20prerelease%3Afalse)
+
+Installer version: **0.3.13**.
+<!-- desktop-downloads:end -->
+
 Играбельная база магнитных гонок на Unity 6000.3.23f1 / URP.
 
 ## Реализовано
 
 1–4 локальных игрока (два набора клавиатуры и до четырёх геймпадов), 8/16/32/64 участника с Rookie/Racer/Ace AI, случайная стартовая решётка и опциональная фора. Процедурные трассы, Cloud City / Space Station, настройки seed/рельсов/прыжков. Магнитная езда, нитро, занос, прыжки, безопасный recovery и ghost-защита. Split-screen, countdown, позиции, финишное окно, результаты/DNF, повтор, пауза и возврат в меню. Модели машин, окружение, музыка, синтез двигателя и эффекты. Главное меню и подготовка гонки оформлены в стиле Cloudline. Последняя выбранная конфигурация (включая имена и устройства) сохраняется автоматически; Start использует текущий выбор без Apply. При каждом входе в подготовку выбирается новый seed; кубик в поле seed меняет его случайно. Темы и ограждения выбираются из выпадающих списков. Сеть пока недоступна.
 
+Новые конфигурации используют Native12: четвёртое семейство предлагает короткую техническую и длинную скоростную дороги с общим входом и схождением. Явно сохранённые revision10/11 и их повторы сохраняют прежнюю версию. Проверка на устройстве и человеческая приёмка остаются открытыми.
+
 Открой `unity-prototype` в Unity. Сцена: `Assets/StarRacing/Generated/Prototype.unity`.
+
+### Тихий запуск
+
+Тихий Player: `./tools/unity.sh player 'unity-prototype/Builds/macOS/Star Racing.app/Contents/MacOS/Star Racing' -noaudio -muted`. Общий прикладной параметр `-muted` применяется до splash и загрузки сцены, пропускает инициализацию игрового аудио и действует всю сессию. Для прямого запуска: `"$PWD/unity-prototype/Builds/macOS/Star Racing.app/Contents/MacOS/Star Racing" -noaudio -muted`. Старый `--muted` остаётся совместимым. Режим не меняет сохранённые настройки звука или системную громкость.
 
 ## Проверки и сборка
 
 ```sh
-./tools/unity.sh shared -batchmode -nographics -quit -executeMethod StarRacingPrototype.PrototypeChecks.Run -logFile /absolute/editor.log
-./tools/unity.sh shared -batchmode -quit -executeMethod StarRacingPrototype.PrototypeBuilder.BuildMac -logFile /absolute/build.log
-./tools/unity.sh player 'unity-prototype/Builds/macOS/Star Racing.app/Contents/MacOS/Star Racing' --muted
+./tools/unity.sh shared -batchmode -noaudio -muted -nographics -quit -executeMethod StarRacingPrototype.RaceHudChecks.Run -logFile /absolute/editor.log
+# Сборка только по отдельной команде человека:
+./tools/unity.sh shared -batchmode -noaudio -muted -quit -executeMethod StarRacingPrototype.PrototypeBuilder.BuildMac -logFile /absolute/build.log
+./tools/unity.sh player 'unity-prototype/Builds/macOS/Star Racing.app/Contents/MacOS/Star Racing' -noaudio -muted
 ```
+
+Тихий запуск Editor: `./tools/unity.sh shared -noaudio -muted`. Для Player используйте команду выше с `-noaudio -muted`: Unity отключает аудиовывод до инициализации, а игра не создаёт аудиокоординатор. Режим действует всю сессию и не меняет сохранённые настройки звука или системную громкость. Обёртка передаёт параметры без изменений и добавляет оба для автономных запусков с `-batchmode`, `-executeMethod` или `-runTests`. Общий прикладной параметр `-muted` обрабатывается до создания аудиокоординатора; он работает и отдельно, а Unity-проверки запускаются с обоими параметрами. Старый `--muted` также распознаётся до инициализации аудио.
 
 Геймпад: RT/RB — газ, A — тормоз/назад, LT/LB — занос, B — нитро. Игрок 1: WASD/Space/Left Shift; игрок 2: стрелки/Right Alt/Right Shift. S и ↓ — тормоз с переходом в задний ход после остановки. ESC — пауза, F5 — повтор, Backspace — меню, F3 — FPS. Start на назначенном геймпаде — пауза. Y добавляет игрока с нажавшим геймпадом; имя сохраняется за ним в пределах сессии, включая переподключение. Карточки позволяют менять имя (до 10 символов и по ширине поля) и удалять игрока. Устройство каждого места выбирается в подготовке; отключение во время гонки ставит паузу. Для одного игрока используется весь экран, для двух — вертикальные половины, для трёх/четырёх — сетка 2×2.
 
-Канонические спеки: `/Users/eaafonasev/Projects/star-racing-planning/openspec/specs`. Они описывают текущие игровые возможности; совпадение с прежним browser runtime не требуется. Исторический план миграции хранится в planning `docs/history/migration-plan`; прежний код доступен в Git-истории.
+Канонические спеки текущих игровых возможностей: `/Users/eaafonasev/Projects/star-racing/planning/openspec/specs`.
 
 Физические геймпады, ощущения от езды и звук требуют человеческой приёмки. Windows build поддерживается builder при установленном модуле Unity; текущая локальная поставка — macOS. Производительность и другие платформы развиваются отдельными изменениями.
 
@@ -47,5 +68,3 @@ STAR_RACING_LOADING_QA_DIR=/absolute/owned-loading-qa ./tools/unity.sh shared -n
 ```
 
 Проверка требует graphics-enabled Editor для PNG; создаёт изолированные QA-настройки, сохраняет и восстанавливает выбранную конфигурацию гонки. Прозрачный wordmark: `unity-prototype/Assets/StarRacing/Resources/UI/LoadingWordmark.png`, подготовлен из принятого визуального эскиза. Блик маскируется альфа-каналом букв и не затрагивает фон.
-
-Local development: see [worktree and evidence storage](docs/WORKTREE_STORAGE.md).

@@ -5,6 +5,32 @@ Review groups commits into player outcomes; commit subjects/IDs never become rel
 import argparse,json,subprocess
 from pathlib import Path
 CATEGORIES={'added':('Новое','Added'),'improved':('Улучшения','Improved'),'fixed':('Исправления','Fixed')}
+
+import re as _download_re
+from urllib.parse import quote as _download_quote
+_DOWNLOAD_START = '<!-- desktop-downloads:start -->'
+_DOWNLOAD_END = '<!-- desktop-downloads:end -->'
+
+def with_installer_downloads(body, version, repository, windows_name, mac_name):
+    if not _download_re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?', version):
+        raise ValueError('Native version required')
+    if not _download_re.fullmatch(r'afonasev/[a-z0-9-]+', repository):
+        raise ValueError('Owned release repository required')
+    if not windows_name.endswith('.exe') or not mac_name.endswith(('.dmg', '.pkg')):
+        raise ValueError('Windows and macOS installers required')
+    for name in (windows_name, mac_name):
+        if '/' in name or not _download_re.fullmatch(r'[A-Za-z0-9_.-]+', name):
+            raise ValueError('Installer basename required')
+    base = f'https://github.com/{repository}/releases/download/v{_download_quote(version)}/'
+    view = f'https://github.com/{repository}/releases?q=' + _download_quote('tag:v' + version.split('.')[0] + ' prerelease:false', safe='')
+    block = f'{_DOWNLOAD_START}\n**Скачать / Download**\n\n| Windows | macOS |\n| --- | --- |\n| **[Download EXE]({base}{windows_name})** | **[Download {mac_name.rsplit(".",1)[1].upper()}]({base}{mac_name})** |\n\n[Только установщики / Installer releases]({view})\n\nInstaller version: **{version}**.\n{_DOWNLOAD_END}\n\n'
+    clean = _download_re.sub(_download_re.escape(_DOWNLOAD_START) + r'[\s\S]*?' + _download_re.escape(_DOWNLOAD_END) + r'\s*', '', body)
+    # Preserve canonical bilingual bodies required by existing publishers/history readers.
+    if clean.startswith('## Русский\n'):
+        prefix = '## Русский\n\n'
+        return prefix + block + clean[len('## Русский\n'):].lstrip('\n')
+    return block + clean.lstrip('\n')
+
 def git(repo,*args):return subprocess.check_output(['git','-C',str(repo),*args],text=True).strip()
 def commits(repo,base,head):
  head=git(repo,'rev-parse','--verify',head+'^{commit}')

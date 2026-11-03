@@ -4,7 +4,7 @@ import argparse,base64,json,os,re,shutil,subprocess,tempfile,time,urllib.request
 from pathlib import Path
 from metadata import REPO,sha,verify,sign,finalize,tls_context
 from publish import validate_identity
-from changelog import generate as generate_changelog
+from changelog import generate as generate_changelog, with_installer_downloads
 ROOT=Path(__file__).resolve().parents[1]
 def publication_policy():
     """Read-only summary; automated guards and human gates are separate."""
@@ -204,6 +204,7 @@ def main():
     baseline=json.loads(previous['body']).get('sourceRevision') if previous else None
     if previous and not re.fullmatch(r'[0-9a-f]{40}',baseline or ''):raise ValueError('Previous channel lacks immutable sourceRevision; review source mapping before publishing')
     a.notes=generate_changelog(ROOT,baseline,source,json.loads(a.changelog_review.read_text()))
+    a.notes=with_installer_downloads(a.notes,a.version,REPO,f'Star-Racing-{a.version}-Windows-Setup.exe',f'Star-Racing-{a.version}-macOS-Setup.pkg')
     if a.resume_draft and a.resume_draft['body']!=a.notes:raise ValueError('Prepared draft release notes changed')
     lock='git/refs/tags/_publishing-'+a.track
     # Atomic ref creation serializes publishers across release Macs/hosts.
