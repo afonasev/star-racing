@@ -86,6 +86,38 @@ namespace StarRacingPrototype
                 else indices.AddRange(new[]{a,c,b,c,d,b});
             }
         }
+        // BuildCore transfers its private per-quad arrays to this managed token.
+        // Internal boundaries usually cancel: construct the unchanged public cell
+        // only if a nondegenerate exterior triangle actually needs its owner.
+        sealed class PendingSupportCell
+        {
+            readonly int id;readonly RoadFace face;readonly Vector3[] points,normals;readonly int[] perimeter;
+            readonly (int a,int b,int c,int d,int e,int f) top;SupportCell prepared;
+            public PendingSupportCell(int id,RoadFace face,Vector3[] points,Vector3[] normals,int[] perimeter,IList<int> indices,int offset) {
+                this.id=id;this.face=face;this.points=points;this.normals=normals;this.perimeter=perimeter;
+                int at=offset*6,first=offset*4;
+                top=(indices[at]-first,indices[at+1]-first,indices[at+2]-first,indices[at+3]-first,indices[at+4]-first,indices[at+5]-first);
+            }
+            SupportCell Prepare()=>new SupportCell(id,face,points,normals,perimeter,new[]{top.a,top.b,top.c,top.d,top.e,top.f},0);
+            public SupportCell Get() {
+                if(prepared!=null)return prepared;
+#if UNITY_EDITOR
+                long timer=BeginMeasurement();
+#endif
+                prepared=Prepare();
+#if UNITY_EDITOR
+                Measured("core.owner.materialize",timer);CellMaterialized?.Invoke(prepared,Prepare);
+#endif
+                return prepared;
+            }
+        }
+#if UNITY_EDITOR
+        public static System.Action<SupportCell,System.Func<SupportCell>> CellMaterialized;
+        // Test boundary owns snapshots even when the caller mutates its inputs.
+        public static System.Func<SupportCell> EditorPendingCell(int id,RoadFace face,Vector3[] points,Vector3[] normals,int[] perimeter,IList<int> indices,int offset) {
+            var pending=new PendingSupportCell(id,face,(Vector3[])points.Clone(),(Vector3[])normals.Clone(),(int[])perimeter.Clone(),indices,offset);return pending.Get;
+        }
+#endif
         public readonly struct SupportTriangle
         {
             public readonly SupportCell owner;public readonly int side;public readonly Vector3 a,b,c,diagonal;public readonly Vector2 uvA,uvB,uvC;
@@ -122,7 +154,7 @@ namespace StarRacingPrototype
             public Vector3 a, b, downA, downB;
             // Height and thickness use the route frame, independently of magnetic support normals.
             public float from, to, heightA, heightB;
-            public bool forward;public SupportCell owner;public int side;
+            public bool forward;public PendingSupportCell owner;public int side;
             public float T(float at) => Mathf.InverseLerp(from, to, at);
             public float Height(float at) => Mathf.Lerp(heightA, heightB, T(at));
             public Vector3 Top(float at) => Vector3.Lerp(a, b, T(at));
@@ -159,14 +191,14 @@ namespace StarRacingPrototype
         }
         sealed class Geometry
         {
-            readonly System.Action<SupportTriangle> observer;SupportCell emittingOwner;int emittingSide,emittingStart;Vector2[] emittingCoordinates;Vector3 emittingDiagonal;
+            readonly System.Action<SupportTriangle> observer;PendingSupportCell emittingOwner;int emittingSide,emittingStart;Vector2[] emittingCoordinates;Vector3 emittingDiagonal;
             public Geometry(System.Action<SupportTriangle> observer) {this.observer=observer;}
             readonly List<Vector3> vertices = new List<Vector3>();
             readonly List<Vector2> uv = new List<Vector2>();
             readonly List<int> triangles = new List<int>();
             readonly List<bool> repairable = new List<bool>();
             public int IndexCount=>triangles.Count;
-            public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward,SupportCell owner=null,int side=-1,Vector2[] coordinates=null)
+            public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward,PendingSupportCell owner=null,int side=-1,Vector2[] coordinates=null)
             {
                 emittingOwner=owner;emittingSide=side;emittingStart=vertices.Count;emittingCoordinates=coordinates;if(owner!=null)emittingDiagonal=(b+c)*.5f;
                 int i = vertices.Count;
@@ -186,8 +218,9 @@ namespace StarRacingPrototype
                 if(Vector3.Cross(vertices[b]-vertices[a],vertices[c]-vertices[a]).sqrMagnitude>1e-12f)
                 {
                     triangles.AddRange(new[]{a,b,c});
-                    repairable.Add(emittingOwner!=null&&emittingSide>=0&&!emittingOwner.sections[emittingSide]);
-                    if(emittingOwner!=null)observer?.Invoke(new SupportTriangle(emittingOwner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
+                    var owner=emittingOwner?.Get();
+                    repairable.Add(owner!=null&&emittingSide>=0&&!owner.sections[emittingSide]);
+                    if(owner!=null)observer?.Invoke(new SupportTriangle(owner,emittingSide,vertices[a],vertices[b],vertices[c],emittingCoordinates[a-emittingStart],emittingCoordinates[b-emittingStart],emittingCoordinates[c-emittingStart],emittingDiagonal));
                 }
             }
             public IEnumerator CreateSteps(Transform parent, Material material,int bottomIndices,bool graph=false,bool renderOnly=false,bool authored=false)
@@ -287,7 +320,7 @@ namespace StarRacingPrototype
 #if UNITY_EDITOR
                 Measured("core.bottom",coreTimer);coreTimer=BeginMeasurement();
 #endif
-                var owner=new SupportCell(q,face,points,down,perimeter,topTriangles,q);
+                var owner=new PendingSupportCell(q,face,points,down,perimeter,topTriangles,q);
 #if UNITY_EDITOR
                 Measured("core.owner",coreTimer);coreTimer=BeginMeasurement();
 #endif
