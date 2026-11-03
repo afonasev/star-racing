@@ -5,11 +5,11 @@
 
 | Windows | macOS |
 | --- | --- |
-| **[Download EXE](https://github.com/afonasev/star-racing/releases/download/v0.3.13/Star-Racing-0.3.13-Windows-Setup.exe)** | **[Download PKG](https://github.com/afonasev/star-racing/releases/download/v0.3.13/Star-Racing-0.3.13-macOS-Setup.pkg)** |
+| **[Download EXE](https://github.com/afonasev/star-racing/releases/download/v0.3.16/Star-Racing-0.3.16-Windows-Setup.exe)** | **[Download PKG](https://github.com/afonasev/star-racing/releases/download/v0.3.16/Star-Racing-0.3.16-macOS-Setup.pkg)** |
 
 [Только установщики / Installer releases](https://github.com/afonasev/star-racing/releases?q=tag%3Av0%20prerelease%3Afalse)
 
-Installer version: **0.3.13**.
+Installer version: **0.3.16**.
 <!-- desktop-downloads:end -->
 
 Играбельная база магнитных гонок на Unity 6000.3.23f1 / URP.
