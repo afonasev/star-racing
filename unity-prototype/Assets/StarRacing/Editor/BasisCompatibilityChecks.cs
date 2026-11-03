@@ -35,8 +35,47 @@ namespace StarRacingPrototype {
     uint graphSeed=1;while(NativeTrackGenerator.FamilyFor(graphSeed,"cloud-city")!="path-choice")graphSeed++;
     var graph=NativeTrackGenerator.Generate(graphSeed,settings);
     Check(graph.IsIndependent&&!graph.UsesBasis,"independent graph excluded");
+    BasisNativeExperiment.EditorOverride=null;
+    Check(CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city").UsesBasis==expected,"authored City shipping default/diagnostic opt-out");
+    Check(!CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis,"authored Orbital excluded");
+    BasisNativeExperiment.EditorOverride=false;
+    Check(!CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city").UsesBasis,"authored City explicit baseline override");
     Debug.Log("BASIS_DEFAULT_SELECTION_OK checks="+checks+" enabled="+expected+" geometry="+actual.GeometryIdentity);
    }finally{BasisNativeExperiment.EditorOverride=before;}
+  }
+  public static void RunAuthoredCity(){
+   Directory.CreateDirectory(Output);EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);checks=0;
+   bool? previous=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+   var root=new GameObject("Authored basis compatibility");var decor=new TrackEnvironmentBuilder();
+   try{
+    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=false;
+    var config=AuthoredCourseChecks.Config();var baseline=CourseSource.Generate(config,"cloud-city");
+    var keyMethod=typeof(RaceDirector).GetMethod("WorldKey",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+    var baselineKey=(string)keyMethod.Invoke(null,new object[]{config});
+    BasisNativeExperiment.AuthoredCityOverride=true;var candidate=CourseSource.Generate(config,"cloud-city");
+    Check(!baseline.UsesBasis&&candidate.UsesBasis,"authored opt-in only");
+    Check(baselineKey!=(string)keyMethod.Invoke(null,new object[]{config}),"authored cache separates representations");
+    Check(!CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis,"orbital remains unchanged");
+    Check(baseline.GeometryIdentity==candidate.GeometryIdentity&&JsonUtility.ToJson(baseline.Single)==JsonUtility.ToJson(candidate.Single),"exact authored canonical content and identity");
+    var track=root.AddComponent<TrackBuilder>();track.BuildNativeCourse(baseline);
+    var replay=NativeCourseReplay.Capture(baseline,track);var physical=CollisionInventory(track);var visual=VisualInventory(track.transform);
+    decor.Build(track.PresentationRoute,track.PresentationRoot,77);var environment=VisualInventory(decor.Root);var plan=JsonUtility.ToJson(decor.Plan);decor.Clear();
+    track.BuildNativeCourse(candidate);var actual=CollisionInventory(track);Check(physical.Length==actual.Length,"authored collider count");float maxDelta=0;
+    for(int i=0;i<actual.Length;i++){
+     var a=physical[i];var b=actual[i];Check(a.name==b.name&&a.type==b.type&&a.layer==b.layer&&a.convex==b.convex&&a.cooking==b.cooking&&a.material==b.material,"authored collider settings "+i);
+     Check(a.triangles.SequenceEqual(b.triangles)&&a.points.Length==b.points.Length,"authored collider topology "+i);
+     for(int n=0;n<a.points.Length;n++){float delta=(a.points[n]-BasisNativeExperiment.ToCanonical(b.points[n])).magnitude;maxDelta=Mathf.Max(maxDelta,delta);Check(delta<=.002f,"original2mm authored geometry budget "+i+"/"+n);}
+    }
+    Check(track.PresentationRoot.GetComponentsInChildren<Collider>(true).Length==0&&track.PresentationRoot.GetComponentsInChildren<TrackSurface>(true).Length==0,"authored presentation has no physics");
+    Check(visual.SequenceEqual(VisualInventory(track.transform)),"authored exact visual mesh/material/transform inventory");
+    decor.Build(track.PresentationRoute,track.PresentationRoot,77);Check(plan==JsonUtility.ToJson(decor.Plan)&&environment.SequenceEqual(VisualInventory(decor.Root)),"authored exact environment rendering");
+    replay.Verify(candidate,track);Check(JsonUtility.ToJson(replay)==JsonUtility.ToJson(NativeCourseReplay.Capture(candidate,track)),"authored exact replay");
+    var sample=track.Route.Samples[20];track.Route.Samples[20].position+=Vector3.one;Reject(()=>replay.Verify(candidate,track),"authored runtime cache mutation rejected");track.Route.Samples[20]=sample;
+    decor.Clear();track.BuildNativeCourse(candidate);replay.Verify(candidate,track);Check(visual.SequenceEqual(VisualInventory(track.transform)),"authored rebuild canonical visual");
+    track.Build(new TrackRoute(track.Route.Definition));Reject(()=>replay.Verify(candidate,track),"authored stale binding rejected");
+    string result="AUTHORED_BASIS_STRUCTURAL_OK checks="+checks+" colliders="+actual.Length+" maxCollisionDelta="+maxDelta.ToString("R")+"\n";
+    File.WriteAllText(Path.Combine(Output,"authored-structural-pass.txt"),result);Debug.Log(result);
+   }finally{decor.Clear();UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=previous;BasisNativeExperiment.EditorOverride=enabled;}
   }
   static string MeshDigest(Mesh mesh){
    using(var stream=new MemoryStream())using(var w=new BinaryWriter(stream)){

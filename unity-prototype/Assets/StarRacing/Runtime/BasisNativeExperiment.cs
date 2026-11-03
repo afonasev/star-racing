@@ -7,6 +7,15 @@ namespace StarRacingPrototype {
  // Native12 Single uses the validated simulation basis by default. The opt-out is for diagnostic comparisons.
  public static class BasisNativeExperiment {
   public static bool Enabled=>EditorOverride??(Array.IndexOf(Environment.GetCommandLineArgs(),"--race-basis-baseline")<0);
+  // City retains its canonical artwork/replay while using the qualified native basis.
+  // Orbital and other authored courses require their own compatibility measurements.
+  public static bool EnabledForCourse(string courseId)=>Enabled&&(string.IsNullOrEmpty(courseId)||courseId==AuthoredCloudCityCourse.Id&&AuthoredCityEnabled);
+#if UNITY_EDITOR
+  public static bool? AuthoredCityOverride;
+  static bool AuthoredCityEnabled=>AuthoredCityOverride??true;
+#else
+  static bool AuthoredCityEnabled=>true;
+#endif
 #if UNITY_EDITOR
   public static bool? EditorOverride;
 #else

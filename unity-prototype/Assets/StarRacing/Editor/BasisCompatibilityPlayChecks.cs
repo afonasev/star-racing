@@ -37,7 +37,9 @@ namespace StarRacingPrototype {
      Check((int)typeof(PhysicalContactChecks).GetField("failures",flags).GetValue(null)==0,"unchanged PhysicalContactChecks.Ramp control");
     }
     foreach(bool candidate in phase=="original-seam-control"?Array.Empty<bool>():(phase=="seams-candidate"||phase=="visual-candidate")?new[]{true}:new[]{false,true}){
-     if(phase=="physical-flat")RoadVolumeChecks.RunFlatDefinition(candidate?BasisNativeExperiment.Transform(RoadVolumeChecks.FlatRoad()):RoadVolumeChecks.FlatRoad());
+     if(phase=="authored-contacts")AuthoredContacts(candidate);
+     else if(phase=="authored-city")AuthoredCity(candidate);
+     else if(phase=="physical-flat")RoadVolumeChecks.RunFlatDefinition(candidate?BasisNativeExperiment.Transform(RoadVolumeChecks.FlatRoad()):RoadVolumeChecks.FlatRoad());
      else if(phase=="physical-generated"){
       var source=BasisCompatibilityChecks.Course(false).Single;RoadVolumeChecks.RunGeneratedDefinition(candidate?BasisNativeExperiment.Transform(source):source);
      }else if(phase=="seams"||phase=="seams-candidate"||phase=="seam-diagnostic")Seams(candidate);
@@ -88,6 +90,75 @@ namespace StarRacingPrototype {
    car.ResetPresentation();Check(car.RenderPose.position.Equals(track.ToPresentation(car.Body.position)),label+" presentation pose reset");
    Check((car.RenderFrame.position-track.PresentationRoute.Project(car.RenderPose.position,car.Distance,30).position).sqrMagnitude==0,label+" canonical camera frame");
    Check(car.GetComponentsInChildren<Collider>().Count(c=>c.enabled)==9,label+" all9shapes");
+  }
+  static void AuthoredCity(bool candidate){
+   var root=new GameObject("Authored basis physical cases");bool? before=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+   try{
+    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=candidate;
+    var course=CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city");
+    var road=new GameObject("authored physical road");road.transform.SetParent(root.transform,false);var track=road.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);
+    Check(track.UsesBasis==candidate,"authored physical representation selected");
+    var bottom=track.GetComponentsInChildren<MeshCollider>().Single(c=>c.sharedMesh.name==RoadVolumeMesh.BottomName);
+    var car=Car(root,track,0,80,0);var cars=new[]{car};var balance=ReleaseBalance.Parse(Resources.Load<TextAsset>("balance-config").text);
+    foreach(var section in course.Single.composition){
+     float distance=30+(section.startIndex+section.endIndex)*2.5f;var frame=track.Route.Evaluate(distance);
+     Physics.SyncTransforms();
+     foreach(float lane in new[]{-.6f,0,.6f}){var point=frame.position+frame.right*frame.halfWidth*lane;
+      Check(track.RaycastRoad(point+frame.normal*3,-frame.normal,6,frame.distance,out _),"authored top support "+section.role);
+      Check(bottom.Raycast(new Ray(point-frame.normal*3,frame.normal),out _,6),"authored bottom support "+section.role);
+     }
+     car.ResetAt(80,0);Check(car.HasProvenCheckpoint,"authored safe initial checkpoint");
+     car.Distance=distance;car.Frame=frame;car.Body.position=frame.position+frame.normal*VehicleGeometry.AdheredBodyHeight;car.Body.rotation=frame.Rotation;
+     car.Body.linearVelocity=frame.tangent*42;car.transform.SetPositionAndRotation(car.Body.position,car.Body.rotation);car.ResetPresentation();Physics.SyncTransforms();
+     var pilot=new AiDriver(0,DriverProfile.Rookie,77,balance);var world=new AiWorldSnapshot(1);int revision=car.PositionRevision;
+     for(int t=0;t<100;t++){if(t%10==0){world.Capture(cars,track.Route,t*.01);car.SetInput(pilot.Step(world,track.Route,.1f,false));}Step(cars,t);Check(!car.IsFalling&&car.PositionRevision==revision,"authored ordinary support without recovery "+section.role);}
+     Check(car.Distance>distance+12,"authored forward progress "+section.role);Presentation(car,track,"authored "+section.role);
+     File.AppendAllText(Path.Combine(Output,"authored-physical.txt"),$"candidate={candidate} section={section.role} progress={car.Distance-distance:R} supported=true\n");
+    }
+    car.ResetAt(80,0);Check(car.HasProvenCheckpoint,"authored recovery checkpoint");car.SetInput(default);Physics.SyncTransforms();
+    for(int t=0;t<40;t++)Step(cars,t);
+    var f=car.Frame;car.Body.position=f.position+f.right*(f.halfWidth+30)+f.normal*.15f;car.Body.linearVelocity=Vector3.zero;car.transform.position=car.Body.position;car.ResetPresentation();Physics.SyncTransforms();
+    var events=new List<RecoveryEvent>();int falls=0,respawns=0;
+    for(int t=0;t<300;t++){Step(cars,t);events.Clear();car.DrainRecoveryEvents(events);foreach(var e in events)if(e.Kind==RecoveryEventKind.Fall)falls++;else respawns++;}
+    Check(falls>=1&&respawns>=1,"authored remote fall and respawn");Presentation(car,track,"authored recovery");
+    File.AppendAllText(Path.Combine(Output,"authored-physical.txt"),$"candidate={candidate} recoveryFalls={falls} respawns={respawns}\n");
+   }finally{UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=before;BasisNativeExperiment.EditorOverride=enabled;}
+  }
+  static void AuthoredContacts(bool candidate){
+   var root=new GameObject("Authored contact boundaries");bool? before=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+   try{
+    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=candidate;
+    var road=new GameObject("authored contact road");road.transform.SetParent(root.transform,false);var track=road.AddComponent<TrackBuilder>();
+    var course=CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city");track.BuildNativeCourse(course);
+    foreach(var section in course.Single.composition.Skip(1)){
+     float boundary=30+section.startIndex*5,distance=boundary-15;var frame=track.Route.Evaluate(distance);
+     var car=Car(root,track,0,80,0);try{
+      car.Distance=distance;car.Frame=frame;car.Body.position=frame.position+frame.normal*VehicleGeometry.AdheredBodyHeight;car.Body.rotation=frame.Rotation;car.Body.linearVelocity=frame.tangent*42;
+      car.transform.SetPositionAndRotation(car.Body.position,car.Body.rotation);car.ResetPresentation();Physics.SyncTransforms();
+      var cars=new[]{car};car.SetInput(new DrivingInput{throttle=1});int revision=car.PositionRevision;
+      for(int t=0;t<100;t++){Step(cars,t);Check(!car.IsFalling&&car.PositionRevision==revision,"authored seam support "+section.role);}
+      File.AppendAllText(Path.Combine(Output,"authored-seams.txt"),$"candidate={candidate} section={section.role} start={distance:R} boundary={boundary:R} end={car.Distance:R} speed={car.Body.linearVelocity.magnitude:R}\n");
+      Check(car.Distance>boundary+12,$"authored seam crossed {section.role} start={distance:R} boundary={boundary:R} end={car.Distance:R} speed={car.Body.linearVelocity.magnitude:R}");Presentation(car,track,"authored seam");
+     }finally{UnityEngine.Object.DestroyImmediate(car.gameObject);}
+    }
+    var f=track.Route.Evaluate(100);
+    foreach(string face in new[]{"left","right","underside"}){
+     var car=Car(root,track,0,80,0);try{
+      bool bottom=face=="underside";float side=face=="left"?-1:1;var axis=bottom?f.normal:f.right*side;
+      car.Body.position=bottom?f.position-f.normal*4:f.position+f.normal*VehicleGeometry.AdheredBodyHeight+f.right*side*(f.halfWidth-4);
+      car.Body.rotation=f.Rotation;car.Body.linearVelocity=axis*42;car.Body.angularVelocity=Vector3.zero;car.transform.SetPositionAndRotation(car.Body.position,car.Body.rotation);car.ResetPresentation();
+      bool contact=false;car.ContactObserved+=c=>{if(c.collider.transform.IsChildOf(track.transform))contact=true;};Physics.SyncTransforms();int revision=car.PositionRevision;
+      for(int t=0;t<40;t++){
+       RacePhysicsStepper.SimulatePrepared(new[]{car},.01f,RacePhysicsStepper.Substeps);Trace(car,t,"authored contact");
+       float offset=Vector3.Dot(car.Body.position-f.position,axis);
+       Check(bottom?offset<-.8f:offset<f.halfWidth+.1f,"authored contact did not cross "+face);
+       Check(car.PositionRevision==revision,"authored contact not masked by respawn");
+      }
+      Check(contact,"authored observed native contact "+face);Check(Vector3.Dot(car.Body.linearVelocity,axis)<1,"authored stopped approach "+face);Presentation(car,track,"authored "+face);
+     }finally{UnityEngine.Object.DestroyImmediate(car.gameObject);}
+    }
+    File.WriteAllText(Path.Combine(Output,(candidate?"candidate":"baseline")+"-authored-contacts.txt"),"7 authored section seams and left/right rail/underside native contacts PASS\n");
+   }finally{UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=before;BasisNativeExperiment.EditorOverride=enabled;}
   }
   static void Seams(bool candidate){
    bool diagnostic=Environment.GetEnvironmentVariable("STAR_RACING_BASIS_COMPAT_PHASE")=="seam-diagnostic";

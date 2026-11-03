@@ -42,9 +42,9 @@ namespace StarRacingPrototype {
    #if UNITY_EDITOR
    if(!IsAuthored&&single!=null&&EditorDefinitionTransform!=null)single=EditorDefinitionTransform(single);
 #endif
-   UsesBasis=!IsAuthored&&single!=null&&single.version==12&&BasisNativeExperiment.Enabled;
+   UsesBasis=single!=null&&single.version==12&&BasisNativeExperiment.EnabledForCourse(CourseId);
    SimulationSingle=single;
-   if(!IsAuthored&&single!=null&&(UsesBasis||BasisNativeExperiment.Audit))SimulationSingle=BasisNativeExperiment.Prepare(single,UsesBasis);
+   if(single!=null&&(UsesBasis||!IsAuthored&&BasisNativeExperiment.Audit))SimulationSingle=BasisNativeExperiment.Prepare(single,UsesBasis);
    simulationContent=SimulationSingle==null?null:JsonUtility.ToJson(SimulationSingle);
    Single=single;Independent=independent;Settings=settings;singleContent=single==null?null:JsonUtility.ToJson(single);
    Graph=independent?.graph??Procedural.IndependentGraph.SingleRoad(single);

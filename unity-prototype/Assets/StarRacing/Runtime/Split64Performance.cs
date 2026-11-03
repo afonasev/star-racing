@@ -17,13 +17,13 @@ namespace StarRacingPrototype {
   public const string Identity="local.starracing.split64";
   [Serializable] public sealed class Sample {
    public string window; public double wall,ms,simulation,session,cpuMs,gpuMs;
-   public bool focused,timingAvailable,gpuAvailable; public long steps,triangles,batches;
+   public bool focused,paused,timingAvailable,gpuAvailable; public float timeScale;public long steps,triangles,batches;
    public int gc0; public RaceCpuDiagnostics.Frame cpu;
   }
   [Serializable] public sealed class Report {
    public string device,gpu,course,geometry,config,settings,failure;
    public string limitation="Exclusive local Player, four stock Rookie virtual-pad drivers and 60 ordinary AI. Frozen windows are render-only. Missing GPU data is unavailable. No human acceptance. Native physical pixels, maximum menu effects, SMAA; uncapped timing.";
-   public bool completed;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
+   public bool completed,usesBasis;public int width,height,cameras,entrants,recoveries;public double preparationSeconds;
    public long stopwatchFrequency;public List<Sample> samples=new List<Sample>(8192);
   }
   readonly Stopwatch wall=Stopwatch.StartNew();readonly FrameTiming[] timings=new FrameTiming[1];
@@ -54,7 +54,7 @@ namespace StarRacingPrototype {
    report.preparationSeconds=wall.Elapsed.TotalSeconds-start;
    if(!director.Started||director.Cars.Length!=64||director.HumanCount!=4||!director.Course.IsAuthored)throw new Exception("Exact scenario failed: "+menu.Error);
    report.device=SystemInfo.deviceModel;report.gpu=SystemInfo.graphicsDeviceName;report.width=Screen.width;report.height=Screen.height;
-   report.entrants=director.Cars.Length;report.geometry=director.Course.GeometryIdentity;report.config=JsonUtility.ToJson(director.AppliedConfig);report.settings=JsonUtility.ToJson(UserSettingsStore.Current);report.stopwatchFrequency=RaceCpuDiagnostics.Frequency;
+   report.entrants=director.Cars.Length;report.usesBasis=director.Course.UsesBasis;report.geometry=director.Course.GeometryIdentity;report.config=JsonUtility.ToJson(director.AppliedConfig);report.settings=JsonUtility.ToJson(UserSettingsStore.Current);report.stopwatchFrequency=RaceCpuDiagnostics.Frequency;
    report.cameras=Enumerable.Range(0,4).Count(i=>director.CameraFor(i).GetComponent<Camera>().enabled);
    // Loading may cross a macOS focus transition. Never include it in a timing window.
    UnityEngine.Debug.Log("SPLIT64_READY_WAIT_FOCUS");
@@ -75,7 +75,11 @@ namespace StarRacingPrototype {
    collect=false;RaceCpuDiagnostics.Stop();
    if(RacePhysicsStepper.SimulatedSeconds-sim<29||RacePhysicsStepper.NativeSteps<=ticks)throw new Exception("Simulation clock/ticks invalid");
    ScreenCapture.CaptureScreenshot(Path.Combine(output,"live-end.png"));yield return new WaitForSecondsRealtime(.3f);
-   pilots=null;director.SetPaused(true);
+   // Release virtual driving buttons before showing the pause menu: nitro uses
+   // the same East button that resumes that menu. Drain its edge outside timing.
+   pilots=null;foreach(var pad in pads)InputSystem.QueueStateEvent(pad,new GamepadState());
+   yield return null;yield return null;director.SetPaused(true);
+   long frozenSteps=RacePhysicsStepper.NativeSteps;
    // Fixed positions separate fill/geometry cost from the live simulation, across the course.
    for(int pose=0;pose<3;pose++){
     for(int i=0;i<4;i++){
@@ -84,7 +88,7 @@ namespace StarRacingPrototype {
     }
     yield return new WaitForSecondsRealtime(1);
     ScreenCapture.CaptureScreenshot(Path.Combine(output,"pose-"+pose+".png"));yield return new WaitForSecondsRealtime(.5f);
-    Begin("frozen-"+pose);double until=wall.Elapsed.TotalSeconds+5;while(wall.Elapsed.TotalSeconds<until){CheckConditions();yield return null;}collect=false;
+    Begin("frozen-"+pose);double until=wall.Elapsed.TotalSeconds+5;while(wall.Elapsed.TotalSeconds<until){CheckConditions();if(!director.Paused||Time.timeScale!=0||RacePhysicsStepper.NativeSteps!=frozenSteps)throw new Exception("Frozen render window resumed simulation");yield return null;}collect=false;
    }
    report.completed=true;
   }
@@ -106,7 +110,7 @@ namespace StarRacingPrototype {
   }
   void LateUpdate(){
    if(!collect||finished)return;double now=wall.Elapsed.TotalSeconds;
-   var s=new Sample{window=window,wall=now,ms=(now-previous)*1000,simulation=RacePhysicsStepper.SimulatedSeconds,session=director.Session.Elapsed,steps=RacePhysicsStepper.NativeSteps,focused=Application.isFocused,gc0=GC.CollectionCount(0),cpu=RaceCpuDiagnostics.Enabled?RaceCpuDiagnostics.Drain():default,batches=batches.Valid?batches.LastValue:-1,triangles=triangles.Valid?triangles.LastValue:-1};previous=now;
+   var s=new Sample{window=window,wall=now,ms=(now-previous)*1000,simulation=RacePhysicsStepper.SimulatedSeconds,session=director.Session.Elapsed,steps=RacePhysicsStepper.NativeSteps,focused=Application.isFocused,paused=director.Paused,timeScale=Time.timeScale,gc0=GC.CollectionCount(0),cpu=RaceCpuDiagnostics.Enabled?RaceCpuDiagnostics.Drain():default,batches=batches.Valid?batches.LastValue:-1,triangles=triangles.Valid?triangles.LastValue:-1};previous=now;
    if(FrameTimingManager.IsFeatureEnabled()){FrameTimingManager.CaptureFrameTimings();if(FrameTimingManager.GetLatestTimings(1,timings)>0&&timings[0].frameStartTimestamp>lastTiming){lastTiming=timings[0].frameStartTimestamp;s.timingAvailable=true;s.cpuMs=timings[0].cpuFrameTime;s.gpuMs=timings[0].gpuFrameTime;s.gpuAvailable=s.gpuMs>0;}}
    report.samples.Add(s);
   }

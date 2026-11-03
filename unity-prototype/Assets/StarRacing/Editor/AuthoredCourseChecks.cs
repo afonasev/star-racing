@@ -39,7 +39,7 @@ namespace StarRacingPrototype {
    Check(LocalRaceConfig.Normalize(JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(config))).replay==null,"saved empty replay remains absent");
    var invalidReplay=Config();invalidReplay.replay=new NativeCourseReplay{courseId=AuthoredCloudCityCourse.Id,contentRevision=99};Check(LocalRaceConfig.Normalize(invalidReplay).replay!=null,"populated incompatible replay retained for rejection");
    var course=CourseSource.Generate(config,"cloud-city");var repeat=CourseSource.Generate(config,"cloud-city");
-   Check(course.IsAuthored&&!course.UsesBasis,"authored source separate from basis experiment");Check(course.GeometryIdentity==repeat.GeometryIdentity,"deterministic complete geometry");
+   Check(course.IsAuthored&&course.UsesBasis,"authored City uses qualified native basis with canonical source");Check(course.GeometryIdentity==repeat.GeometryIdentity,"deterministic complete geometry");
    var d=course.Single;Check(AuthoredCloudCityCourse.Validate(d).Length==0,"all geometry contracts");
    var route=new TrackRoute(d);
    var blocked=AuthoredCityArchitecture.Create().Where(p=>!EnvironmentPlan.ClearOfRoute(route,p.center,p.size*.5f,EnvironmentPlan.CorridorMargin)).ToArray();
@@ -50,9 +50,9 @@ namespace StarRacingPrototype {
    config.seed="54321";Check(course.GeometryIdentity==CourseSource.Generate(config,"cloud-city").GeometryIdentity,"race seed does not change authored course");
    config.courseRevision++;Check(!config.Validate(out _),"unsupported content revision");Reject(()=>CourseSource.Generate(config,"cloud-city"));
    var root=new GameObject("Authored replay check");try{
-    var track=root.AddComponent<TrackBuilder>();track.Route=new TrackRoute(d);
-    var replay=NativeCourseReplay.Capture(course,track);Check(replay.schema==2&&replay.Matches(Config(),"cloud-city"),"authored replay source identity");replay.Verify(repeat,track);
-    var changed=CourseSource.Generate(Config(),"cloud-city");changed.Single.samples[20].halfWidth-=.1;Reject(()=>changed.ReplayIdentity(track));
+    var track=root.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);
+    var replay=NativeCourseReplay.Capture(course,track);Check(replay.schema==2&&replay.Matches(Config(),"cloud-city"),"authored replay source identity");Reject(()=>replay.Verify(repeat,track));track.BuildNativeCourse(repeat);replay.Verify(repeat,track);
+    repeat.Single.samples[20].halfWidth-=.1;Reject(()=>repeat.ReplayIdentity(track));
    }finally{UnityEngine.Object.DestroyImmediate(root);}
    // Adjacent legacy control: compute the exact original constructor bytes independently.
    foreach(int revision in new[]{10,11,12}){
