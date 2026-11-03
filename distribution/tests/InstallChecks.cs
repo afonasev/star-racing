@@ -43,6 +43,17 @@ static class InstallChecks {
    // Simulate process exit after prepare: next attempt must recover prior bytes first.
    Payload(stage("retry"),"1.2.0","retry");WindowsInstall.Prepare(stage("retry"),target,"1.2.0","retry");WindowsInstall.Rollback(target,"retry");
    require(Snapshot()==before,"next attempt recovers interrupted transaction exactly");
+   Payload(stage("legacy"),"1.2.0","legacy");WindowsInstall.Prepare(stage("legacy"),target,"1.2.0","legacy");
+   var legacy=Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(target+".sr-install.json"));
+   ((Newtonsoft.Json.Linq.JObject)legacy["old"]!).Remove("StarRacingLauncher.exe");
+   // Historical layouts had neither an original nor a staged launcher root node.
+   File.Delete(Path.Combine(target,"StarRacingLauncher.exe"));
+   File.Delete(Path.Combine(target+".sr-backup-legacy","StarRacingLauncher.exe"));
+   File.WriteAllText(target+".sr-install.json",legacy.ToString());
+   WindowsInstall.Rollback(target,"legacy");
+   require(WindowsInstall.Inspect(target,"1.1.0")=="R1.1.0","historical interrupted installer journal remains recoverable");
+   // Return the new optional node for subsequent exact-snapshot assertions.
+   File.WriteAllText(Path.Combine(target,"StarRacingLauncher.exe"),"repairStarRacingLauncher.exe");
    Payload(stage("escape"),"1.2.0","bad");Reject(()=>WindowsInstall.Prepare(stage("escape"),target,"1.2.0","../escape"),"invalid token cannot escape");
    string foreign=Path.Combine(root,"Other");Directory.CreateDirectory(foreign);File.WriteAllText(Path.Combine(foreign,"x"),"foreign");Reject(()=>WindowsInstall.Inspect(foreign,"1.0.0"),"foreign nonempty directory refused");
    if(!OperatingSystem.IsWindows()){

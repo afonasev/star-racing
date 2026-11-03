@@ -32,7 +32,7 @@ public sealed class InstallJournal {
  public Dictionary<string,bool> old=new();
 }
 public static class WindowsInstall {
- public static readonly string[] Nodes={"current","packages","Star Racing.exe","Update.exe",".portable","Star Racing.ico","Uninstall-Star-Racing.exe","installer.complete","installer.receipt"};
+ public static readonly string[] Nodes={"current","packages","StarRacingLauncher.exe","Star Racing.exe","Update.exe",".portable","Star Racing.ico","Uninstall-Star-Racing.exe","installer.complete","installer.receipt"};
  static bool Exists(string path)=>File.Exists(path)||Directory.Exists(path);
  static void NoLinks(string path){
   if(!Exists(path))return;
@@ -47,7 +47,9 @@ public static class WindowsInstall {
  static void Save(InstallJournal j)=>RecoveryTransaction.Atomic(JournalPath(j.target),JsonConvert.SerializeObject(j));
  static InstallJournal Read(string target){
   NoLinks(JournalPath(target));string raw=File.ReadAllText(JournalPath(target));var j=ReleaseAuthentication.Parse(raw).ToObject<InstallJournal>()??throw new IOException("Повреждён журнал установки");ValidToken(j.token);
-  if(j.schema!=1||j.target!=target||j.stage!=target+".sr-stage-"+j.token||j.backup!=target+".sr-backup-"+j.token||!j.old.Keys.OrderBy(x=>x).SequenceEqual(Nodes.OrderBy(x=>x))||j.state!="applying"&&j.state!="committed")throw new IOException("Некорректный журнал установки");
+  bool currentNodes=j.old.Keys.OrderBy(x=>x).SequenceEqual(Nodes.OrderBy(x=>x));
+  bool legacyNodes=j.old.Keys.OrderBy(x=>x).SequenceEqual(Nodes.Where(x=>x!="StarRacingLauncher.exe").OrderBy(x=>x));
+  if(j.schema!=1||j.target!=target||j.stage!=target+".sr-stage-"+j.token||j.backup!=target+".sr-backup-"+j.token||!currentNodes&&!legacyNodes||j.state!="applying"&&j.state!="committed")throw new IOException("Некорректный журнал установки");
   return j;
  }
  static PackageManifest Manifest(string target){
@@ -69,14 +71,14 @@ public static class WindowsInstall {
  }
  static void Stopped(string target){
   if(!OperatingSystem.IsWindows())return;
-  foreach(var p in Process.GetProcessesByName("Star Racing"))using(p){
+  foreach(var name in new[]{"Star Racing","StarRacingLauncher"})foreach(var p in Process.GetProcessesByName(name))using(p){
    try{var exe=p.MainModule?.FileName;if(exe!=null&&Canonical(exe).StartsWith(target+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("Закройте Star Racing и повторите установку.");}
    catch(InvalidOperationException){} // process exited during inspection
   }
  }
  static void RollbackCore(InstallJournal j){
   Stopped(j.target);NoLinks(j.target);Directory.CreateDirectory(j.target);NoLinks(j.backup);NoLinks(j.stage);
-  foreach(string name in Nodes.Reverse()){
+  foreach(string name in j.old.Keys.Reverse()){
    string target=Path.Combine(j.target,name),old=Path.Combine(j.backup,name),staged=Path.Combine(j.stage,name);
    if(Exists(old)){Remove(target);Move(old,target);}
    else if(!j.old[name]&&Exists(target)&&!Exists(staged))Remove(target);
@@ -92,7 +94,7 @@ public static class WindowsInstall {
   if(File.Exists(JournalPath(target))){var pending=Read(target);if(pending.state=="committed"){Remove(pending.backup);Remove(pending.stage);File.Delete(JournalPath(target));}else RollbackCore(pending);}
   string prior=Inspect(target,version);NoLinks(stage);var next=Manifest(stage);
   if(next.Version!=SemanticVersion.Parse(version))throw new IOException("Версия файлов не соответствует установщику");
-  foreach(string required in Nodes.Where(x=>x!="packages"&&x!="installer.receipt"))if(!Exists(Path.Combine(stage,required)))throw new IOException("Не хватает файла поставки: "+required);
+  foreach(string required in Nodes.Where(x=>x!="packages"&&x!="installer.receipt"&&x!="StarRacingLauncher.exe"))if(!Exists(Path.Combine(stage,required)))throw new IOException("Не хватает файла поставки: "+required);
   if(File.ReadAllText(Path.Combine(stage,"installer.complete"))!="StarRacingDesktop-v1")throw new IOException("Некорректный маркер поставки");
   Stopped(target);Directory.CreateDirectory(target);
   var journal=new InstallJournal{target=target,stage=stage,backup=target+".sr-backup-"+token,token=token,old=Nodes.ToDictionary(n=>n,n=>Exists(Path.Combine(target,n)))};

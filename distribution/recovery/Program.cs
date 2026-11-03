@@ -35,11 +35,23 @@ try {
   record.state="applying";RecoveryTransaction.Save(journal,record);
   await Apply(record,target);
   record.state="pending-health";record.token=Guid.NewGuid().ToString("N");RecoveryTransaction.Save(journal,record);
-  var game=StartGame(record,true);record.gamePid=game.Id;record.gameStarted=game.StartTime.ToUniversalTime().Ticks;RecoveryTransaction.Save(journal,record);
+  if(File.Exists(journal+".child"))File.Delete(journal+".child");
+  var launch=StartGame(record,true,journal);var game=launch.Process;
+  if(launch.Launcher){record.launcherPid=game.Id;record.launcherStarted=game.StartTime.ToUniversalTime().Ticks;record.gamePid=0;record.gameStarted=0;}
+  else{record.gamePid=game.Id;record.gameStarted=game.StartTime.ToUniversalTime().Ticks;}
+  RecoveryTransaction.Save(journal,record);
  }else if(record.state=="applying")throw new IOException("Activation interrupted before health monitoring");
  if(record.state=="pending-health"){
   var until=DateTime.UtcNow.AddMinutes(2);
   while(true){
+   if(record.launcherPid>0&&record.gamePid==0){
+    var child=RecoveryTransaction.Child(journal,record);
+    if(child!=null){
+     using var player=Process.GetProcessById(child.pid);
+     if(player.StartTime.ToUniversalTime().Ticks!=child.started||!string.Equals(Path.GetFullPath(player.MainModule!.FileName),Path.GetFullPath(record.executable),OperatingSystem.IsWindows()?StringComparison.OrdinalIgnoreCase:StringComparison.Ordinal))throw new IOException("Launcher reported a different Player");
+     record.gamePid=child.pid;record.gameStarted=child.started;RecoveryTransaction.Save(journal,record);File.Delete(journal+".child");
+    }
+   }
    if(RecoveryTransaction.HasHealth(journal,record)){
     record.state="healthy";RecoveryTransaction.Save(journal,record);
     // Signed recovery package is retained outside Velopack cleanup until this exact ack.
@@ -47,7 +59,7 @@ try {
     catch(Exception cleanup) when(cleanup is IOException||cleanup is UnauthorizedAccessException){Console.Error.WriteLine("Healthy; deferred recovery-package cleanup: "+cleanup.Message);}
     return 0;
    }
-   if(!Alive(record.gamePid,record.gameStarted)||DateTime.UtcNow>=until)throw new IOException("Updated game exited or did not confirm data, Default and ready menu");
+   if(!(Alive(record.gamePid,record.gameStarted)||record.gamePid==0&&Alive(record.launcherPid,record.launcherStarted))||DateTime.UtcNow>=until)throw new IOException("Updated game exited or did not confirm data, Default and ready menu");
    await Task.Delay(100);
   }
  }
@@ -57,21 +69,28 @@ try {
  try{
   record.state="recovery-required";record.error=error.Message;RecoveryTransaction.Save(journal,record);
   // Never replace a running game, including one that timed out during startup.
-  if(Alive(record.gamePid,record.gameStarted))return 1;
+  if(Alive(record.gamePid,record.gameStarted)||Alive(record.launcherPid,record.launcherStarted))return 1;
   using var ownership=new FileStream(journal+".lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
   if(record.recoveryAttempted)return 1;
   record.recoveryAttempted=true;RecoveryTransaction.Save(journal,record);
   var previous=RecoveryTransaction.Verified(record,true);
   await WaitForOriginal(record);await Apply(record,previous);
-  record.restored=true;RecoveryTransaction.Save(journal,record);StartGame(record,false);return 1;
+  record.restored=true;RecoveryTransaction.Save(journal,record);StartGame(record,false,journal);return 1;
  }catch(Exception recoveryError){record.error+="; recovery: "+recoveryError.Message;RecoveryTransaction.Save(journal,record);Console.Error.WriteLine(record.error);return 1;}
 }
 
 static bool Alive(int pid,long started){if(pid<=0||started<=0)return false;try{using var p=Process.GetProcessById(pid);return !p.HasExited&&p.StartTime.ToUniversalTime().Ticks==started;}catch(ArgumentException){return false;}catch(InvalidOperationException){return false;}}
 static async Task WaitForOriginal(RecoveryRecord r){
- while(Alive(r.parentPid,r.parentStarted)||GameStillRunning(r))await Task.Delay(100);
+ while(Alive(r.parentPid,r.parentStarted)||Alive(r.parentLauncherPid,r.parentLauncherStarted)||GameStillRunning(r))await Task.Delay(100);
 }
 static bool GameStillRunning(RecoveryRecord r){
+ // A supervising launcher may still be unwinding after its Player exited.
+ // Wait for it before taking the install gate; never replace a live supervisor.
+ foreach(var launcher in Process.GetProcessesByName("StarRacingLauncher"))using(launcher){
+  if(launcher.Id==Environment.ProcessId)continue;
+  try{if(Path.GetFullPath(launcher.MainModule!.FileName).StartsWith(Path.GetFullPath(r.root).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,OperatingSystem.IsWindows()?StringComparison.OrdinalIgnoreCase:StringComparison.Ordinal))return true;}
+  catch(ArgumentException){}catch(InvalidOperationException){}
+ }
  string expected=Path.GetFileNameWithoutExtension(r.executable);
  foreach(var process in Process.GetProcessesByName(expected))using(process){
   if(process.Id==Environment.ProcessId)continue;
@@ -81,11 +100,16 @@ static bool GameStillRunning(RecoveryRecord r){
  }
  return false;
 }
-static Process StartGame(RecoveryRecord r,bool target){
- var start=new ProcessStartInfo(r.executable){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(r.executable)!};
+static (Process Process,bool Launcher) StartGame(RecoveryRecord r,bool target,string journal){
+ string launcher=Path.Combine(Path.GetDirectoryName(r.executable)!,OperatingSystem.IsWindows()?"StarRacingLauncher.exe":"StarRacingLauncher");
+ bool throughLauncher=target&&File.Exists(launcher);
+ var start=new ProcessStartInfo(throughLauncher?launcher:r.executable){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(r.executable)!};
+ start.Environment["STAR_RACING_LAUNCHER_PLAYER"]="1";
+ foreach(var name in new[]{"STAR_RACING_LAUNCHER_READY","STAR_RACING_LAUNCHER_TOKEN","STAR_RACING_LAUNCHER_VERSION","STAR_RACING_RECOVERY_LAUNCHER","STAR_RACING_RECOVERY_TOKEN","STAR_RACING_LAUNCHER_PID","STAR_RACING_LAUNCHER_STARTED"})start.Environment.Remove(name);
+ if(throughLauncher){start.Environment["STAR_RACING_RECOVERY_LAUNCHER"]=journal;start.Environment["STAR_RACING_RECOVERY_TOKEN"]=r.token;}
  foreach(var arg in r.arguments.Where(x=>!x.StartsWith("--star-racing-health-token=",StringComparison.Ordinal)))start.ArgumentList.Add(arg);
  if(target)start.ArgumentList.Add("--star-racing-health-token="+r.token);
- return Process.Start(start)??throw new IOException("Cannot start game");
+ return (Process.Start(start)??throw new IOException("Cannot start game"),throughLauncher);
 }
 static async Task Apply(RecoveryRecord r,DesktopRelease release){
  using var gate=GameInstallGate.Acquire();

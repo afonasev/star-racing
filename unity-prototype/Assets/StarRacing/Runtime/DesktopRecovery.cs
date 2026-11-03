@@ -38,6 +38,8 @@ namespace StarRacingPrototype.Distribution {
      root=locator.RootAppDir,packages=packages,helper=helper,executable=process.MainModule.FileName,parentPid=process.Id,parentStarted=process.StartTime.ToUniversalTime().Ticks,
      arguments=RestartArguments(Environment.GetCommandLineArgs().Skip(1),NewVersion),token=Guid.NewGuid().ToString("N")};
    }
+   int.TryParse(Environment.GetEnvironmentVariable("STAR_RACING_LAUNCHER_PID"),out recovery.parentLauncherPid);
+   long.TryParse(Environment.GetEnvironmentVariable("STAR_RACING_LAUNCHER_STARTED"),out recovery.parentLauncherStarted);
    RecoveryTransaction.Verified(recovery,true);RecoveryTransaction.Verified(recovery,false);RecoveryTransaction.Save(RecoveryPath,recovery);
    }
   }
@@ -68,7 +70,30 @@ namespace StarRacingPrototype.Distribution {
    using(var process=Process.GetCurrentProcess()){recovery.parentPid=process.Id;recovery.parentStarted=process.StartTime.ToUniversalTime().Ticks;}
    RecoveryTransaction.Save(RecoveryPath,recovery);StartRecoveryAgent();StartupApplying=true;Application.Quit();return true;
   }
+  int launcherFirstReadyFrame=-1;
+  bool launcherReadySent;
+  void ConfirmLauncherReady(){
+   if(Application.isEditor||launcherReadySent)return;
+   string path=Environment.GetEnvironmentVariable("STAR_RACING_LAUNCHER_READY");
+   string token=Environment.GetEnvironmentVariable("STAR_RACING_LAUNCHER_TOKEN");
+   string version=Environment.GetEnvironmentVariable("STAR_RACING_LAUNCHER_VERSION");
+   if(string.IsNullOrEmpty(path)||!Path.IsPathRooted(path)||string.IsNullOrEmpty(token)||token.Length!=32||version!=Application.version)return;
+   var lab=DesignLabRuntime.Current;
+   if(lab.Active==null||lab.Warning!=""||lab.CatalogError!=""||UserSettingsStore.LastError!=""){launcherFirstReadyFrame=-1;return;}
+   try{
+    lab.ReleaseDefault();
+    if(launcherFirstReadyFrame<0){launcherFirstReadyFrame=Time.frameCount;return;}
+    if(Time.frameCount<=launcherFirstReadyFrame)return;
+    using(var process=Process.GetCurrentProcess()){
+     RecoveryTransaction.Atomic(path,Newtonsoft.Json.JsonConvert.SerializeObject(new{
+      Version=Application.version,Token=token,DataPath=Application.persistentDataPath,
+      Pid=process.Id,Started=process.StartTime.ToUniversalTime().Ticks}));
+    }
+    launcherReadySent=true;
+   }catch(Exception error){UnityEngine.Debug.LogWarning("LAUNCHER_HEALTH_NOT_READY "+error.Message);}
+  }
   public void ConfirmReadyMenu(){
+   ConfirmLauncherReady();
    if(Application.isEditor||recovery==null||recovery.state!="pending-health")return;
    if(!Environment.GetCommandLineArgs().Contains("--star-racing-health-token="+recovery.token)||InstalledVersion!=recovery.targetVersion)return;
    try{

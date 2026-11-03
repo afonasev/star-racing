@@ -68,6 +68,8 @@ def prepare_installer(release,channel,version,defer_windows_installer=False,make
         from windows.build_installer import build
         sdk_setup=next(release.glob('*Setup.exe'))
         portable=next(release.glob('*Portable.zip'))
+        from launcher_package import windows_shortcut_entry
+        windows_shortcut_entry(portable)
         sdk_setup.unlink() # Superseded one-click installer is not distributed.
         if not defer_windows_installer:
             wizard_output=release/('Star-Racing-'+version+'-Windows-Setup.exe')
@@ -153,6 +155,8 @@ def main():
         if 'velopack_libc.dll' not in imported or not (payload/'velopack_libc.dll').is_file():
             raise ValueError('Windows bootstrap native dependency is missing')
     package_recovery(a.dotnet,root,payload/'Contents/MacOS' if a.channel=='osx-universal' else payload,a.channel,env)
+    from launcher_package import install as install_launcher
+    exe=install_launcher(a.dotnet,root,payload,a.channel,a.version,a.track,env)
     notes=release/'notes.md';notes.write_text(a.notes+'\n')
     cmd=[str(a.vpk.resolve())]+(['[win]'] if a.channel=='win-x64' else [])
     cmd+=['--skip-updates','pack','--packId','tech.afonasev.star-racing.'+a.channel,'--packVersion',a.version,

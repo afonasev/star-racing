@@ -20,6 +20,8 @@ def validate_portable(archive):
     names = set(archive.namelist())
     if not REQUIRED.issubset(names):
         raise ValueError('Incomplete Velopack Windows portable layout')
+    if 'current/launcher.json' in names and not {'StarRacingLauncher.exe', 'current/StarRacingLauncher.exe'}.issubset(names):
+        raise ValueError('Incomplete independent launcher layout')
     for entry in archive.infolist():
         path = PurePosixPath(entry.filename)
         if path.is_absolute() or '..' in path.parts or '\\' in entry.filename or ':' in entry.filename:

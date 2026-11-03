@@ -5,15 +5,25 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 namespace StarRacingPrototype.Distribution {
  public sealed class RecoveryRecord {
-  public int schema=1,parentPid,gamePid;
-  public long parentStarted,gameStarted;
+  public int schema=1,parentPid,gamePid,launcherPid,parentLauncherPid;
+  public long parentStarted,gameStarted,launcherStarted,parentLauncherStarted;
   public string state="prepared",appId,channel,track,previousVersion,targetVersion,previousEnvelope,targetEnvelope;
   public string root,packages,helper,executable,token,error="";
   public string[] arguments=new string[0];
   public bool recoveryAttempted,restored;
  }
  public sealed class RecoveryHealth {public int schema=1,pid;public string version,token;public long started;}
+ public sealed class RecoveryChild {
+  public int schema=1,pid,launcherPid;public long started,launcherStarted;public string version,token;
+ }
  public static class RecoveryTransaction {
+  public static RecoveryChild Child(string path,RecoveryRecord record){
+   if(!File.Exists(path+".child"))return null;
+   var child=ReleaseAuthentication.Parse(File.ReadAllText(path+".child")).ToObject<RecoveryChild>();
+   if(child==null||child.schema!=1||child.version!=record.targetVersion||child.token!=record.token||child.launcherPid!=record.launcherPid||child.launcherStarted!=record.launcherStarted||child.pid<=0||child.started<=0)throw new InvalidDataException("Invalid launcher child identity");
+   return child;
+  }
+
   public static void Atomic(string path,string text){
    Directory.CreateDirectory(Path.GetDirectoryName(path));string temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
    try{
