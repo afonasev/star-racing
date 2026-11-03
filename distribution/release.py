@@ -74,7 +74,7 @@ def build_players(version,track,evidence,unsigned_production=False):
     paths=list((ROOT/'unity-prototype/ProjectSettings').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets/StarRacing/Generated').rglob('*'))
     paths+=list((ROOT/'unity-prototype/Assets').rglob('*.meta'))
-    paths += [ROOT/'unity-prototype/Assets/Settings/UniversalRenderPipelineGlobalSettings.asset',ROOT/'unity-prototype/Assets/StarRacing/Resources/DesignLabCatalog.json']
+    paths += [ROOT/'unity-prototype/Assets/Settings/UniversalRenderPipelineGlobalSettings.asset',ROOT/'unity-prototype/Assets/StarRacing/Resources/DesignLabCatalog.json',ROOT/'unity-prototype/Assets/StarRacing/Resources/GraphicsRuntimeBindings.asset']
     original={p:p.read_bytes() for p in paths if p.is_file()}
     env=dict(os.environ,STAR_RACING_VERSION=version,STAR_RACING_RELEASE_TRACK=track,BEE_BUILD_THREADS='2')
     if unsigned_production:env['STAR_RACING_UNSIGNED_PRODUCTION']='1'
