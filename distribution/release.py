@@ -313,5 +313,6 @@ def publish_candidate(a,key,source,tag,previous):
     if previous:api('releases/'+str(previous['id']),'PATCH',pointer)
     else:api('releases','POST',dict(pointer,tag_name='channel-'+a.track,target_commitish=source))
     (evidence/'channel.json').write_text(json.dumps(catalog,indent=2)+'\n')
+    if a.track=='production':run(['gh','workflow','run','installer-downloads.yml','--repo',REPO,'--ref','main','-f','apply=true'])
     print('PUBLISHED',f'https://github.com/{REPO}/releases/tag/{tag}',evidence)
 if __name__=='__main__':main()
