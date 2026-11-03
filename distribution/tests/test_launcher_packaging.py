@@ -37,7 +37,7 @@ class LauncherPackaging(unittest.TestCase):
             portable=Path(temp)/'Portable.zip'
             with zipfile.ZipFile(portable,'w') as archive:
                 for name in REQUIRED-{'Star Racing.exe','current/sq.version'}:archive.writestr(name,b'payload')
-                archive.writestr('Star Racing.exe',b'MZ'+"StarRacingLauncher.exe".encode('utf-16-le'))
+                archive.writestr('Star Racing.exe',b'MZ pinned SDK generic updater stub')
                 archive.writestr('current/sq.version','<package xmlns="sdk"><metadata><mainExe>StarRacingLauncher.exe</mainExe></metadata></package>')
                 archive.writestr('current/launcher.json','{}')
                 archive.writestr('current/StarRacingLauncher.exe',b'MZ launcher')
