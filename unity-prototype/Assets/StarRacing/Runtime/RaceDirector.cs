@@ -115,13 +115,13 @@ namespace StarRacingPrototype {
    Ready=true;freeze.Keep(0);
    }
   }
-  static string ResolvedTheme(LocalRaceConfig config)=>config.IsAuthored?"cloud-city":config.theme=="random"?(config.Seed%2==0?"cloud-city":"space-station"):config.theme;
+  static string ResolvedTheme(LocalRaceConfig config)=>config.IsAuthored?AuthoredCourses.Theme(config.courseId):config.theme=="random"?(config.Seed%2==0?"cloud-city":"space-station"):config.theme;
   IEnumerator GenerateInitialSteps(bool background){
    string theme=ResolvedTheme(AppliedConfig);
    if(background){var sourceConfig=AppliedConfig.Copy();
     var task=LoadingWork.Background(()=>CourseSource.GenerateData(sourceConfig,theme));while(!task.IsCompleted)yield return null;Course=task.GetAwaiter().GetResult().Complete();}
    else Course=GenerateCourse(AppliedConfig,theme,false);
-   TrackSummary=Course.IsAuthored?$"{AuthoredCloudCityCourse.Title} · {Course.Finish-Course.Start:0} м":$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
+   TrackSummary=Course.IsAuthored?$"{AuthoredCourses.Title(Course.CourseId)} · {Course.Finish-Course.Start:0} м":$"SEED {TrackSeed} · {theme} · {Course.Finish-Course.Start:0} м";
   }
   static IEnumerator BuildDecorSteps(TrackEnvironmentBuilder decor,TrackBuilder track,NativeTrackCourse course,uint seed,string theme,bool background)=>course.IsIndependent?decor.BuildIndependentSteps(track.GraphSurface,seed,theme,null,background):decor.BuildSteps(track.PresentationRoute,track.PresentationRoot,seed,background);
   void ApplyLighting(){if(sun!=null&&environment.Plan!=null){environment.Sky.Activate();RaceLightingController.Apply(environment.Plan.lighting,sun,spaceFill,cameras);foreach(var camera in cameras)if(camera!=null)camera.SetSkyline(environment.Plan);ApplyGraphicsSettings();}}
@@ -208,7 +208,7 @@ namespace StarRacingPrototype {
     Session.Reset(observations);Session.Begin();Input.PrepareStart();Started=true;Paused=pauseDuringPreparation;Session.Paused=Paused;Time.timeScale=0;
     pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();
     for(int i=0;i<4;i++){cameras[i].target=i<humans?cars[i]:null;cameras[i].enabled=i<humans;cameras[i].GetComponent<Camera>().enabled=i<humans;if(i<humans){cameras[i].GetComponent<Camera>().rect=RaceViewports.For(humans,i);cameras[i].Snap();}}
-    ApplyLighting();TrackSummary=course.IsAuthored?$"{AuthoredCloudCityCourse.Title} · {course.Finish-course.Start:0} м":$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
+    ApplyLighting();TrackSummary=course.IsAuthored?$"{AuthoredCourses.Title(course.CourseId)} · {course.Finish-course.Start:0} м":$"SEED {TrackSeed} · {theme} · {course.Finish-course.Start:0} м";config.replay=snapshot.replay;AppliedConfig.Save();
     if(oldRoot!=null)Destroy(oldRoot);else foreach(var car in oldCars)Destroy(car.gameObject);
     if(oldWorld!=prepared)oldWorld?.Dispose();
     StartError="";freeze.Keep(Paused?0:1);

@@ -49,7 +49,8 @@ namespace StarRacingPrototype {
    }else AssignDevice(0,device);
   }
   public void RollSeed(){if(Selected.IsAuthored)return;Selected.RandomizeSeed();seedText=Selected.seed;Selected.Save();}
-  public void SelectCourse(bool authored){Change(()=>{Selected.replay=null;Selected.courseId=authored?AuthoredCloudCityCourse.Id:"";Selected.courseRevision=authored?AuthoredCloudCityCourse.Revision:0;if(authored){Selected.generatorRevision=12;Selected.theme="cloud-city";Selected.rails="full";Selected.jumps=false;}});}
+  public void SelectCourse(bool authored)=>SelectCourse(authored?AuthoredCloudCityCourse.Id:"");
+  public void SelectCourse(string id){if(!string.IsNullOrEmpty(id)&&!AuthoredCourses.Known(id,1))throw new ArgumentException("Unknown authored course");Change(()=>{Selected.replay=null;Selected.courseId=id;Selected.courseRevision=string.IsNullOrEmpty(id)?0:1;if(Selected.IsAuthored){Selected.generatorRevision=12;Selected.theme=AuthoredCourses.Theme(id);Selected.rails="full";Selected.jumps=false;}});}
   public bool JoinDevice(int device){
    for(int i=0;i<Selected.humans;i++)if(Selected.devices[i]==device)return false;
    if(Selected.humans==4){Error="Все четыре места заняты";return false;}
@@ -284,7 +285,7 @@ namespace StarRacingPrototype {
    Skin.Panel(new Rect(56,352,704,448));
    Skin.Text(new Rect(84,371,470,32),"Участников всего",22,true);
    for(int i=0;i<LocalRaceConfig.ParticipantCounts.Length;i++){int count=LocalRaceConfig.ParticipantCounts[i];Button("count-"+count,new Rect(84+i*161,411,149,46),count.ToString(),()=>Change(()=>Selected.entrants=count),Selected.entrants==count);}
-   Dropdown("course",new Rect(84,475,648,46),"Трасса",new[]{"Процедурная",AuthoredCloudCityCourse.Title},Selected.IsAuthored?1:0,index=>SelectCourse(index==1));
+   Dropdown("course",new Rect(84,475,648,46),"Трасса",new[]{"Процедурная",AuthoredCloudCityCourse.Title,AuthoredOrbitalRiftCourse.Title},Selected.courseId==AuthoredOrbitalRiftCourse.Id?2:Selected.IsAuthored?1:0,index=>SelectCourse(index==2?AuthoredOrbitalRiftCourse.Id:index==1?AuthoredCloudCityCourse.Id:""));
    if(!Selected.IsAuthored){
    Dropdown("theme",new Rect(84,534,648,46),"Тема трассы",LocalRaceConfig.ThemeNames,Array.IndexOf(LocalRaceConfig.ThemeIds,Selected.theme),index=>Change(()=>Selected.theme=LocalRaceConfig.ThemeIds[index]));
    Dropdown("rails",new Rect(84,593,648,46),"Ограждения",LocalRaceConfig.RailNames,Array.IndexOf(LocalRaceConfig.RailIds,Selected.rails),index=>Change(()=>Selected.rails=LocalRaceConfig.RailIds[index]));
@@ -302,7 +303,7 @@ namespace StarRacingPrototype {
     Skin.Text(new Rect(84,710,648,42),"Одна трасса — новые траектории в каждом заезде",17,false);
    }
    var artRect=new Rect(792,352,752,448);Skin.Panel(artRect,1);
-   var preview=Selected.IsAuthored?Skin.AuthoredPreview:Selected.theme=="random"?Skin.RandomPreview:Selected.theme=="cloud-city"?Skin.CloudPreview:Skin.SpacePreview;
+   var preview=Selected.courseId==AuthoredCloudCityCourse.Id?Skin.AuthoredPreview:Selected.theme=="random"?Skin.RandomPreview:Selected.theme=="cloud-city"?Skin.CloudPreview:Skin.SpacePreview;
    if(preview!=null)GUI.DrawTexture(new Rect(800,360,736,432),preview,ScaleMode.ScaleAndCrop);
    string validation=uint.TryParse(seedText,out _)?Error:"Seed: целое число от 0 до 4294967295";
    if(validation.Length==0&&!LocalInputRouter.CanBind(Selected,out var deviceError))validation=deviceError;

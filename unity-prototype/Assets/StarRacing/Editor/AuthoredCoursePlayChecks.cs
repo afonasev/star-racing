@@ -26,14 +26,14 @@ namespace StarRacingPrototype {
  [DefaultExecutionOrder(-200)] public sealed class AuthoredPlayDriver:MonoBehaviour {
   GameObject host;RaceDirector director;RaceMenu menu;bool had,restored;string saved,settingsPath;UserSettings settings;
   Gamepad pad;AiDriver pilot;AiWorldSnapshot pilotWorld;double nextDecision;DrivingInput command;
-  int[] revisions;float[] stalled;int captured=-1,frames;Result result=new Result();
+  int[] revisions;float[] stalled;int captured=-1,frames,orbitCapture;Result result=new Result();
   [Serializable] class Result {public bool passed;public string geometry,presentationNote="Ordinary 8 entrant race: seven stock AI and one local seat driven by stock Rookie commands through a virtual gamepad. Existing physics and ChaseCamera. Editor capture is not human/device acceptance.";public double preparationSeconds,elapsed;public int recoveries;public float maxStall;public Car[] cars;}
   [Serializable] class Car {public int entrant;public float distance,speed;public bool finished;public double finishTime;}
   IEnumerator Start(){
    had=PlayerPrefs.HasKey(LocalRaceConfig.PreferenceKey);saved=PlayerPrefs.GetString(LocalRaceConfig.PreferenceKey);settingsPath=UserSettingsStore.OverridePath;settings=UserSettingsStore.Current;
    UserSettingsStore.OverridePath=Path.Combine(AuthoredCourseChecks.Output,"user-settings.json");UserSettingsStore.Replace(new UserSettings{frameLimit=0,antiAliasing=2,stickDeadzone=0});
    pad=InputSystem.AddDevice<Gamepad>();
-   var selected=AuthoredCourseChecks.Config(8,1);selected.devices[0]=SessionControllers.Slot(pad);selected.Save();Application.runInBackground=true;
+   var selected=AuthoredCourseChecks.SelectedConfig(8,1);selected.devices[0]=SessionControllers.Slot(pad);selected.Save();Application.runInBackground=true;
    Exception failure=null;var run=Run();while(true){bool more;try{more=run.MoveNext();}catch(Exception e){failure=e;break;}if(!more)break;yield return run.Current;}
    Save();Restore();yield return null;AuthoredCoursePlayChecks.Finish(failure);
   }
@@ -41,7 +41,7 @@ namespace StarRacingPrototype {
   IEnumerator Run(){
    Event("ordinary menu startup");host=new GameObject("Normal game startup");host.AddComponent<RaceStartup>();
    while(director==null||!director.Ready){director=host.GetComponent<RaceDirector>();yield return null;}
-   menu=host.GetComponent<RaceMenu>();menu.Open(RaceMenuScreen.LocalSetup);menu.SelectCourse(true);menu.Selected.humans=1;menu.Selected.entrants=8;menu.Selected.devices[0]=SessionControllers.Slot(pad);
+   menu=host.GetComponent<RaceMenu>();menu.Open(RaceMenuScreen.LocalSetup);menu.SelectCourse(AuthoredCourseChecks.SelectedConfig().courseId);menu.Selected.humans=1;menu.Selected.entrants=8;menu.Selected.devices[0]=SessionControllers.Slot(pad);
    Event("start selected authored course");double start=Time.realtimeSinceStartupAsDouble;menu.StartSelected();while(menu.Loading)yield return null;
    result.preparationSeconds=Time.realtimeSinceStartupAsDouble-start;
    if(!director.Started||!director.Course.IsAuthored||director.Cars.Length!=8)throw new Exception("Normal authored start failed: "+menu.Error);
@@ -60,6 +60,10 @@ namespace StarRacingPrototype {
     }
     int section=director.Track.Route.SourceAt(director.Cars[0].Distance).segmentIndex;
     if(section>captured){captured=section;AuthoredPreviewDriver.Capture(chase.GetComponent<Camera>(),"race-section-"+section);Event("section "+section+" elapsed="+director.Session.Elapsed);}
+    if(AuthoredCourseChecks.Orbital){
+     var orbit=director.Course.Single.composition[5];float fraction=(director.Cars[0].Distance-30-orbit.startIndex*5)/((orbit.endIndex-orbit.startIndex)*5f);
+     if(fraction>=orbitCapture*.2f&&orbitCapture<=5){AuthoredPreviewDriver.Capture(chase.GetComponent<Camera>(),"orbit-"+orbitCapture);Event("orbit fraction "+fraction+" normal="+director.Cars[0].Frame.normal);orbitCapture++;}
+    }
     if(++frames%100==0)Save();
    }
    if(!director.Session.Racers.All(r=>r.Finished))throw new Exception("Not all eight ordinary AI finished in 420 simulated seconds");

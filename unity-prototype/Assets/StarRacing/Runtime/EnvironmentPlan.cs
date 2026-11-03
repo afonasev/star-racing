@@ -11,7 +11,7 @@ namespace StarRacingPrototype {
         public const int MaximumMistTowers = 24;
         public int NearTowerCount { get; private set; }
         public const float CorridorMargin = 38f;
-        public readonly bool authored;
+        public readonly bool authored,orbital;
         public readonly uint seed;
         public readonly string theme;
         public readonly RaceLightingProfile lighting;
@@ -33,13 +33,13 @@ namespace StarRacingPrototype {
             public bool amber;
         }
 
-        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null,route.Definition.theme == "space-station" ? SpaceSceneryPlan.LegacyClearance(route) : null,AuthoredCloudCityCourse.Is(route.Definition)) {}
+        EnvironmentPlan(TrackRoute route, uint? skySeed):this(route.Definition.seed,route.Definition.theme,route.Samples,(c,e,m)=>ClearOfRoute(route,c,e,m),skySeed,null,route.Definition.theme == "space-station" ? SpaceSceneryPlan.LegacyClearance(route) : null,AuthoredCloudCityCourse.Is(route.Definition),AuthoredOrbitalRiftCourse.Is(route.Definition)) {}
 
-        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity,Func<Vector3,Vector3,float,bool> sceneryClear,bool authored=false) {
-            this.authored=authored;if(authored)skySeed=AuthoredCloudCityCourse.ScenerySeed;
+        EnvironmentPlan(uint sourceSeed,string sourceTheme,TrackFrame[] frames,Func<Vector3,Vector3,float,bool> clear,uint? skySeed,string identity,Func<Vector3,Vector3,float,bool> sceneryClear,bool authored=false,bool orbital=false) {
+            this.orbital=orbital;this.authored=authored;if(orbital)skySeed=AuthoredOrbitalRiftCourse.ScenerySeed;if(authored)skySeed=AuthoredCloudCityCourse.ScenerySeed;
             seed = sourceSeed;
             theme = sourceTheme;
-            lighting = authored?RaceLightingProfile.AuthoredCity():RaceLightingProfile.Create(seed, theme);
+            lighting = orbital?RaceLightingProfile.OrbitalRift():authored?RaceLightingProfile.AuthoredCity():RaceLightingProfile.Create(seed, theme);
             float lowest = float.PositiveInfinity;
             float maxX = float.NegativeInfinity, maxZ = float.NegativeInfinity;
             foreach (var frame in frames) {
@@ -81,8 +81,8 @@ namespace StarRacingPrototype {
             skyPlanetDirection = (forward * 1350 - right * stationSide * 410 + Vector3.up * 90).normalized;
             // Preserve the approved ocean world for seed 77; consecutive seeds cycle all four worlds.
             skyPlanetVariant = (int)(((skySeed ?? seed) % SkyPlanetVariantCount + 3) % SkyPlanetVariantCount);
-            if (theme == "space-station") this.space = new SpaceSceneryPlan(seed, frames, station, sceneryClear);
-            hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity)+(authored?"-eye"+AuthoredCloudCityCourse.PresentationRevision:"");
+            if (theme == "space-station"&&!orbital) this.space = new SpaceSceneryPlan(seed, frames, station, sceneryClear);
+            hash = ComputeHash() + (identity==null?"":"-g"+GraphEnvironmentGeometry.Version+"-"+identity)+(authored?"-eye"+AuthoredCloudCityCourse.PresentationRevision:"")+(orbital?"-rift"+AuthoredOrbitalRiftCourse.PresentationRevision:"");
         }
 
         void BuildAuthoredDistricts(Func<Vector3,Vector3,float,bool> clear) {
@@ -211,6 +211,12 @@ namespace StarRacingPrototype {
         public Color sunColor, ambientColor, ambientEquatorColor, ambientGroundColor, skyColor, fogColor;
         public float sunIntensity, fogDensity, reflectionIntensity;
 
+        public static RaceLightingProfile OrbitalRift() {
+            var p=Create(AuthoredOrbitalRiftCourse.ScenerySeed,"space-station");
+            p.sunRotation=Quaternion.Euler(32,-42,0);p.sunPosition=-(p.sunRotation*Vector3.forward)*900;
+            p.sunColor=new Color(1,.90f,.76f);p.ambientColor=new Color(.47f,.56f,.69f);
+            p.ambientEquatorColor=new Color(.35f,.42f,.54f);p.ambientGroundColor=new Color(.27f,.32f,.43f);p.fogDensity=0;return p;
+        }
         public static RaceLightingProfile AuthoredCity() {
             var p=Create(AuthoredCloudCityCourse.ScenerySeed,"cloud-city");
             p.sunRotation=Quaternion.Euler(38,-38,0);p.sunPosition=-(p.sunRotation*Vector3.forward)*900;

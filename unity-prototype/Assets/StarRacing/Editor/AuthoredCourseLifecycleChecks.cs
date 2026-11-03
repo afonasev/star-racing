@@ -26,21 +26,26 @@ namespace StarRacingPrototype {
   IEnumerator Run(){
    host=new GameObject("Normal startup");host.AddComponent<RaceStartup>();RaceDirector director=null;while(director==null||!director.Ready){director=host.GetComponent<RaceDirector>();yield return null;}
    var menu=host.GetComponent<RaceMenu>();string identity=null;
-   foreach(string mode in new[]{"authored","cloud-city","space-station","authored"}){
-    menu.Open(RaceMenuScreen.LocalSetup);menu.SelectCourse(mode=="authored");if(mode!="authored")menu.Selected.theme=mode;
+   foreach(string mode in AuthoredCourseChecks.Orbital?new[]{"orbital","authored","space-station","orbital"}:new[]{"authored","cloud-city","space-station","authored"}){
+    bool authored=mode=="authored"||mode=="orbital";string id=mode=="orbital"?AuthoredOrbitalRiftCourse.Id:mode=="authored"?AuthoredCloudCityCourse.Id:"";
+    menu.Open(RaceMenuScreen.LocalSetup);menu.SelectCourse(id);if(!authored)menu.Selected.theme=mode;
     menu.StartSelected();while(menu.Loading)yield return null;
-    if(!director.Started||director.Course.IsAuthored!=(mode=="authored")||director.Course.Settings.theme!=(mode=="authored"?"cloud-city":mode))throw new Exception("Wrong world after menu selection: "+mode+" "+menu.Error);
+    if(!director.Started||director.Course.IsAuthored!=authored||(director.Course.CourseId??"")!=id||director.Course.Settings.theme!=(authored?AuthoredCourses.Theme(id):mode))throw new Exception("Wrong world after menu selection: "+mode+" "+menu.Error);
     director.SetPaused(true);director.AppliedConfig.replay.Verify(director.Course,director.Track);
-    if(mode=="authored"){
+    if(mode==(AuthoredCourseChecks.Orbital?"orbital":"authored")){
      if(identity!=null&&identity!=director.Course.GeometryIdentity)throw new Exception("Authored identity changed on return");identity=director.Course.GeometryIdentity;
      var chase=director.CameraFor(0);
      foreach(var section in director.Course.Single.composition){director.Cars[0].ResetAt(30+section.startIndex*5+45,0);chase.Snap();yield return null;yield return null;AuthoredPreviewDriver.Capture(chase.GetComponent<Camera>(),"section-"+section.index);}
+     if(mode=="orbital"){
+      var orbit=director.Course.Single.composition[5];
+      for(int i=0;i<=5;i++){director.Cars[0].ResetAt(30+Mathf.Lerp(orbit.startIndex,orbit.endIndex,i/5f)*5,0);chase.Snap();yield return null;yield return null;AuthoredPreviewDriver.Capture(chase.GetComponent<Camera>(),"orbit-"+i);}
+     }
      var oldTrack=director.Track;menu.RepeatRace();while(menu.Loading)yield return null;director.SetPaused(true);if(director.Track!=oldTrack)throw new Exception("Same world repeat replaced track");
     }
     File.AppendAllText(Path.Combine(AuthoredCourseChecks.Output,"lifecycle.txt"),mode+" "+director.Course.GeometryIdentity+" PASS\n");
     if(!director.ExitToMenu())throw new Exception("Exit to setup failed");yield return null;
    }
-   Debug.Log("AUTHORED_LIFECYCLE_OK authored/cloud/space/authored, replay and repeat");
+   Debug.Log("AUTHORED_LIFECYCLE_OK selected authored world transitions, replay and repeat");
   }
   void Restore(){if(restored)return;restored=true;if(had)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,saved);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();UserSettingsStore.OverridePath=path;UserSettingsStore.Replace(settings);if(host!=null)Destroy(host);if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);Time.timeScale=1;}
   void OnDestroy()=>Restore();

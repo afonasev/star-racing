@@ -6,6 +6,8 @@ using StarRacingPrototype.Procedural;
 namespace StarRacingPrototype {
  public static class AuthoredCourseChecks {
   public static string Output=>Environment.GetEnvironmentVariable("STAR_RACING_AUTHORED_QA_DIR")??throw new Exception("STAR_RACING_AUTHORED_QA_DIR required");
+  public static bool Orbital=>Environment.GetEnvironmentVariable("STAR_RACING_AUTHORED_COURSE")==AuthoredOrbitalRiftCourse.Id;
+  public static LocalRaceConfig SelectedConfig(int entrants=8,int humans=0)=>Orbital?OrbitalRiftChecks.Config(entrants,humans):Config(entrants,humans);
   static int assertions;
   [Serializable] class ColliderEntry {public string name;public int vertices;public uint indices;public int cooking;}
   [Serializable] class ColliderReport {public ColliderEntry[] meshes;public int supportProbes;}

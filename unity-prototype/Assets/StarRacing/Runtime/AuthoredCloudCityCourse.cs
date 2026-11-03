@@ -126,7 +126,7 @@ namespace StarRacingPrototype {
   internal static NativeTrackGenerator.Generated GenerateData(LocalRaceConfig config,string theme,bool fallback=false) {
    if(!config.IsAuthored)return NativeTrackGenerator.GenerateData(config.Seed,new GraphCourseSettings(theme,config.rails,config.jumps),config.generatorRevision,fallback);
    if(!config.Validate(out var error))throw new ArgumentException(error);
-   return new NativeTrackGenerator.Generated{single=AuthoredCloudCityCourse.Compile(),settings=new GraphCourseSettings("cloud-city","full",false),courseId=AuthoredCloudCityCourse.Id,contentRevision=AuthoredCloudCityCourse.Revision};
+   return new NativeTrackGenerator.Generated{single=config.courseId==AuthoredCloudCityCourse.Id?AuthoredCloudCityCourse.Compile():AuthoredOrbitalRiftCourse.Compile(),settings=new GraphCourseSettings(AuthoredCourses.Theme(config.courseId),"full",false),courseId=config.courseId,contentRevision=config.courseRevision};
   }
  }
 }

@@ -31,7 +31,7 @@ namespace StarRacingPrototype {
    yield return null;AuthoredCoursePreview.Finish(failure);
   }
   IEnumerator Run(){
-   var course=CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city");road=new GameObject("Authored road");var track=road.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);Physics.SyncTransforms();
+   var course=CourseSource.Generate(AuthoredCourseChecks.SelectedConfig(),AuthoredCourseChecks.SelectedConfig().theme);road=new GameObject("Authored road");var track=road.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);Physics.SyncTransforms();
    env=new TrackEnvironmentBuilder();env.Build(track.Route,track.transform);env.Sky.Activate();
    if(env.Root.GetComponentsInChildren<Collider>().Length!=0)throw new Exception("Environment added colliders");
    foreach(var s in course.Single.composition){
@@ -48,9 +48,15 @@ namespace StarRacingPrototype {
    profile.Add<Tonemapping>().mode.Override(TonemappingMode.ACES);var bloom=profile.Add<Bloom>();bloom.intensity.Override(.16f);bloom.threshold.Override(1.2f);
    camera=new GameObject("Authored preview camera").AddComponent<Camera>();camera.enabled=false;camera.fieldOfView=65;camera.nearClipPlane=.2f;camera.farClipPlane=14000;camera.clearFlags=CameraClearFlags.Skybox;camera.GetUniversalAdditionalCameraData().renderPostProcessing=true;
    for(int i=0;i<5;i++)yield return null;
+   if(AuthoredCourseChecks.Orbital){
+    SetView(new Vector3(6200,5100,-700),new Vector3(0,350,3400));Capture(camera,"00-overview");
+    SetView(new Vector3(1600,1900,2700),AuthoredOrbitalRiftCourse.StationCenter);Capture(camera,"01-station-exterior");
+    SetView(new Vector3(-1500,900,300),new Vector3(0,120,1100));Capture(camera,"02-asteroid");
+   }else{
    SetView(new Vector3(-2100,2100,400),new Vector3(550,380,2050));Capture(camera,"00-overview");
    SetView(new Vector3(-600,880,1520),AuthoredCloudCityCourse.Eye);Capture(camera,"01-eye-exterior");
    SetView(new Vector3(2100,1450,2300),new Vector3(1010,450,3310));Capture(camera,"02-twin-towers");
+   }
    foreach(var section in course.Single.composition){
     float distance=30+(section.startIndex+Mathf.Min(25,(section.endIndex-section.startIndex)*.1f))*5;
     var frame=track.Route.Evaluate(distance);var aim=track.Route.Evaluate(Mathf.Min(distance+95,track.Route.FinishDistance));
@@ -59,7 +65,7 @@ namespace StarRacingPrototype {
     Capture(camera,"section-"+section.index);
    }
    var renderers=env.Root.GetComponentsInChildren<MeshRenderer>();
-   File.WriteAllText(Path.Combine(AuthoredCourseChecks.Output,"preview-result.json"),JsonUtility.ToJson(new Result{success=true,geometry=course.GeometryIdentity,presentation=env.Plan.presentationHash,roadLength=track.Route.FinishDistance-30,buildingCount=env.Plan.towers.Count,landmarkParts=AuthoredCityArchitecture.Create().Count,environmentRenderers=renderers.Length,triangles=renderers.Sum(r=>r.GetComponent<MeshFilter>().sharedMesh.triangles.Length/3),materials=renderers.Select(r=>r.sharedMaterial).Distinct().Count(),images=11},true));
+   File.WriteAllText(Path.Combine(AuthoredCourseChecks.Output,"preview-result.json"),JsonUtility.ToJson(new Result{success=true,geometry=course.GeometryIdentity,presentation=env.Plan.presentationHash,roadLength=track.Route.FinishDistance-30,buildingCount=env.Plan.towers.Count,landmarkParts=AuthoredCourseChecks.Orbital?0:AuthoredCityArchitecture.Create().Count,environmentRenderers=renderers.Length,triangles=renderers.Sum(r=>r.GetComponent<MeshFilter>().sharedMesh.triangles.Length/3),materials=renderers.Select(r=>r.sharedMaterial).Distinct().Count(),images=11},true));
    Debug.Log("AUTHORED_PREVIEW_OK images=11 physicalSupportProbes=72");
   }
   [Serializable] class Result {public bool success;public string geometry,presentation;public float roadLength;public int buildingCount,landmarkParts,environmentRenderers,triangles,materials,images;}

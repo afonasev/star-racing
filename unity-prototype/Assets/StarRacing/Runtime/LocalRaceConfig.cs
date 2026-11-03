@@ -29,8 +29,8 @@ namespace StarRacingPrototype {
   public LocalRaceConfig Copy(){var copy=JsonUtility.FromJson<LocalRaceConfig>(JsonUtility.ToJson(this));if(replay==null)copy.replay=null;return copy;}
   public bool Validate(out string error){
    error="";
-   if(IsAuthored&&(courseId!=AuthoredCloudCityCourse.Id||courseRevision!=AuthoredCloudCityCourse.Revision))error="Неизвестная версия авторской трассы";
-   else if(IsAuthored&&(theme!="cloud-city"||rails!="full"||jumps||generatorRevision!=12))error="Параметры авторской трассы не совпадают с её версией";
+   if(IsAuthored&&!AuthoredCourses.Known(courseId,courseRevision))error="Неизвестная версия авторской трассы";
+   else if(IsAuthored&&(theme!=AuthoredCourses.Theme(courseId)||rails!="full"||jumps||generatorRevision!=12))error="Параметры авторской трассы не совпадают с её версией";
    else if(generatorRevision!=10&&generatorRevision!=11&&generatorRevision!=12)error="Неизвестная версия трассы";
    else if(version!=1)error="Неизвестная версия настроек";
    else if(humans<0||humans>4||devices==null||devices.Length!=4||names==null||names.Length!=4)error="Выберите до 4 игроков";

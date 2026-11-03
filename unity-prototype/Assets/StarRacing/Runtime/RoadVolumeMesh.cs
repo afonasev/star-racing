@@ -215,7 +215,7 @@ namespace StarRacingPrototype
         {
             LoadingWork.Drain(BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal));
         }
-        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null,bool renderOnly=false)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null,renderOnly,AuthoredCloudCityCourse.Is(route.Definition));
+        internal static IEnumerator BuildSteps(Transform parent,TrackRoute route,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer=null,bool renderOnly=false)=>BuildCore(parent,(face,distance)=>route.Evaluate(distance),top,faces,topTriangles,material,observer,null,renderOnly,AuthoredCloudCityCourse.Is(route.Definition)||AuthoredOrbitalRiftCourse.Is(route.Definition));
         internal static IEnumerator BuildGraphSteps(Transform parent,System.Func<RoadFace,float,TrackFrame> evaluate,IList<Vector3> top,IList<RoadFace> faces,IList<int> topTriangles,Material material,System.Action<SupportTriangle> observer,System.Func<int,Vector3> portNormal)=>BuildCore(parent,evaluate,top,faces,topTriangles,material,observer,portNormal);
         static IEnumerator BuildCore(Transform parent, System.Func<RoadFace,float,TrackFrame> evaluate,
             IList<Vector3> top, IList<RoadFace> faces, IList<int> topTriangles, Material material, System.Action<SupportTriangle> observer, System.Func<int,Vector3> portNormal,bool renderOnly=false,bool authored=false)

@@ -38,7 +38,7 @@ namespace StarRacingPrototype {
   internal NativeTrackCourse(Procedural.Definition single,Procedural.GraphCourseDefinition independent,Procedural.GraphCourseSettings settings,string courseId=null,int contentRevision=0) {
    if((single==null)==(independent==null))throw new ArgumentException("Exactly one course representation required");
    CourseId=courseId;ContentRevision=contentRevision;
-   if(IsAuthored&&(courseId!=AuthoredCloudCityCourse.Id||contentRevision!=AuthoredCloudCityCourse.Revision||!AuthoredCloudCityCourse.Is(single)))throw new ArgumentException("Unknown authored course revision");
+   if(IsAuthored&&!AuthoredCourses.Matches(courseId,contentRevision,single))throw new ArgumentException("Unknown authored course revision");
    #if UNITY_EDITOR
    if(!IsAuthored&&single!=null&&EditorDefinitionTransform!=null)single=EditorDefinitionTransform(single);
 #endif

@@ -37,6 +37,7 @@ namespace StarRacingPrototype {
             yield return null;BuildRailSurfaces(roadRoot);
             if(Plan.theme=="cloud-city"){yield return null;BuildShellSections(roadRoot);}
             if (Plan.theme == "cloud-city") {yield return BuildCitySteps(route);if(Plan.authored)yield return BuildAuthoredCitySteps(route);}
+            else if(Plan.orbital)yield return BuildOrbitalRiftSteps(route);
             else yield return BuildSpaceSteps(route);
             yield return null;
             Sky = new TrackSky(Plan, route, root.transform);

@@ -32,7 +32,7 @@ namespace StarRacingPrototype {
     Vector3 direction=plan.skyPlanetDirection;
     Vector3 right=Vector3.Cross(Vector3.up,direction).normalized;
     Material.SetVector("_PlanetDirection",direction);Material.SetVector("_PlanetRight",right);Material.SetVector("_PlanetUp",Vector3.Cross(direction,right));
-    Material.SetFloat("_PlanetScale",.55f);
+    Material.SetFloat("_PlanetScale",plan.orbital?.22f:.55f);
    } else {
     var clouds=texture;Material.SetTexture("_CloudTex",clouds);
     deckMaterial=new Material(deckShader){name="Cloud sea"};deckMaterial.SetTexture("_CloudTex",clouds);
