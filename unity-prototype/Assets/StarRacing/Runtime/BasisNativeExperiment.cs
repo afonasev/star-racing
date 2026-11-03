@@ -8,12 +8,15 @@ namespace StarRacingPrototype {
  public static class BasisNativeExperiment {
   public static bool Enabled=>EditorOverride??(Array.IndexOf(Environment.GetCommandLineArgs(),"--race-basis-baseline")<0);
   // City retains its canonical artwork/replay while using the qualified native basis.
-  // Orbital and other authored courses require their own compatibility measurements.
-  public static bool EnabledForCourse(string courseId)=>Enabled&&(string.IsNullOrEmpty(courseId)||courseId==AuthoredCloudCityCourse.Id&&AuthoredCityEnabled);
+  // Orbital is enabled after its separate structural, physical and A/B/A qualification.
+  public static bool EnabledForCourse(string courseId)=>Enabled&&(string.IsNullOrEmpty(courseId)||courseId==AuthoredCloudCityCourse.Id&&AuthoredCityEnabled||courseId==AuthoredOrbitalRiftCourse.Id&&AuthoredOrbitalEnabled);
 #if UNITY_EDITOR
+  public static bool? AuthoredOrbitalOverride;
+  static bool AuthoredOrbitalEnabled=>AuthoredOrbitalOverride??true;
   public static bool? AuthoredCityOverride;
   static bool AuthoredCityEnabled=>AuthoredCityOverride??true;
 #else
+  static bool AuthoredOrbitalEnabled=>true;
   static bool AuthoredCityEnabled=>true;
 #endif
 #if UNITY_EDITOR

@@ -37,25 +37,28 @@ namespace StarRacingPrototype {
     Check(graph.IsIndependent&&!graph.UsesBasis,"independent graph excluded");
     BasisNativeExperiment.EditorOverride=null;
     Check(CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city").UsesBasis==expected,"authored City shipping default/diagnostic opt-out");
-    Check(!CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis,"authored Orbital excluded");
+    Check(CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis==expected,"authored Orbital shipping default/diagnostic opt-out");
     BasisNativeExperiment.EditorOverride=false;
     Check(!CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city").UsesBasis,"authored City explicit baseline override");
+    Check(!CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis,"authored Orbital explicit baseline override");
     Debug.Log("BASIS_DEFAULT_SELECTION_OK checks="+checks+" enabled="+expected+" geometry="+actual.GeometryIdentity);
    }finally{BasisNativeExperiment.EditorOverride=before;}
   }
-  public static void RunAuthoredCity(){
+  public static void RunAuthoredCity()=>RunAuthored(false);
+  public static void RunAuthoredOrbital()=>RunAuthored(true);
+  static void RunAuthored(bool orbital){
    Directory.CreateDirectory(Output);EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,NewSceneMode.Single);checks=0;
-   bool? previous=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+   bool? previous=AuthoredOverride(orbital);var enabled=BasisNativeExperiment.EditorOverride;
    var root=new GameObject("Authored basis compatibility");var decor=new TrackEnvironmentBuilder();
    try{
-    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=false;
-    var config=AuthoredCourseChecks.Config();var baseline=CourseSource.Generate(config,"cloud-city");
+    BasisNativeExperiment.EditorOverride=true;SetAuthoredOverride(orbital,false);
+    var config=orbital?OrbitalRiftChecks.Config():AuthoredCourseChecks.Config();string theme=orbital?"space-station":"cloud-city";var baseline=CourseSource.Generate(config,theme);
     var keyMethod=typeof(RaceDirector).GetMethod("WorldKey",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
     var baselineKey=(string)keyMethod.Invoke(null,new object[]{config});
-    BasisNativeExperiment.AuthoredCityOverride=true;var candidate=CourseSource.Generate(config,"cloud-city");
+    SetAuthoredOverride(orbital,true);var candidate=CourseSource.Generate(config,theme);
     Check(!baseline.UsesBasis&&candidate.UsesBasis,"authored opt-in only");
     Check(baselineKey!=(string)keyMethod.Invoke(null,new object[]{config}),"authored cache separates representations");
-    Check(!CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis,"orbital remains unchanged");
+    if(!orbital)Check(CourseSource.Generate(OrbitalRiftChecks.Config(),"space-station").UsesBasis==BasisNativeExperiment.EnabledForCourse(AuthoredOrbitalRiftCourse.Id),"orbital independent selection");
     Check(baseline.GeometryIdentity==candidate.GeometryIdentity&&JsonUtility.ToJson(baseline.Single)==JsonUtility.ToJson(candidate.Single),"exact authored canonical content and identity");
     var track=root.AddComponent<TrackBuilder>();track.BuildNativeCourse(baseline);
     var replay=NativeCourseReplay.Capture(baseline,track);var physical=CollisionInventory(track);var visual=VisualInventory(track.transform);
@@ -75,8 +78,10 @@ namespace StarRacingPrototype {
     track.Build(new TrackRoute(track.Route.Definition));Reject(()=>replay.Verify(candidate,track),"authored stale binding rejected");
     string result="AUTHORED_BASIS_STRUCTURAL_OK checks="+checks+" colliders="+actual.Length+" maxCollisionDelta="+maxDelta.ToString("R")+"\n";
     File.WriteAllText(Path.Combine(Output,"authored-structural-pass.txt"),result);Debug.Log(result);
-   }finally{decor.Clear();UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=previous;BasisNativeExperiment.EditorOverride=enabled;}
+   }finally{decor.Clear();UnityEngine.Object.DestroyImmediate(root);SetAuthoredOverride(orbital,previous);BasisNativeExperiment.EditorOverride=enabled;}
   }
+  internal static bool? AuthoredOverride(bool orbital)=>orbital?BasisNativeExperiment.AuthoredOrbitalOverride:BasisNativeExperiment.AuthoredCityOverride;
+  internal static void SetAuthoredOverride(bool orbital,bool? value){if(orbital)BasisNativeExperiment.AuthoredOrbitalOverride=value;else BasisNativeExperiment.AuthoredCityOverride=value;}
   static string MeshDigest(Mesh mesh){
    using(var stream=new MemoryStream())using(var w=new BinaryWriter(stream)){
     foreach(var v in mesh.vertices){w.Write(v.x);w.Write(v.y);w.Write(v.z);}

@@ -37,7 +37,9 @@ namespace StarRacingPrototype {
      Check((int)typeof(PhysicalContactChecks).GetField("failures",flags).GetValue(null)==0,"unchanged PhysicalContactChecks.Ramp control");
     }
     foreach(bool candidate in phase=="original-seam-control"?Array.Empty<bool>():(phase=="seams-candidate"||phase=="visual-candidate")?new[]{true}:new[]{false,true}){
-     if(phase=="authored-contacts")AuthoredContacts(candidate);
+     if(phase=="orbital-contacts")AuthoredContacts(candidate,true);
+     else if(phase=="authored-orbital")AuthoredCity(candidate,true);
+     else if(phase=="authored-contacts")AuthoredContacts(candidate);
      else if(phase=="authored-city")AuthoredCity(candidate);
      else if(phase=="physical-flat")RoadVolumeChecks.RunFlatDefinition(candidate?BasisNativeExperiment.Transform(RoadVolumeChecks.FlatRoad()):RoadVolumeChecks.FlatRoad());
      else if(phase=="physical-generated"){
@@ -91,11 +93,11 @@ namespace StarRacingPrototype {
    Check((car.RenderFrame.position-track.PresentationRoute.Project(car.RenderPose.position,car.Distance,30).position).sqrMagnitude==0,label+" canonical camera frame");
    Check(car.GetComponentsInChildren<Collider>().Count(c=>c.enabled)==9,label+" all9shapes");
   }
-  static void AuthoredCity(bool candidate){
-   var root=new GameObject("Authored basis physical cases");bool? before=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+  static void AuthoredCity(bool candidate,bool orbital=false){
+   var root=new GameObject("Authored basis physical cases");bool? before=BasisCompatibilityChecks.AuthoredOverride(orbital);var enabled=BasisNativeExperiment.EditorOverride;
    try{
-    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=candidate;
-    var course=CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city");
+    BasisNativeExperiment.EditorOverride=true;BasisCompatibilityChecks.SetAuthoredOverride(orbital,candidate);
+    var course=CourseSource.Generate(orbital?OrbitalRiftChecks.Config():AuthoredCourseChecks.Config(),orbital?"space-station":"cloud-city");
     var road=new GameObject("authored physical road");road.transform.SetParent(root.transform,false);var track=road.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);
     Check(track.UsesBasis==candidate,"authored physical representation selected");
     var bottom=track.GetComponentsInChildren<MeshCollider>().Single(c=>c.sharedMesh.name==RoadVolumeMesh.BottomName);
@@ -122,14 +124,14 @@ namespace StarRacingPrototype {
     for(int t=0;t<300;t++){Step(cars,t);events.Clear();car.DrainRecoveryEvents(events);foreach(var e in events)if(e.Kind==RecoveryEventKind.Fall)falls++;else respawns++;}
     Check(falls>=1&&respawns>=1,"authored remote fall and respawn");Presentation(car,track,"authored recovery");
     File.AppendAllText(Path.Combine(Output,"authored-physical.txt"),$"candidate={candidate} recoveryFalls={falls} respawns={respawns}\n");
-   }finally{UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=before;BasisNativeExperiment.EditorOverride=enabled;}
+   }finally{UnityEngine.Object.DestroyImmediate(root);BasisCompatibilityChecks.SetAuthoredOverride(orbital,before);BasisNativeExperiment.EditorOverride=enabled;}
   }
-  static void AuthoredContacts(bool candidate){
-   var root=new GameObject("Authored contact boundaries");bool? before=BasisNativeExperiment.AuthoredCityOverride;var enabled=BasisNativeExperiment.EditorOverride;
+  static void AuthoredContacts(bool candidate,bool orbital=false){
+   var root=new GameObject("Authored contact boundaries");bool? before=BasisCompatibilityChecks.AuthoredOverride(orbital);var enabled=BasisNativeExperiment.EditorOverride;
    try{
-    BasisNativeExperiment.EditorOverride=true;BasisNativeExperiment.AuthoredCityOverride=candidate;
+    BasisNativeExperiment.EditorOverride=true;BasisCompatibilityChecks.SetAuthoredOverride(orbital,candidate);
     var road=new GameObject("authored contact road");road.transform.SetParent(root.transform,false);var track=road.AddComponent<TrackBuilder>();
-    var course=CourseSource.Generate(AuthoredCourseChecks.Config(),"cloud-city");track.BuildNativeCourse(course);
+    var course=CourseSource.Generate(orbital?OrbitalRiftChecks.Config():AuthoredCourseChecks.Config(),orbital?"space-station":"cloud-city");track.BuildNativeCourse(course);
     foreach(var section in course.Single.composition.Skip(1)){
      float boundary=30+section.startIndex*5,distance=boundary-15;var frame=track.Route.Evaluate(distance);
      var car=Car(root,track,0,80,0);try{
@@ -158,7 +160,7 @@ namespace StarRacingPrototype {
      }finally{UnityEngine.Object.DestroyImmediate(car.gameObject);}
     }
     File.WriteAllText(Path.Combine(Output,(candidate?"candidate":"baseline")+"-authored-contacts.txt"),"7 authored section seams and left/right rail/underside native contacts PASS\n");
-   }finally{UnityEngine.Object.DestroyImmediate(root);BasisNativeExperiment.AuthoredCityOverride=before;BasisNativeExperiment.EditorOverride=enabled;}
+   }finally{UnityEngine.Object.DestroyImmediate(root);BasisCompatibilityChecks.SetAuthoredOverride(orbital,before);BasisNativeExperiment.EditorOverride=enabled;}
   }
   static void Seams(bool candidate){
    bool diagnostic=Environment.GetEnvironmentVariable("STAR_RACING_BASIS_COMPAT_PHASE")=="seam-diagnostic";

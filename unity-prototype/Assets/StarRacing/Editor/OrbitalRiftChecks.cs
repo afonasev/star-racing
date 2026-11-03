@@ -25,9 +25,12 @@ namespace StarRacingPrototype {
    try{
     var track=road.AddComponent<TrackBuilder>();track.BuildNativeCourse(course);Physics.SyncTransforms();
     var replay=NativeCourseReplay.Capture(course,track);Check(replay.Matches(Config(),"space-station")&&!replay.Matches(AuthoredCourseChecks.Config(),"cloud-city"),"replay does not alias eye");
-    replay.Verify(CourseSource.Generate(Config(),"space-station"),track);
-    env.Build(track.Route,track.transform);Check(env.Plan.orbital&&!env.Plan.authored&&env.Root.GetComponentsInChildren<Collider>().Length==0,"dedicated render-only world");
-    Check(EnvironmentPlan.Create(track.Route,77).presentationHash==EnvironmentPlan.Create(track.Route,54321).presentationHash,"presentation independent of race seed");
+    var repeat=CourseSource.Generate(Config(),"space-station");bool foreignRejected=false;
+    try{replay.Verify(repeat,track);}catch(ArgumentException){foreignRejected=true;}
+    Check(foreignRejected,"replay rejects foreign native build binding");
+    track.BuildNativeCourse(repeat);replay.Verify(repeat,track);
+    env.Build(track.PresentationRoute,track.PresentationRoot);Check(env.Plan.orbital&&!env.Plan.authored&&env.Root.GetComponentsInChildren<Collider>().Length==0,"dedicated render-only world");
+    Check(EnvironmentPlan.Create(track.PresentationRoute,77).presentationHash==EnvironmentPlan.Create(track.PresentationRoute,54321).presentationHash,"presentation independent of race seed");
     var lights=env.Root.GetComponentsInChildren<Light>();Check(lights.Length>=10&&lights.Length<=24,"bounded real local lights");
     Check(lights.All(l=>l.type==LightType.Point&&l.shadows==LightShadows.None),"local lights do not add shadow maps");
     var renderers=env.Root.GetComponentsInChildren<MeshRenderer>();var materials=renderers.Select(r=>r.sharedMaterial).Distinct().ToArray();
@@ -43,8 +46,9 @@ namespace StarRacingPrototype {
      foreach(float side in new[]{-.65f,0,.65f}){
       var p=f.position+f.right*f.halfWidth*side;
       Check(track.RaycastRoad(p+f.normal*3,-f.normal,6,f.distance,out _),"road support at "+f.distance);
-      Check(!collider.Raycast(new Ray(p+f.normal*2-f.tangent*5,f.tangent),out var hit,10),"scenery intersects driving corridor at "+f.distance+" hit="+hit.point);
-      Check(!collider.Raycast(new Ray(p+f.normal*1,f.normal),out _,8),"scenery intersects camera clearance at "+f.distance);probes++;
+      var canonical=track.PresentationRoute.Evaluate(f.distance);var point=canonical.position+canonical.right*canonical.halfWidth*side;
+      Check(!collider.Raycast(new Ray(point+canonical.normal*2-canonical.tangent*5,canonical.tangent),out var hit,10),"scenery intersects driving corridor at "+f.distance+" hit="+hit.point);
+      Check(!collider.Raycast(new Ray(point+canonical.normal*1,canonical.normal),out _,8),"scenery intersects camera clearance at "+f.distance);probes++;
      }
     }
     File.WriteAllText(Path.Combine(AuthoredCourseChecks.Output,"orbital-geometry.json"),JsonUtility.ToJson(d,true));
