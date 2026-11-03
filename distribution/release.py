@@ -104,11 +104,27 @@ def smoke_menu_macos(folder,evidence):
     proof.mkdir()
     with tempfile.TemporaryDirectory(prefix='star-racing-menu-smoke-') as tmp:
         run(['ditto','-x','-k',portable,tmp]);app=Path(tmp)/'Star Racing.app'
+        import plistlib
+        entry=app/'Contents/MacOS'/plistlib.loads((app/'Contents/Info.plist').read_bytes())['CFBundleExecutable']
         env=dict(os.environ,UNITY_RUN_MODE='shared')
-        run([ROOT/'tools/unity.sh','player',app/'Contents/MacOS/Star Racing','-noaudio','-muted','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
+        run([ROOT/'tools/unity.sh','player',entry,'-noaudio','-muted','-screen-fullscreen','0','-screen-width','1600','-screen-height','900','--menu-release-smoke-dir',proof,'-logFile',proof/'player.log'],env=env)
         result=json.loads((proof/'success.json').read_text())
         if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True:raise ValueError('Packaged menu smoke failed')
-        (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),physicalAcceptance=False),indent=2)+'\n')
+        launcher_ready=False
+        config=app/'Contents/MacOS/launcher.json'
+        if config.exists():
+            import hashlib
+            identity=hashlib.sha256(str((app/'Contents/MacOS').resolve()).encode()).hexdigest().upper()
+            candidates=[Path.home()/'.local/share/StarRacing/launcher'/json.loads(config.read_text())['Track']/identity,
+                        Path.home()/'Library/Application Support/StarRacing/launcher'/json.loads(config.read_text())['Track']/identity]
+            state=next((x for x in candidates if (x/'working.json').is_file()),None)
+            if state is None or json.loads((state/'working.json').read_text())['Version']!=result['version']:
+                raise ValueError('Packaged launcher did not confirm the real Player menu')
+            launcher_ready=True
+            run([app/'Contents/MacOS/StarRacingProgress'],env=dict(os.environ,STAR_RACING_PROGRESS_SNAPSHOT=str((proof/'launcher.png').resolve())))
+            if not (proof/'launcher.png').is_file():raise ValueError('Native launcher progress capture missing')
+            shutil.rmtree(state) # Own ephemeral installation state, not game preferences.
+        (proof/'candidate.json').write_text(json.dumps(dict(portable=str(portable),sha256=sha(portable),entry=entry.name,launcherReady=launcher_ready,physicalAcceptance=False),indent=2)+'\n')
 
 def upload(tag,file,name=None):
     name=name or file.name
@@ -269,6 +285,10 @@ def publish_candidate(a,key,source,tag,previous):
         result=json.loads((proof/'success.json').read_text());candidate=json.loads((proof/'candidate.json').read_text())
         if result.get('success') is not True or result.get('scope')!='menu' or result.get('installed_queue_untouched') is not True or result.get('version')!=a.version or candidate['sha256']!=sha(next(directories[0].glob('*Portable.zip'))):raise ValueError('Prepared menu receipt mismatch')
     else:(smoke_menu_macos if a.smoke_scope=='menu' else smoke_macos)(directories[0],evidence)
+    # Publish captures of this exact packaged version beside categorized release notes.
+    for name,label in [('current','menu-macOS'),('launcher','launcher-macOS')]:
+        capture=proof/(name+'.png')
+        if capture.is_file():shutil.copyfile(capture,directories[0]/f'Star-Racing-{a.version}-{label}.png')
     draft=a.resume_draft or api('releases','POST',dict(tag_name=tag,target_commitish=source,name='Star Racing '+a.version,body=a.notes,draft=True,prerelease=a.track=='test',make_latest='false'))
     (evidence/'draft-owner.json').write_text(json.dumps(dict(id=draft['id'],target_commitish=draft['target_commitish']),indent=2)+'\n')
     wizard(tag,source,directories[1],evidence,draft=draft)

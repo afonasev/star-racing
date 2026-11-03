@@ -93,10 +93,14 @@ class MenuSmokeContract(unittest.TestCase):
    commands=[]
    def fake_run(args,**kw):
     commands.append([str(a) for a in args])
+    if commands[-1][0]=='ditto':
+     import plistlib
+     info=Path(commands[-1][-1])/'Star Racing.app/Contents/Info.plist';info.parent.mkdir(parents=True)
+     info.write_bytes(plistlib.dumps({'CFBundleExecutable':'StarRacingLauncher'}))
     if '--menu-release-smoke-dir' in commands[-1]:
      proof=Path(commands[-1][commands[-1].index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'menu','installed_queue_untouched':True}))
    with patch.object(release,'run',side_effect=fake_run):release.smoke_menu_macos(folder,evidence)
-   args=commands[-1];self.assertIn('-noaudio',args);self.assertIn('-muted',args);self.assertNotIn('-batchmode',args);self.assertIn('--menu-release-smoke-dir',args);self.assertNotIn('--cloudline-proof-dir',args)
+   args=commands[-1];self.assertTrue(any(x.endswith('/StarRacingLauncher') for x in args));self.assertIn('-noaudio',args);self.assertIn('-muted',args);self.assertNotIn('-batchmode',args);self.assertIn('--menu-release-smoke-dir',args);self.assertNotIn('--cloudline-proof-dir',args)
    self.assertEqual((evidence/'macos-menu-smoke/candidate.json').exists(),True)
 
  def test_menu_smoke_rejects_a_different_scope_receipt(self):
@@ -105,6 +109,10 @@ class MenuSmokeContract(unittest.TestCase):
    root=Path(tmp);folder=root/'release';folder.mkdir();(folder/'candidate-Portable.zip').write_bytes(b'zip');evidence=root/'evidence';evidence.mkdir()
    def fake_run(args,**kw):
     args=[str(a) for a in args]
+    if args[0]=='ditto':
+     import plistlib
+     info=Path(args[-1])/'Star Racing.app/Contents/Info.plist';info.parent.mkdir(parents=True)
+     info.write_bytes(plistlib.dumps({'CFBundleExecutable':'StarRacingLauncher'}))
     if '--menu-release-smoke-dir' in args:
      proof=Path(args[args.index('--menu-release-smoke-dir')+1]);(proof/'success.json').write_text(json.dumps({'success':True,'scope':'race','natural_ai_finish':True}))
    with patch.object(release,'run',side_effect=fake_run),self.assertRaises(ValueError):release.smoke_menu_macos(folder,evidence)
