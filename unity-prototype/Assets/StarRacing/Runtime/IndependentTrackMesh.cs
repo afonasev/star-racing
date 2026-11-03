@@ -77,7 +77,25 @@ namespace StarRacingPrototype {
             geometryRoot.transform.localRotation=Quaternion.LookRotation(carrier.tangent.Float,carrier.normal.Float);
             bool complete=false;
             try {
+            // The graph and compiler basis are immutable for this build. Preserve the
+            // exact distance bits (including signed zero); return a struct copy so
+            // later face-specific port normal overrides cannot alter cached frames.
+            var localFrames=new Dictionary<(int geometry,int distanceBits),TrackFrame>();
             TrackFrame LocalFrame(RoadFace face,float distance) {
+                var key=(face.geometryId,BitConverter.SingleToInt32Bits(distance));
+                if(localFrames.TryGetValue(key,out var cached)) {
+#if UNITY_EDITOR
+                    RoadVolumeMesh.WorkMeasured?.Invoke("core.cache.hit",0);
+#endif
+                    return cached;
+                }
+                var frame=CalculateLocalFrame(face,distance);localFrames.Add(key,frame);
+#if UNITY_EDITOR
+                RoadVolumeMesh.WorkMeasured?.Invoke("core.cache.miss",0);
+#endif
+                return frame;
+            }
+            TrackFrame CalculateLocalFrame(RoadFace face,float distance) {
                 if(face.geometryId==3 || face.geometryId==4) {
                     var node=graph.junctions.Single(j=>j.id==face.geometryId);
                     return new TrackFrame{distance=distance,position=Local(node.Point(0,distance),true),tangent=Direction(node.tangent,true),normal=Vector3.up,right=-Direction(node.right,true),halfWidth=8.5f};

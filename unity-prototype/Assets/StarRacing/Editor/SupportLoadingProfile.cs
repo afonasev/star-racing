@@ -12,17 +12,24 @@ namespace StarRacingPrototype {
  public static class SupportLoadingProfile {
   const BindingFlags Fields=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
   [Serializable] public sealed class Leaf {public string name;public int count;public double seconds,maximum;}
-  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int supports,initial,inward,centroid;public string inventory,apexIdentity,config;public Leaf[] leaves;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
+  [Serializable] public sealed class Report {public double coldSeconds;public long allocatedBytes;public bool allocationCounterAvailable;public int supports,initial,inward,centroid,frameQueries,uniqueFrames,cancelledPairCandidates;public string inventory,apexIdentity,frameIdentity,config;public Leaf[] leaves,groupSizes;public string limitation="Exclusive headless Editor CPU; one cold world, assets prewarmed; observer identical in A/B. No Player/GPU/human acceptance. Nested iterator intervals must not be added.";}
   readonly struct Sample {public readonly RoadVolumeMesh.SupportTriangle triangle;public readonly Vector3 apex;public readonly bool fallback;public Sample(RoadVolumeMesh.SupportTriangle t,Vector3 a,bool f){triangle=t;apex=a;fallback=f;}}
   static readonly List<Sample> samples=new List<Sample>();static readonly Dictionary<string,Leaf> leaves=new Dictionary<string,Leaf>();
+  static readonly List<(int geometry,int bits,TrackFrame frame)> frames=new List<(int,int,TrackFrame)>();
+  static readonly HashSet<(int,int)> frameKeys=new HashSet<(int,int)>();
+  static readonly Dictionary<int,int> groups=new Dictionary<int,int>();
+  static readonly List<(RoadVolumeMesh.BoundaryScalar a,RoadVolumeMesh.BoundaryScalar b)> pairs=new List<(RoadVolumeMesh.BoundaryScalar,RoadVolumeMesh.BoundaryScalar)>();
   static Stopwatch clock;static long allocated;
   public static void Begin(){
-   samples.Clear();leaves.Clear();oracle.Clear();
+   samples.Clear();leaves.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();
+   groups.Clear();pairs.Clear();
    RoadVolumeMesh.WorkMeasured=(name,time)=>{if(!leaves.TryGetValue(name,out var leaf))leaves[name]=leaf=new Leaf{name=name};leaf.count++;leaf.seconds+=time;leaf.maximum=Math.Max(leaf.maximum,time);};
    RoadVolumeMesh.SupportSelected=(triangle,apex,fallback)=>samples.Add(new Sample(triangle,apex,fallback));
+   RoadVolumeMesh.FrameObserved=(face,distance,frame)=>{int bits=BitConverter.SingleToInt32Bits(distance);frames.Add((face.geometryId,bits,frame));frameKeys.Add((face.geometryId,bits));};
+   RoadVolumeMesh.GroupObserved=(size,a,b,matched)=>{groups.TryGetValue(size,out int count);groups[size]=count+1;if(matched)pairs.Add((a,b));};
    allocated=GC.GetAllocatedBytesForCurrentThread();clock=Stopwatch.StartNew();
   }
-  public static void Abort(){RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;}
+  public static void Abort(){RoadVolumeMesh.WorkMeasured=null;RoadVolumeMesh.SupportSelected=null;RoadVolumeMesh.FrameObserved=null;RoadVolumeMesh.GroupObserved=null;}
   static string Hash(Action<BinaryWriter> write){using(var sha=SHA256.Create())using(var stream=new CryptoStream(Stream.Null,sha,CryptoStreamMode.Write))using(var buffer=new BufferedStream(stream,65536))using(var writer=new BinaryWriter(buffer)){write(writer);writer.Flush();buffer.Flush();stream.FlushFinalBlock();return BitConverter.ToString(sha.Hash).Replace("-","");}}
   static void V(BinaryWriter w,Vector3 v){w.Write(v.x);w.Write(v.y);w.Write(v.z);}
   static bool Bits(Vector3 a,Vector3 b)=>Enumerable.Range(0,3).All(i=>BitConverter.SingleToInt32Bits(a[i])==BitConverter.SingleToInt32Bits(b[i]));
@@ -30,7 +37,13 @@ namespace StarRacingPrototype {
    clock.Stop();long bytes=GC.GetAllocatedBytesForCurrentThread()-allocated;Abort();
    var colliders=director.Track.GetComponentsInChildren<MeshCollider>(true);
    var result=new Report{coldSeconds=clock.Elapsed.TotalSeconds,allocatedBytes=bytes,allocationCounterAvailable=bytes>0,supports=samples.Count,config=JsonUtility.ToJson(director.AppliedConfig),leaves=leaves.Values.OrderBy(x=>x.name).ToArray()};
-   if(samples.Count==0||colliders.Count(c=>c.name==RoadVolumeMesh.SupportName)!=samples.Count||leaves.Values.Any(l=>l.count!=samples.Count))throw new Exception("Support stage counts/inventory disagree");
+   var supportLeaves=leaves.Values.Where(l=>l.name.StartsWith("support.")).ToArray();
+   if(samples.Count==0||colliders.Count(c=>c.name==RoadVolumeMesh.SupportName)!=samples.Count||supportLeaves.Length!=5||supportLeaves.Any(l=>l.count!=samples.Count))throw new Exception("Support stage counts/inventory disagree");
+   result.frameQueries=frames.Count;result.uniqueFrames=frameKeys.Count;
+   if(frames.Count==0||leaves["core.frames"].count*2!=frames.Count)throw new Exception("Frame observation coverage mismatch");
+   result.frameIdentity=Hash(w=>{foreach(var row in frames){w.Write(row.geometry);w.Write(row.bits);var f=row.frame;w.Write(f.distance);w.Write(f.halfWidth);w.Write(f.segmentId);w.Write(f.gap);V(w,f.position);V(w,f.tangent);V(w,f.normal);V(w,f.right);}});
+   result.cancelledPairCandidates=pairs.Count;result.groupSizes=groups.OrderBy(p=>p.Key).Select(p=>new Leaf{name=p.Key.ToString(),count=p.Value}).ToArray();
+   foreach(var pair in pairs)if(ReferenceQuads(new[]{pair.a,pair.b})!=0)throw new Exception("Exact pair would emit baseline geometry");
    foreach(var sample in samples){var expected=Reference(sample.triangle,out var fallback,out int phase);if(!Bits(expected,sample.apex)||fallback!=sample.fallback)throw new Exception("Independent old apex/fallback oracle mismatch");if(phase==0)result.initial++;else if(phase==1)result.inward++;else result.centroid++;}
    result.apexIdentity=Hash(w=>{foreach(var s in samples){w.Write(s.triangle.owner.id);w.Write(s.triangle.side);V(w,s.triangle.a);V(w,s.triangle.b);V(w,s.triangle.c);V(w,s.triangle.diagonal);V(w,s.apex);w.Write(s.fallback);}});
    result.inventory=Hash(w=>{
@@ -42,7 +55,26 @@ namespace StarRacingPrototype {
      var faces=(Array)registry[c.GetInstanceID()];w.Write(faces!=null);if(faces!=null){w.Write(faces.Length);foreach(var face in faces){var type=face.GetType();foreach(string name in new[]{"a","u","v","Normal"})V(w,(Vector3)type.GetField(name,Fields).GetValue(face));w.Write((bool)type.GetField("repairable",Fields).GetValue(face));}}
     }
    });
-   File.WriteAllText(Path.Combine(output,"support-profile.json"),JsonUtility.ToJson(result,true));samples.Clear();oracle.Clear();
+   File.WriteAllText(Path.Combine(output,"support-profile.json"),JsonUtility.ToJson(result,true));samples.Clear();oracle.Clear();frames.Clear();frameKeys.Clear();pairs.Clear();groups.Clear();
+  }
+  readonly struct ScalarLevel {
+   readonly RoadVolumeMesh.BoundaryScalar edge;readonly float offset;
+   public ScalarLevel(RoadVolumeMesh.BoundaryScalar edge,float offset){this.edge=edge;this.offset=offset;}
+   public float At(float at)=>edge.Height(at)+offset;
+  }
+  // Frozen scalar part of original CloseGroup/EmitBands. A zero quad count
+  // proves no vertices, indices, UV or support metadata can be emitted either.
+  static int ReferenceQuads(RoadVolumeMesh.BoundaryScalar[] edges){
+   const float tolerance=.0001f;var cuts=new List<float>();foreach(var edge in edges){cuts.Add(edge.from);cuts.Add(edge.to);}cuts.Sort();int quads=0;
+   for(int i=0;i<cuts.Count-1;i++){float from=cuts[i],to=cuts[i+1];if(to-from<tolerance)continue;float mid=(from+to)*.5f;var active=edges.Where(e=>e.from<mid&&e.to>mid).ToList();
+    foreach(var edge in active){var others=active.FindAll(e=>e.forward!=edge.forward);var slices=new List<float>{from,to};
+     foreach(var other in others){float a=edge.Height(from)-other.Height(from),b=edge.Height(to)-other.Height(to);foreach(float threshold in new[]{-RoadVolumeMesh.Thickness,0f,RoadVolumeMesh.Thickness})if((a-threshold)*(b-threshold)<0)slices.Add(Mathf.Lerp(from,to,(threshold-a)/(b-a)));}slices.Sort();
+     for(int s=0;s<slices.Count-1;s++){float lo=slices[s],hi=slices[s+1];if(hi-lo<tolerance)continue;float at=(lo+hi)*.5f;var bands=new List<(ScalarLevel low,ScalarLevel high)>{(new ScalarLevel(edge,-RoadVolumeMesh.Thickness),new ScalarLevel(edge,0))};
+      foreach(var other in others){var low=new ScalarLevel(other,-RoadVolumeMesh.Thickness);var high=new ScalarLevel(other,0);var kept=new List<(ScalarLevel low,ScalarLevel high)>();foreach(var band in bands){float l=band.low.At(at),h=band.high.At(at),ol=low.At(at),oh=high.At(at);if(oh<=l+tolerance||ol>=h-tolerance){kept.Add(band);continue;}if(ol>l+tolerance)kept.Add((band.low,low));if(oh<h-tolerance)kept.Add((high,band.high));}bands=kept;}
+      foreach(var band in bands)if(band.high.At(at)-band.low.At(at)>tolerance)quads++;
+     }
+    }
+   }return quads;
   }
   // Independent original control flow with global2^-149 integer signs. It is
   // deliberately evaluated AFTER the cold timer, not inside the measured path.
@@ -69,6 +101,7 @@ namespace StarRacingPrototype {
    if(!Contains(owner,apex)||Point.Dot(new Point(apex)-origin,normal)>=0)throw new InvalidOperationException("No inward kernel apex for road owner "+owner.id+" side "+side);
    return apex;
   }
+  [Serializable] sealed class PairReport {public int checks,fastPairs;}
   public static void RunContracts(){
    string output=Environment.GetEnvironmentVariable("STAR_RACING_WORLD_QA_DIR");Directory.CreateDirectory(output);oracle.Clear();int checks=0,initial=0,inward=0,centroid=0,errors=0;
    void Test(RoadVolumeMesh.SupportTriangle triangle){
@@ -94,6 +127,25 @@ namespace StarRacingPrototype {
    }
    if(initial==0||inward==0||centroid==0||errors==0)throw new Exception("Missing apex branch/exception coverage");
    File.WriteAllText(Path.Combine(output,"apex-cases.json"),$"{{\"checks\":{checks},\"initial\":{initial},\"inward\":{inward},\"centroid\":{centroid},\"exceptions\":{errors},\"oracle\":\"original flow/global2^-149 integer\"}}\n");oracle.Clear();
+   int pairChecks=0,fastPairs=0;
+   void Pair(params RoadVolumeMesh.BoundaryScalar[] values){
+    bool fast=RoadVolumeMesh.EditorPairCancels(values);int original=ReferenceQuads(values);pairChecks++;
+    if(fast){fastPairs++;if(original!=0)throw new Exception("Exact pair shortcut differs from original clipping");}
+   }
+   RoadVolumeMesh.BoundaryScalar E(float from,float to,float a,float b,bool forward)=>new RoadVolumeMesh.BoundaryScalar(from,to,a,b,forward);
+   Pair();Pair(E(0,1,0,0,true));Pair(E(0,1,0,0,true),E(0,1,0,0,false),E(0,1,0,0,true));
+   foreach(float from in new[]{-100f,0f,1f})foreach(float length in new[]{-1f,0f,.00001f,.0001f,1f,1000f})foreach(float height in new[]{-100f,0f,100f,float.MaxValue})foreach(float slope in new[]{0f,1f,-1f}){
+    var a=E(from,from+length,height,height+slope,true);var b=E(from,from+length,height,height+slope,false);Pair(a,b);Pair(b,a);Pair(a,a);
+   }
+   float nz=BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)),ulp=BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(1f)+1);
+   var normal=E(0,1,0,1,true);
+   foreach(var other in new[]{E(nz,1,0,1,false),E(0,ulp,0,1,false),E(0,1,nz,1,false),E(0,1,0,ulp,false),E(0,1,0,1,true)}){if(RoadVolumeMesh.EditorPairCancels(normal,other))throw new Exception("Inexact/directed pair admitted");Pair(normal,other);}
+   foreach(float value in new[]{float.NaN,float.PositiveInfinity,float.NegativeInfinity})for(int field=0;field<4;field++){
+    var v=new[]{0f,1f,0f,1f};v[field]=value;var a=E(v[0],v[1],v[2],v[3],true);var b=E(v[0],v[1],v[2],v[3],false);
+    if(RoadVolumeMesh.EditorPairCancels(a,b))throw new Exception("Nonfinite pair admitted");Pair(a,b);
+   }
+   if(fastPairs==0)throw new Exception("Missing exact pair coverage");
+   File.WriteAllText(Path.Combine(output,"pair-cases.json"),JsonUtility.ToJson(new PairReport{checks=pairChecks,fastPairs=fastPairs}));
    Environment.SetEnvironmentVariable("STAR_RACING_GRAPH_JUMP_QA_DIR",Path.Combine(output,"graph-jumps"));GraphJumpChecks.Run();
    foreach(string name in new[]{"ValidateFlatClosure","ValidateSlabOracle"})typeof(RoadVolumeChecks).GetMethod(name,BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static).Invoke(null,null);
    UnityEngine.Debug.Log("SUPPORT_LOADING_CONTRACTS_OK checks="+checks);

@@ -129,6 +129,21 @@ namespace StarRacingPrototype
             public Vector3 Down(float at) => Vector3.Lerp(downA, downB, T(at));
             public Vector3 At(float at, float height) => Top(at) + Down(at) * (height - Height(at));
         }
+        static bool SameFinite(float a,float b)=>!float.IsNaN(a)&&!float.IsInfinity(a)&&System.BitConverter.SingleToInt32Bits(a)==System.BitConverter.SingleToInt32Bits(b);
+        static bool CancelsExactly(List<Edge> edges) {
+            if(edges.Count!=2)return false;var a=edges[0];var b=edges[1];
+            return a.forward!=b.forward&&SameFinite(a.from,b.from)&&SameFinite(a.to,b.to)&&SameFinite(a.heightA,b.heightA)&&SameFinite(a.heightB,b.heightB);
+        }
+#if UNITY_EDITOR
+        public readonly struct BoundaryScalar {
+            public readonly float from,to,heightA,heightB;public readonly bool forward;
+            public BoundaryScalar(float from,float to,float heightA,float heightB,bool forward){this.from=from;this.to=to;this.heightA=heightA;this.heightB=heightB;this.forward=forward;}
+            public float Height(float at)=>Mathf.Lerp(heightA,heightB,Mathf.InverseLerp(from,to,at));
+        }
+        public static System.Action<int,BoundaryScalar,BoundaryScalar,bool> GroupObserved;
+        static BoundaryScalar Scalar(Edge e)=>new BoundaryScalar(e.from,e.to,e.heightA,e.heightB,e.forward);
+        public static bool EditorPairCancels(params BoundaryScalar[] values){var edges=new List<Edge>();foreach(var e in values)edges.Add(new Edge{from=e.from,to=e.to,heightA=e.heightA,heightB=e.heightB,forward=e.forward});return CancelsExactly(edges);}
+#endif
         readonly struct Level
         {
             readonly Edge edge;
@@ -237,12 +252,22 @@ namespace StarRacingPrototype
             {
                 if(budget.Due){yield return null;budget.Restart();}
                 RoadFace face = faces[q*2]; int at = q*4;
+#if UNITY_EDITOR
+                long coreTimer=BeginMeasurement();
+#endif
                 var start = evaluate(face,face.startDistance); var end = evaluate(face,face.endDistance);
+#if UNITY_EDITOR
+                Measured("core.frames",coreTimer);
+                FrameObserved?.Invoke(face,face.startDistance,start);FrameObserved?.Invoke(face,face.endDistance,end);coreTimer=BeginMeasurement();
+#endif
                 if(face.canonicalFlatPorts) {
                     if(portNormal==null)throw new System.ArgumentException("Canonical port normal registry required");
                     if(face.startPort!=0)start.normal=portNormal(face.startPort);
                     if(face.endPort!=0)end.normal=portNormal(face.endPort);
                 }
+#if UNITY_EDITOR
+                Measured("core.port-normals",coreTimer);coreTimer=BeginMeasurement();
+#endif
                 var points = new[] { top[at], top[at+1], top[at+2], top[at+3] };
                 var down = new[] { start.normal, end.normal, start.normal, end.normal };
                 var distances = new[] { face.startDistance, face.endDistance, face.startDistance, face.endDistance };
@@ -258,7 +283,13 @@ namespace StarRacingPrototype
                     points[2]-down[2]*Thickness, points[3]-down[3]*Thickness, -start.normal);
                 bool positive = Vector3.Dot(Vector3.Cross(points[1]-points[0],points[2]-points[0]), start.normal) > 0;
                 int[] perimeter = positive ? new[] {0,1,3,2,0} : new[] {0,2,3,1,0};
+#if UNITY_EDITOR
+                Measured("core.bottom",coreTimer);coreTimer=BeginMeasurement();
+#endif
                 var owner=new SupportCell(q,face,points,down,perimeter,topTriangles,q);
+#if UNITY_EDITOR
+                Measured("core.owner",coreTimer);coreTimer=BeginMeasurement();
+#endif
                 for (int i=0;i<4;i++)
                 {
                     int a=perimeter[i], b=perimeter[i+1];
@@ -289,10 +320,31 @@ namespace StarRacingPrototype
                         group.Add(edge);
                     }
                 }
+#if UNITY_EDITOR
+                Measured("core.edges",coreTimer);
+#endif
             }
             int bottomIndices=shell.IndexCount;
-            foreach (var group in sections.Values){CloseGroup(shell,group);if(budget.Due){yield return null;budget.Restart();}}
-            foreach (var group in along.Values){CloseGroup(shell,group);if(budget.Due){yield return null;budget.Restart();}}
+            foreach (var group in sections.Values){
+#if UNITY_EDITOR
+                long timer=BeginMeasurement();
+#endif
+                CloseGroup(shell,group);
+#if UNITY_EDITOR
+                Measured("core.sections",timer);
+#endif
+                if(budget.Due){yield return null;budget.Restart();}
+            }
+            foreach (var group in along.Values){
+#if UNITY_EDITOR
+                long timer=BeginMeasurement();
+#endif
+                CloseGroup(shell,group);
+#if UNITY_EDITOR
+                Measured("core.along",timer);
+#endif
+                if(budget.Due){yield return null;budget.Restart();}
+            }
             // Bottom triangles precede the emitted exterior bands; the top remains
             // in its original TrackSurface collider. Wall contacts use convex hulls.
             yield return null;budget.Restart();
@@ -303,6 +355,7 @@ namespace StarRacingPrototype
 #if UNITY_EDITOR
         public static System.Action<string,double> WorkMeasured;
         public static System.Action<SupportTriangle,Vector3,bool> SupportSelected;
+        public static System.Action<RoadFace,float,TrackFrame> FrameObserved;
         static long BeginMeasurement()=>WorkMeasured==null?0:System.Diagnostics.Stopwatch.GetTimestamp();
         static void Measured(string name,long began){if(began!=0)WorkMeasured?.Invoke(name,(System.Diagnostics.Stopwatch.GetTimestamp()-began)/(double)System.Diagnostics.Stopwatch.Frequency);}
 #endif
@@ -363,6 +416,13 @@ namespace StarRacingPrototype
         }
         static void CloseGroup(Geometry shell, List<Edge> edges)
         {
+#if UNITY_EDITOR
+            if(GroupObserved!=null)GroupObserved(edges.Count,edges.Count>0?Scalar(edges[0]):default,edges.Count>1?Scalar(edges[1]):default,CancelsExactly(edges));
+#endif
+            // Identical opposing height bands subtract completely. Skip only this
+            // exact finite case; partial overlaps and larger groups keep the
+            // original ordered clipping path and its tolerance arithmetic.
+            if(CancelsExactly(edges))return;
             var cuts=new List<float>();
             foreach(var edge in edges) { cuts.Add(edge.from); cuts.Add(edge.to); }
             cuts.Sort();
