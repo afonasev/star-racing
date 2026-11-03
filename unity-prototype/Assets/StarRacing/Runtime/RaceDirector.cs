@@ -179,8 +179,11 @@ namespace StarRacingPrototype {
     root=new GameObject("Prepared race");
     var cars=new MagneticVehicle[count];var drivers=new AiDriver[count];var seen=new RaceObservation[count];
     yield return "Готовим участников";
+    var participantBudget=new LoadingWork.Budget();
     for(int i=0;i<count;i++){
-     yield return null;
+     // Retain the early empty/partial staging checkpoints, then use the
+     // existing loading budget instead of paying one rendered frame per car.
+     if(i<2||participantBudget.Due){yield return null;participantBudget.Restart();}
      var entrant=roster.Entrants[i];var go=new GameObject(entrant.Name);go.transform.SetParent(root.transform);
      cars[i]=go.AddComponent<MagneticVehicle>();InitializeCar(cars[i],course,track,i,i<humans?CloudlineSkin.PlayerColors[i]:Color.HSVToRGB((i*.618034f)%1,.55f,.9f),nextBalance,entrant.HumanSeat>=0,distances[i]);
      cars[i].Drive.ConfigureHandicap(entrant.Profile,snapshot.handicap);cars[i].SetDrivingGeneration(generation);ResetCar(cars[i],course,track,distances[i],lanes[i]);cars[i].Hold(true);
@@ -239,9 +242,13 @@ namespace StarRacingPrototype {
     var distances=new float[Cars.Length];var lanes=new float[Cars.Length];
     // Plan placement while the live roster/session/cars remain unchanged. Cancel
     // is safe at every yield; the final in-place reset is a single atomic commit.
+    var placementBudget=new LoadingWork.Budget();
     for(int i=0;i<Cars.Length;i++){
-     int slot=plannedRoster.Entrants[i].GridSlot;distances[i]=GridDistance(Course,Track,slot);lanes[i]=GridLateral(Course,Track,slot);yield return null;
+     int slot=plannedRoster.Entrants[i].GridSlot;distances[i]=GridDistance(Course,Track,slot);lanes[i]=GridLateral(Course,Track,slot);
+     if(i<2||placementBudget.Due){yield return null;placementBudget.Restart();}
     }
+    // Keep a final cancellation boundary before the atomic in-place reset.
+    yield return null;
     Track.TireMarks?.Clear();GetComponent<RaceMenu>()?.ResetPauseSettings();
     RaceGeneration=generation;pendingRecoveryEvents.Clear();vehicleRecoveryEvents.Clear();contactPolicy.Reset();
     Started=start;Paused=!start||pauseDuringPreparation;Time.timeScale=0;Input=Input??new LocalInputRouter();Input.Block();

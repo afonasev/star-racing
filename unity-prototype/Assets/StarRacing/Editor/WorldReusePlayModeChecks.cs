@@ -91,6 +91,7 @@ namespace StarRacingPrototype {
    Config("cloud-city",3650307150).Save();float start=Time.realtimeSinceStartup;host=new GameObject("Light runtime startup");host.AddComponent<RaceStartup>();
    while((director=host.GetComponent<RaceDirector>())==null||!director.Ready)yield return null;
    menu=host.GetComponent<RaceMenu>();Check(director.Track==null&&director.Course==null&&director.Cars.Length==0&&director.Session==null,"Runtime menu allocates no world or participants");Check(Enumerable.Range(0,4).All(i=>!director.CameraFor(i).GetComponent<Camera>().enabled),"Menu cameras cannot overwrite IMGUI");Check(director.RaceGeneration==1&&!director.Started,"Initial generation preserved");Check(RetainedCount==0&&!LoadingWork.SimulationFrozen,"Light menu ready and freeze released");Check(SilentStartup.Enabled&&AudioListener.pause&&host.GetComponent<RaceAudioCoordinator>()==null,"Silent startup preserved");Trace("menu seconds="+(Time.realtimeSinceStartup-start).ToString("F3"));
+   if(MapLoadingChecks.DecorOnly){yield return GraphSlice();yield break;}
    // A partial selected-world build transfers to Start rather than being rebuilt.
    menu.Open(RaceMenuScreen.LocalSetup);Select(Config("cloud-city",3650307150));
    while(!Prewarming)yield return null;
@@ -127,7 +128,9 @@ namespace StarRacingPrototype {
    }
    uint graphSeed=0;while(NativeTrackGenerator.FamilyFor(graphSeed,"space-station")!="path-choice")graphSeed++;
    var graph=Config("space-station",graphSeed,12,64);yield return Prepare(graph);Check(director.Track.GraphSurface!=null,"Independent graph case");var graphTrack=director.Track;string graphSignature=Signature();generation=director.RaceGeneration;Check(director.ExitToMenu(),"Exit graph");menu.Open(RaceMenuScreen.Main);typeof(RaceDirector).GetProperty("RaceGeneration").SetValue(director,generation-1);
-   yield return Prepare(graph.Copy());Check(ReferenceEquals(graphTrack,director.Track)&&graphSignature==Signature(),"Graph64 exact reused parity");yield return ExerciseContacts();director.ExitToMenu();menu.Open(RaceMenuScreen.Main);
+   yield return Prepare(graph.Copy());Check(ReferenceEquals(graphTrack,director.Track)&&graphSignature==Signature(),"Graph64 exact reused parity");yield return ExerciseContacts();
+   yield return MapLoadingChecks.MeasureRepeats(director);
+   director.ExitToMenu();menu.Open(RaceMenuScreen.Main);
    // Key excludes roster size, but every race still creates the selected roster.
    var resized=graph.Copy();resized.entrants=8;yield return Prepare(resized);Check(ReferenceEquals(graphTrack,director.Track)&&director.Cars.Length==8,"World reuse with fresh participant count");director.ExitToMenu();menu.Open(RaceMenuScreen.Main);
    // A late binding failure must restore borrowed-entry activity and old authority.
@@ -140,6 +143,46 @@ namespace StarRacingPrototype {
    Select(Config("cloud-city",1003));while(!Prewarming)yield return null;typeof(RaceMenu).GetField("seedText",Private).SetValue(menu,"invalid");yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Invalid selection releases speculative world and freeze");
    menu.Open(RaceMenuScreen.Main);yield return Frames();Check(!Prewarming&&!LoadingWork.SimulationFrozen,"Leaving setup releases speculative freeze");
    var mesh=graphTrack.GetComponentInChildren<MeshFilter>().sharedMesh;Destroy(host);host=null;yield return Frames();Check(mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0,"Owner destroys all retained worlds and meshes");Check(!LoadingWork.SimulationFrozen,"Teardown releases all freezes");
+  }
+  IEnumerator GraphSlice(){
+   // Fix the generation for focused baseline/candidate equivalence.
+   var graph=Config("space-station",5,12,64);menu.Open(RaceMenuScreen.Main);
+   typeof(RaceDirector).GetProperty("RaceGeneration").SetValue(director,5);
+   yield return Prepare(graph);Check(director.Track.GraphSurface!=null,"Focused independent graph");
+   var track=director.Track;var mesh=track.GetComponentInChildren<MeshFilter>().sharedMesh;string cold=Signature();int generation=director.RaceGeneration;
+   Check(director.ExitToMenu(),"Exit focused cold world");menu.Open(RaceMenuScreen.Main);
+   typeof(RaceDirector).GetProperty("RaceGeneration").SetValue(director,generation-1);
+   yield return Prepare(graph.Copy());Check(ReferenceEquals(track,director.Track)&&cold==Signature(),"Focused exact cold/warm geometry replay roster placement");
+   yield return ExerciseContacts();
+   // Cancel during actual graph visual allocation on the published surface.
+   // The temporary builder must release its meshes and restore every source flag.
+   var renderers=track.GetComponentsInChildren<MeshRenderer>(true);var flags=renderers.Select(r=>r.enabled).ToArray();
+   var decor=new TrackEnvironmentBuilder();Mesh partialMesh=null;bool partial=false;
+   var method=typeof(TrackEnvironmentBuilder).GetMethod("BuildIndependentSteps",Private);
+   var freeze=typeof(LoadingWork).GetNestedType("Freeze",BindingFlags.NonPublic);
+   try{using((IDisposable)Activator.CreateInstance(freeze,new object[]{false}))
+    using(var pending=new LoadingWork((IEnumerator)method.Invoke(decor,new object[]{track.GraphSurface,graph.Seed,"space-station",null,true}))){
+     while(pending.MoveNext()){
+      if(decor.Root!=null&&decor.Root.childCount>0){partialMesh=decor.Root.GetComponentInChildren<MeshFilter>().sharedMesh;partial=true;break;}
+      yield return null;
+     }
+     Check(partial&&pending.Error==null,"Actual partial graph decor reached before cancellation");
+    }
+   }finally{decor.Clear();}
+   yield return Frames();Check(partialMesh==null&&decor.Root==null&&!LoadingWork.SimulationFrozen,"Cancelled graph decor releases generated meshes and freeze");
+   Check(renderers.Select((r,i)=>r.enabled==flags[i]).All(value=>value),"Cancelled graph decor restores exact renderer flags");
+   yield return MapLoadingChecks.MeasureRepeats(director);
+   director.ExitToMenu();menu.Open(RaceMenuScreen.Main);
+   var session=director.Session;generation=director.RaceGeneration;int staged=0;
+   using(var pending=director.PrepareForLoading(graph.Copy())){while(pending.MoveNext()){if(pending.Status=="Готовим участников"&&++staged==3)break;yield return null;}Check(staged==3,"Focused actual partial participants");}
+   yield return Frames();Check(ReferenceEquals(session,director.Session)&&ReferenceEquals(track,director.Track)&&generation==director.RaceGeneration&&!director.Started&&!LoadingWork.SimulationFrozen,"Focused participant rollback retains published authority");
+   // The same city batching path serves both ordinary and graph environments.
+   var city=Config("cloud-city",3650307150,12,32);yield return Prepare(city);
+   Check(track==null&&mesh==null,"Replacing graph releases historical generated geometry");
+   var cityTrack=director.Track;var cityMesh=cityTrack.GetComponentInChildren<MeshFilter>().sharedMesh;string cityCold=Signature();generation=director.RaceGeneration;
+   director.ExitToMenu();menu.Open(RaceMenuScreen.Main);typeof(RaceDirector).GetProperty("RaceGeneration").SetValue(director,generation-1);
+   yield return Prepare(city.Copy());Check(ReferenceEquals(cityTrack,director.Track)&&cityCold==Signature(),"City exact cold/warm geometry replay roster placement");
+   Destroy(host);host=null;yield return Frames();Check(cityMesh==null&&mesh==null&&FindObjectsByType<TrackBuilder>(FindObjectsInactive.Include,FindObjectsSortMode.None).Length==0&&!LoadingWork.SimulationFrozen,"Focused owner destroys meshes worlds freezes");
   }
   void Restore(){if(restored)return;restored=true;work?.Dispose();if(host!=null)Destroy(host);if(pad!=null&&pad.added)InputSystem.RemoveDevice(pad);if(had)PlayerPrefs.SetString(LocalRaceConfig.PreferenceKey,preferences);else PlayerPrefs.DeleteKey(LocalRaceConfig.PreferenceKey);PlayerPrefs.Save();UserSettingsStore.OverridePath=settingsPath;UserSettingsStore.Replace(settings);Application.runInBackground=background;Time.timeScale=1;}
   void OnDestroy()=>Restore();

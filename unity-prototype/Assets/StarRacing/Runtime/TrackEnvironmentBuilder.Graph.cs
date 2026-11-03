@@ -19,8 +19,10 @@ namespace StarRacingPrototype {
    try {
     var road=SurfaceMaterial("RoadBlend",false);road.mainTextureScale=new Vector2(8f/32f,8f/288f);
     var rail=SurfaceMaterial("RailBlend",true);rail.mainTextureScale=new Vector2(4f/288f,4f/1.3f);
+    var visualBudget=new LoadingWork.Budget();bool firstVisual=true;
     foreach(var source in surface.GetComponentsInChildren<MeshFilter>()) {
-     yield return null;
+     // Preserve entry cancellation, then batch cheap copies and skipped filters.
+     if(firstVisual||visualBudget.Due){firstVisual=false;yield return null;visualBudget.Restart();}
      bool top=source.GetComponent<TrackSurface>()!=null,isRail=source.sharedMesh!=null&&source.sharedMesh.name=="Independent guard rails";
      if(!top&&!isRail)continue;
      var visual=UnityEngine.Object.Instantiate(source.sharedMesh);visual.name=top?"Graph environment road visual":"Graph environment rail visual";meshes.Add(visual);

@@ -29,12 +29,15 @@ namespace StarRacingPrototype {
                 }
             }
             public IEnumerator FlushSteps() {
+                var budget=new LoadingWork.Budget();bool first=true;
                 foreach(var batch in batches.Values) {
                     var mesh=new Mesh{name="City district mesh"};
                     if(batch.vertices.Count>65535)mesh.indexFormat=UnityEngine.Rendering.IndexFormat.UInt32;
                     mesh.SetVertices(batch.vertices);mesh.SetNormals(batch.normals);mesh.SetUVs(0,batch.uv);mesh.SetTriangles(batch.triangles,0);mesh.RecalculateBounds();
                     owner.meshes.Add(mesh);owner.Shape("City district",mesh,batch.material,batch.origin,Quaternion.identity,Vector3.one,shadows);
-                    yield return null;
+                    // Keep a partial-build cancellation checkpoint without a
+                    // mandatory frame for every small district mesh.
+                    if(first||budget.Due){first=false;yield return null;budget.Restart();}
                 }
             }
             sealed class Batch {
